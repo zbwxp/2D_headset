@@ -123,6 +123,8 @@ const CASES: Case[] = [
   { op: 'fit', args: () => [sel('ab')] },
   // b differs between the front (11, 1) and the side (10, 0): the correction at yaw 45 writes knots on that edge (stage 3b package 3)
   { op: 'correct', args: () => [{ yaw: 45, pitch: 0 }, { points: [{ id: 'b', position: P(10.4, 0.7) }] }] },
+  // a is at (0, 0) in every view: equal on both axes, so a drag at yaw 45 moves the side view (stage 3b package 4)
+  { op: 'correct', args: () => [{ yaw: 45, pitch: 0 }, { points: [{ id: 'a', position: P(0, 2) }] }], note: 'the side view moves' },
   // the corner's own stroke differs too, so a broadcast from either view writes the other
   { op: 'broadcastStroke', args: () => [sel('ab')], setup: d => d.editIn('view:90,45', e => e.lineStroke('ab', { width: 7, profile: 'uniform' })) },
   { op: 'deleteSelection', args: () => [sel('xy')] },
@@ -259,7 +261,7 @@ describe('the merged commit is today\'s, operation by operation (no behaviour ch
     return m
   }
   it('select, selectGroup, broadcastStroke and fit skip settling; broadcastShape and draftCorners settle the non-front views; everything else, and an empty edit, settles fully', () => {
-    const today: Record<string, string> = { select: 'keeps', selectGroup: 'keeps', broadcastStroke: 'keeps', fit: 'keeps', correct: 'keeps', broadcastShape: 'views', draftCorners: 'views' }
+    const today: Record<string, string> = { select: 'keeps', selectGroup: 'keeps', broadcastStroke: 'keeps', fit: 'keeps', correct: 'views', broadcastShape: 'views', draftCorners: 'views' }
     for (const c of CASES) for (const layer of c.views ?? [FRONT]) {
       const d = fixture()
       c.setup?.(d)

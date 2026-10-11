@@ -181,6 +181,29 @@ export function respond(knots: Knots | undefined, t: number): number {
   return v0 * (1 - s) + s
 }
 
+/**
+ * The drawing has no finite value at this pose: `what` names the scalar (e.g. `position of b`).
+ * A type of its own, so callers turn exactly this into a refusal and nothing else (dot 1791693222).
+ */
+export class PoseNotFinite extends Error {
+  constructor(readonly what: string) { super(`pose-not-finite: ${what} is not a finite number at this pose`); this.name = 'PoseNotFinite' }
+}
+
+/** One term of a blend added to the sum so far, summed from the first term so a single weight 1 gives the value exactly. */
+const addTerm = (s: number | undefined, weight: number, x: number): number => (s === undefined ? weight * x : s + weight * x)
+
+/**
+ * One control's value on one axis on an edge at progress t, from the inner view's value A and the
+ * outer view's B: the blend `evaluate` computes there, weights 1 − r(t) and r(t), zero weights
+ * left out, summed by the same step (ledger row 14). Not checked for finiteness.
+ */
+export function onEdge(knots: Knots | undefined, t: number, A: number, B: number): number {
+  const r = respond(knots, t)
+  let s: number | undefined
+  for (const [w, x] of [[1 - r, A], [r, B]] as const) if (w !== 0) s = addTerm(s, w, x)
+  return s ?? 0
+}
+
 function blend(ws: readonly Weighted[], scalar: ScalarWeights, responses?: Responses): Geometry {
   // the keys of every contributing view, not of the first one: a key missing in any of them is
   // refused below (model-incomplete), never dropped (dot 1791684670)
@@ -192,10 +215,10 @@ function blend(ws: readonly Weighted[], scalar: ScalarWeights, responses?: Respo
     for (const w of list) {
       const x = get(w.view)
       if (x === undefined) throw new Error(`model-incomplete: no ${what} in view ${w.view.yaw},${w.view.pitch}`)
-      s = s === undefined ? w.weight * x : s + w.weight * x
+      s = addTerm(s, w.weight, x)
     }
     // finite views and finite responses must not silently give a non-finite drawing (dot 1791690525)
-    if (!Number.isFinite(s)) throw new Error(`pose-not-finite: ${what} is not a finite number at this pose`)
+    if (!Number.isFinite(s)) throw new PoseNotFinite(what)
     return s!
   }
   // a control with a response on one of the quadrant's edges blends that axis with its own weights

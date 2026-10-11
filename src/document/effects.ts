@@ -6,7 +6,7 @@
 import * as views from '../views'
 
 /** A range of shape layers, resolved to concrete layer keys from the edited view. */
-export type Range = 'none' | 'edited' | 'all-views' | 'non-front' | 'others' | 'corners'
+export type Range = 'none' | 'edited' | 'all-views' | 'non-front' | 'others' | 'corners' | 'front-neighbours'
 /** The shared parts of the state an operation may write directly (structure = layers, points, lines, ids). */
 export type Shared = 'structure' | 'groups' | 'joins' | 'links' | 'fills' | 'selection' | 'apply' | 'names' | 'meta' | 'animation'
 export type Reads = 'draft' | 'settled-trial'
@@ -39,6 +39,8 @@ export function resolve(range: Range, edited: string, all: readonly string[]): s
     case 'non-front': return all.filter(k => k !== views.FRONT)
     case 'others': return all.filter(k => k !== edited)
     case 'corners': return views.CORNERS.map(c => c.key)
+    // the four views next to the front, the only views a correction may move (stage 3b package 4)
+    case 'front-neighbours': return [views.key(90, 0), views.key(-90, 0), views.key(0, 45), views.key(0, -45)]
   }
 }
 
@@ -111,8 +113,10 @@ export const EFFECTS: Record<string, Effect> = {
   broadcastShape: { reads: 'draft', intents: 'non-front', shapes: 'non-front', records: true, shared: [], autoStructure: false, settle: 'non-front-positions', alone: true },
   draftCorners: { reads: 'draft', intents: 'corners', shapes: 'corners', records: false, shared: [], autoStructure: false, settle: 'non-front-positions', alone: true },
   fit: { reads: 'draft', intents: 'none', shapes: 'none', records: true, shared: [], autoStructure: false, settle: 'none', alone: true },
-  // stage 3b package 3: knots on one edge's responses only; no view moves, nothing to settle
-  correct: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['animation'], autoStructure: false, settle: 'none', alone: true },
+  // stage 3b packages 3 and 4: knots on the responses; on an edge from the front, the outer view may
+  // move (one of the front's four neighbours; that at most one changes is the final check's, not
+  // this table's). The final check reads the settled trial (docs/stage3b-pkg4-move.md §8)
+  correct: { reads: 'settled-trial', intents: 'front-neighbours', shapes: 'front-neighbours', records: false, shared: ['animation'], autoStructure: false, settle: 'non-front-positions', alone: true },
   broadcastStroke: { reads: 'draft', intents: 'none', shapes: 'others', records: false, shared: [], autoStructure: false, settle: 'none', alone: false },
   // mirror (front only, so the edited view is the front). Inside the operation apply copies the
   // source's geometry, strokes, end strokes and line states onto the target in the front; sets or

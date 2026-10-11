@@ -1,6 +1,11 @@
 # Stage 3b, package 4: the outer view's minimal move — rules before code
 
-**Status:** rules accepted by dot 1791694943 at `ac7a315` as the basis for implementation and acceptance, with the z === ρ line added. The coordinate refusal (`385707a`) is reviewed on its own first; the body is coded after it passes and after the summary `docs/stage3b-pkg4-solve-problems.md`. Package 3 is accepted at `d6502dc` (dot 1791693873).
+**Status:** rules accepted by dot 1791694943 at `ac7a315`, with the z === ρ line added; the coordinate refusal `385707a` accepted by dot 1791695246. **Body coded** for dot's check: `src/animation/index.ts` (`correct`, `solveMove`, `solveScaled`, `MOVE_COST`, `CorrectionWorld`), `src/evaluate/index.ts` (`onEdge`, `PoseNotFinite`), `src/document/index.ts` (`Editor.correct`, `atPose`), `src/document/effects.ts` (`front-neighbours`, the new declaration); tests `test/correct-move.test.ts`, the move case in `test/effects.test.ts`, one package 3 test moved to an edge not from the front (it now moves).
+
+**What the tests do not reach, and how it was checked** (from the mutation run of the body):
+- The protected-knot check (§5) cannot fail after a correct re-solve. Paired mutations: a re-solve broken to skip O → corner, or to keep front → O's old knots, is refused with `correction-not-reproduced`; with the check switched off the broken result is published (and only the tests' own value checks catch it).
+- Re-solving against O as settled rather than as written (§4, §10.3) has no effect a test can see: the two differ only when three or more linked members average, by rounding, and the re-solved knots are checked within the tolerance either way. Kept as the plan says; dot may prefer to drop the first settled trial.
+- The finiteness check on re-solved knots (§4) is not reached by any test: with the overflow-free inverse the shown value stays near the recorded one, and I found no finite input that makes it overflow. It stays as a defensive check. Package 3 is accepted at `d6502dc` (dot 1791693873).
 
 **Ledger check** (`docs/consolidation-ledger.md`): rows 13 and 14 are triggered by this package; their handling is §7. No other row is triggered.
 

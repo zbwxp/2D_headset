@@ -117,9 +117,9 @@ describe('per control and axis', () => {
     expect(pos(d, { yaw: 22.5, pitch: 0 }, 'b')).toEqual(first)
   })
 
-  it('an axis equal in both views and dragged: correction-axis-fixed, naming the control, axis and edge', () => {
+  it('an axis equal in both views and dragged on an edge not from the front: correction-axis-fixed, naming the control, axis and edge (package 4 moves only on edges from the front)', () => {
     const d = base(), before = save(d)
-    expect(() => d.edit(e => e.correct({ yaw: 45, pitch: 0 }, { points: [{ id: 'c', position: P(20, 3) }] }))).toThrow(/correction-axis-fixed: point c, axis y, is equal in both views of view:0,0>view:90,0/)
+    expect(() => d.edit(e => e.correct({ yaw: 90, pitch: 22.5 }, { points: [{ id: 'c', position: P(20, 3) }] }))).toThrow(/correction-axis-fixed: point c, axis y, is equal in both views of view:90,0>view:90,45, which does not start at the front/)
     expect(save(d)).toBe(before)
   })
 

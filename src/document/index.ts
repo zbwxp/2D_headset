@@ -407,14 +407,19 @@ export class Editor {
     animation.fit(this.s.network, this.s.links, lines)
   }
   /**
-   * In-between correction (stage 3b package 3; docs/stage3b-pkg3-correct.md): at a pose on an
-   * edge between neighbouring views, the given points (with their link components) and handle
-   * vectors are made to show their targets there, by knots on that edge's responses. No view
-   * moves; it stands alone in its edit.
+   * In-between correction (stage 3b packages 3 and 4; docs/stage3b-pkg3-correct.md,
+   * docs/stage3b-pkg4-move.md): at a pose on an edge between neighbouring views, the given points
+   * (with their link components) and handle vectors are made to show their targets there, by knots
+   * on that edge's responses; on an edge from the front, an axis equal in both views moves the outer
+   * view minimally. It stands alone in its edit. The document hands in what it owns: the model's
+   * assembly and the settled trial (ledger row 13).
    */
   correct(pose: evaluate.Pose, targets: animation.CorrectionTargets) {
     const s = this.s
-    animation.correct(s.animation, s.network, s.links, pose, targets, () => evaluate.evaluate(modelOf(s), pose))
+    animation.correct(s.animation, s.network, s.links, this.tx.changes, pose, targets, {
+      model: () => modelOf(s),
+      settled: () => { const trial = this.view(); return { network: trial.network, model: modelOf(trial) } },
+    })
   }
   /**
    * Stroke broadcast: the selected lines' (or `units`') own strokes and their end points'
@@ -653,7 +658,13 @@ export class Core {
    */
   atPose(pose: evaluate.Pose): PoseReader {
     if (!evaluate.inRange(pose)) throw new net.Refusal('pose-out-of-range', `pose-out-of-range: yaw ${pose.yaw}, pitch ${pose.pitch} (yaw within ±${evaluate.YAW_LIMIT}, pitch within ±${evaluate.PITCH_LIMIT})`)
-    const { state, layer } = posedState(this.state, evaluate.evaluate(modelOf(this.state), pose))
+    let posed: evaluate.Posed
+    // a drawing with no finite value at this pose is refused; only that error, nothing else (docs/stage3b-pkg4-move.md §7a)
+    try { posed = evaluate.evaluate(modelOf(this.state), pose) } catch (err) {
+      if (err instanceof evaluate.PoseNotFinite) throw new net.Refusal('pose-not-finite', err.message)
+      throw err
+    }
+    const { state, layer } = posedState(this.state, posed)
     return new PoseReader(new LayerReader(() => state, layer, what => this.idle(what)))
   }
 }

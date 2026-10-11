@@ -306,14 +306,6 @@ export function edgeAt(pose: evaluate.Pose): { edge: views.Edge; t: number } {
   return { edge: views.EDGES.find(e => e.inner === inner && e.outer === outer)!, t }
 }
 
-/** One control's value on one axis on an edge at progress t, summed as evaluate sums it there (zero weights left out). */
-function edgeValue(knots: readonly Knot[] | undefined, t: number, A: number, B: number): number {
-  const r = respond(knots, t)
-  let s: number | undefined
-  for (const [w, x] of [[1 - r, A], [r, B]] as const) if (w !== 0) s = s === undefined ? w * x : s + w * x
-  return s ?? 0
-}
-
 function knotsOf(s: RStore, c: Control, edge: string, axis: 'x' | 'y'): Knot[] | undefined {
   const rec = c.kind === 'point' ? own(s.points, c.id) : own(s.handles, c.line)?.[c.end]
   return rec ? own(rec, edge)?.[axis] : undefined
@@ -336,15 +328,103 @@ const inView = (h: net.NetworkState, c: Control): Vec => (c.kind === 'point' ? n
 const atPose = (p: evaluate.Posed, c: Control): Vec => (c.kind === 'point' ? p.points[c.id]! : p.lines[c.line]![c.end === 'a' ? 'ha' : 'hb'])
 
 const finiteVec = (v: unknown): v is Vec => !!v && typeof v === 'object' && Number.isFinite((v as Vec).x) && Number.isFinite((v as Vec).y)
+/** The knot value that makes an edge from P0 to P1 show v, without intermediate overflow (dot 1791691300). */
+const inverse = (v: number, P0: number, P1: number) => { const sc = Math.max(Math.abs(P0), Math.abs(P1), Math.abs(v)); return (v / sc - P0 / sc) / (P1 / sc - P0 / sc) }
+const near = (got: number, want: number) => Math.abs(got - want) <= 1e-9 * Math.max(1, Math.abs(want))
+
+// ---- the outer view's minimal move (stage 3b package 4; docs/stage3b-pkg4-move.md §2) ----
+
+/** The cost's constants, from v103 (7205381 `boundedBasisInverse.ts`, `surfaceBasisFallback.ts`): tuning values kept in one place. */
+export const MOVE_COST = Object.freeze({ point: 16, handle: 1, response: 0.005, scaleFloor: 1e-6 })
+
+/** z³(z − ρ) ≥ 1, decided without forming z³ (no ∞ · 0 for a huge ρ); z = 0 counts as below. */
+const above = (z: number, rho: number) => z !== 0 && Math.sign(z) * ((z - rho) - 1 / z / z / z) >= 0
+/** The scaled cost φ(z) = 1/z² + (z − ρ)². */
+const phi = (z: number, rho: number) => 1 / z / z + (z - rho) * (z - rho)
 
 /**
- * `correct(pose, targets)` (docs/stage3b-pkg3-correct.md §1–§5): the explicit targets are checked;
- * each point stands for its link component (the target set: link-expanded points, explicit
- * handles); locks and the axis cases run on the whole set; the knots are solved from the state as
- * read before any write and written in one step; then the final check. `posed` evaluates the
- * drawing (with the current responses) at the pose.
+ * The scaled root (§2): on the branch of ρ's sign (ρ = 0 and −0 positive), the z with
+ * z³(z − ρ) = 1, by halving a width-2 bracket from its inner end (test fails) to its outer end
+ * (test holds) until the ends are adjacent doubles; then the end with the smaller φ, ties to the
+ * end nearer ρ, then to the larger |z|. Undefined only if ρ is not finite or the bracket is invalid
+ * (which the plan shows cannot happen for a finite ρ).
  */
-export function correct(a: ResponsesState, n: net.NetworkState, l: links.LinksState, pose: evaluate.Pose, targets: CorrectionTargets, posed: () => evaluate.Posed) {
+export function solveScaled(rho: number): number | undefined {
+  if (!Number.isFinite(rho)) return undefined
+  const positive = !(rho < 0)
+  let inner = positive ? Math.max(rho, 0) : Math.min(rho, 0)
+  let outer = positive ? inner + 2 : inner - 2
+  if (inner === outer) return inner
+  if (above(inner, rho) || !above(outer, rho)) return undefined
+  for (;;) {
+    const mid = inner + (outer - inner) / 2
+    if (mid === inner || mid === outer) break
+    if (above(mid, rho)) outer = mid
+    else inner = mid
+  }
+  const ends = [inner, outer].filter(z => z !== 0)
+  ends.sort((p, q) => phi(p, rho) - phi(q, rho) || Math.abs(p - rho) - Math.abs(q - rho) || Math.abs(q) - Math.abs(p))
+  return ends[0]
+}
+
+/**
+ * The knot value w for one control and axis in the move case (§2): minimises
+ * k · (c / (S·w))² + λ · (w − r)². Undefined when a number on the way is not finite or w is 0.
+ */
+export function solveMove(c: number, r: number, k: number, S: number): number | undefined {
+  const a = Math.abs(c) / S * Math.sqrt(k / MOVE_COST.response)
+  if (!(a > 0) || !Number.isFinite(a)) return undefined
+  const sa = Math.sqrt(a)
+  if (!(sa > 0)) return undefined
+  const rho = r / sa
+  const z = solveScaled(rho)
+  if (z === undefined) return undefined
+  // the response that should stay is kept as it is, never rebuilt through the scaling (dot 1791694943)
+  const w = z === rho ? r : sa * z
+  return Number.isFinite(w) && w !== 0 ? w : undefined
+}
+
+/** Every point position and handle vector scalar of every shape layer, keyed `layer|control|axis`. */
+function scalars(n: net.NetworkState): Map<string, number> {
+  const out = new Map<string, number>()
+  for (const { key } of net.shapeLayers(n)) {
+    const h = net.of(n, key)
+    for (const p of net.points(h)) for (const axis of AXES) out.set(`${key}|${keyOf({ kind: 'point', id: p.id })}|${axis}`, p.position[axis])
+    for (const l of net.lines(h)) for (const end of ['a', 'b'] as const) for (const axis of AXES) out.set(`${key}|${keyOf({ kind: 'handle', line: l.id, end })}|${axis}`, net.handle(l, end)[axis])
+  }
+  return out
+}
+
+/**
+ * What `correct` needs from the document (ledger row 13, docs/stage3b-pkg4-move.md §7a): the
+ * model assembly and the settle are the document's, so they are handed in; `correct` evaluates.
+ */
+export interface CorrectionWorld {
+  /** The draft as `evaluate` reads it. */
+  model(): evaluate.Model
+  /** The draft settled as the commit will settle it: its network (every shape layer) and its model. */
+  settled(): { network: net.NetworkState; model: evaluate.Model }
+}
+
+const posedAt = (model: evaluate.Model, pose: evaluate.Pose, after: boolean): evaluate.Posed => {
+  try { return evaluate.evaluate(model, pose) } catch (err) {
+    if (!(err instanceof evaluate.PoseNotFinite)) throw err
+    // before any write the drawing already has no value here; after the write, this correction caused it
+    throw after
+      ? new net.Refusal('correction-not-finite', `correction-not-finite: ${err.what} would not be a finite number at this pose`)
+      : new net.Refusal('pose-not-finite', err.message)
+  }
+}
+
+/**
+ * `correct(pose, targets)` (docs/stage3b-pkg3-correct.md, docs/stage3b-pkg4-move.md): the explicit
+ * targets are checked; each point stands for its link component (the target set); locks and the
+ * axis cases run on the whole set; on an edge from the front, an axis equal in both views moves the
+ * outer view O by the minimal-move cost; the old knots on O's edges are re-solved against O as the
+ * settle leaves it; every knot is written in one step; then the final check against the draft on
+ * entry. `ch` records O's moves as this edit's intents.
+ */
+export function correct(a: ResponsesState, n: net.NetworkState, l: links.LinksState, ch: net.Changes, pose: evaluate.Pose, targets: CorrectionTargets, world: CorrectionWorld) {
   const { edge, t } = edgeAt(pose)
   const bad = (why: string): never => { throw new net.Refusal('correction-bad-target', `correction-bad-target: ${why}`) }
   // 1. the explicit targets
@@ -378,64 +458,146 @@ export function correct(a: ResponsesState, n: net.NetworkState, l: links.LinksSt
     const locked = c.kind === 'point' ? net.linesAt(n, c.id).map(x => x.line).filter(x => x.state.locked).map(x => x.id) : net.line(n, c.line).state.locked ? [c.line] : []
     if (locked.length) throw new net.Refusal('locked', `Line ${locked[0]} is locked; a correction of ${nameOf(c)} would change its in-between shape`, net.lineObjects(locked))
   }
-  // 3. the axis cases, and 4. one solve from the state as read before any write
-  const s = R(a), inner = net.of(n, edge.inner), outer = net.of(n, edge.outer), before = posed()
-  const writes: { control: Control; axis: 'x' | 'y'; knots: Knot[] }[] = []
+  // 3. the axis cases, and 4. one solve from the draft as entered
+  const s = R(a), inner = net.of(n, edge.inner), outer = net.of(n, edge.outer)
+  const entry = scalars(n), before = posedAt(world.model(), pose, false)
+  /** A control's value in a layer as the draft held it on entry (O is moved later). */
+  const was = (layer: string, c: Control, axis: 'x' | 'y') => entry.get(`${layer}|${keyOf(c)}|${axis}`)!
+  // an edge from the front may move its outer view O; S is read once, before any move, for every control (dot 1791694500)
+  const O = edge.inner === views.FRONT ? edge.outer : undefined
+  const S = O === undefined ? 1 : Math.max(MOVE_COST.scaleFloor, ...AXES.map(axis => {
+    const xs = [inner, outer].flatMap(h => net.points(h).map(p => p.position[axis]))
+    return xs.length ? Math.max(...xs) - Math.min(...xs) : 0
+  }))
+  const lists = new Map<string, { control: Control; edge: string; axis: 'x' | 'y'; knots: Knot[] }>()
+  const listKey = (c: Control, e: string, axis: 'x' | 'y') => `${keyOf(c)}|${e}|${axis}`
+  const moves: { control: Control; axis: 'x' | 'y'; to: number }[] = []
   for (const { control: c, q } of set) for (const axis of AXES) {
     const A = inView(inner, c)[axis], B = inView(outer, c)[axis], p = atPose(before, c)[axis]
     if (q[axis] === p) continue // already met: nothing written (dot 1791687532)
-    if (A === B) throw new net.Refusal('correction-axis-fixed', `correction-axis-fixed: ${nameOf(c)}, axis ${axis}, is equal in both views of ${edge.key}; a response cannot move it (moving the outer view is package 4)`, objectsOf(c))
-    // solved without intermediate overflow; whether it reaches q is decided by the final check (dot 1791691300)
-    const sc = Math.max(Math.abs(A), Math.abs(B), Math.abs(q[axis]))
-    const w = (q[axis] / sc - A / sc) / (B / sc - A / sc)
-    if (!Number.isFinite(w)) throw new net.Refusal('correction-not-finite', `correction-not-finite: ${nameOf(c)}, axis ${axis}, on ${edge.key}: the views are too close for this target`, objectsOf(c))
+    const notFinite = (why: string): never => { throw new net.Refusal('correction-not-finite', `correction-not-finite: ${nameOf(c)}, axis ${axis}, on ${edge.key}: ${why}`, objectsOf(c)) }
+    let w: number, shownWith = B
+    if (A !== B) w = inverse(q[axis], A, B) // the response alone (package 3)
+    else if (O === undefined) throw new net.Refusal('correction-axis-fixed', `correction-axis-fixed: ${nameOf(c)}, axis ${axis}, is equal in both views of ${edge.key}, which does not start at the front; neither view may move`, objectsOf(c))
+    else if (q[axis] === A) w = 0 // the knot [t, 0] shows A exactly; nothing moves (§1)
+    else {
+      // the move case (§1, §2): O takes B' = A + c / w
+      const cDelta = q[axis] - A
+      const solved = solveMove(cDelta, respond(knotsOf(s, c, edge.key, axis), t), c.kind === 'point' ? MOVE_COST.point : MOVE_COST.handle, S)
+      if (solved === undefined) notFinite('the minimal move has no finite solution for this target')
+      w = solved!
+      shownWith = A + cDelta / w
+      if (!Number.isFinite(shownWith)) notFinite('the outer view would move to a non-finite value')
+      moves.push({ control: c, axis, to: shownWith })
+    }
+    if (!Number.isFinite(w)) notFinite('the views are too close for this target')
     const knots = [...(knotsOf(s, c, edge.key, axis) ?? []).filter(k => k[0] !== t), [t, w] as Knot].sort((x, y) => x[0] - y[0])
-    // the value the pose would show must be a number too: a finite knot can still overflow the blend
-    // (A = 1e308, B = 1.1e308, q = −1e308 gives w = −20), refused here, naming the control (dot 1791693222)
-    if (!Number.isFinite(edgeValue(knots, t, A, B))) throw new net.Refusal('correction-not-finite', `correction-not-finite: ${nameOf(c)}, axis ${axis}, on ${edge.key}: the target cannot be shown at this pose without overflow`, objectsOf(c))
+    // a finite knot can still overflow the blend (dot 1791693222)
+    if (!Number.isFinite(evaluate.onEdge(knots, t, A, shownWith))) notFinite('the target cannot be shown at this pose without overflow')
     if (knots.length > MAX_KNOTS) throw new net.Refusal('correction-too-many-knots', `correction-too-many-knots: ${nameOf(c)}, axis ${axis}, on ${edge.key} would have ${knots.length} knots (at most ${MAX_KNOTS})`, objectsOf(c))
-    writes.push({ control: c, axis, knots })
+    lists.set(listKey(c, edge.key, axis), { control: c, edge: edge.key, axis, knots })
   }
-  // linked points must hold identical response sets (package 2). Open allows linked points up to
-  // 1e-9 apart, so each member's own solve can differ: the sets as they would be after the write are
-  // compared, members that write nothing included; any difference refuses the whole step (dot 1791693096)
-  const proposed: RStore = { points: {}, handles: {} }
-  for (const id of points.keys()) put(proposed.points, id, structuredClone(own(s.points, id) ?? {}))
-  for (const w of writes) if (w.control.kind === 'point') setKnots(proposed, w.control, edge.key, w.axis, w.knots)
-  for (const id of given.keys()) for (const m of component(l, id)) if (canon(own(proposed.points, m)) !== canon(own(proposed.points, id))) {
-    throw new net.Refusal('correction-link-differs', `correction-link-differs: linked points ${id} and ${m} would hold different responses after this correction (their views differ slightly); nothing was written`, [{ kind: 'point', id }, { kind: 'point', id: m }])
-  }
-  if (!writes.length) return
-  // the protected targets on this edge, as they stand before the write: every knot of every control there
+  if (!lists.size) return
+  // the protected targets: every knot on the edges whose views this correction can change (this edge;
+  // with a move, also O's edges to its corners), recorded at its own t before anything is written
+  const touched = O === undefined || !moves.length ? [edge] : [edge, ...views.EDGES.filter(e => e.inner === O)]
   const controls: Control[] = [
     ...Object.keys(s.points).map(id => ({ kind: 'point', id }) as Control),
     ...Object.keys(s.handles).flatMap(line => (['a', 'b'] as const).map(end => ({ kind: 'handle', line, end }) as Control)),
   ]
-  const protectedBefore = controls.flatMap(c => AXES.flatMap(axis => {
-    const knots = knotsOf(s, c, edge.key, axis)
-    const written = writes.some(w => w.axis === axis && keyOf(w.control) === keyOf(c))
-    return (knots ?? []).filter(k => !(written && k[0] === t)).map(k => ({ c, axis, t: k[0], v: edgeValue(knots, k[0], inView(inner, c)[axis], inView(outer, c)[axis]) }))
-  }))
-  for (const w of writes) setKnots(s, w.control, edge.key, w.axis, w.knots)
-  // 5. the final check
-  const after = posed()
+  const protectedBefore = touched.flatMap(e => controls.flatMap(c => AXES.flatMap(axis => {
+    const knots = knotsOf(s, c, e.key, axis)
+    if (!knots) return []
+    const i0 = was(e.inner, c, axis), o0 = was(e.outer, c, axis)
+    const written = e === edge && lists.has(listKey(c, e.key, axis))
+    return knots.filter(k => !(written && k[0] === t)).map(k => ({ c, e, axis, t: k[0], v: evaluate.onEdge(knots, k[0], i0, o0) }))
+  })))
+  // 5. O's moves, through O's own operations so its links and springs settle them; a moved point's other axis keeps its value
+  const mask = new Map(moves.map(m => [`${keyOf(m.control)}|${m.axis}`, m.to]))
+  if (O !== undefined && moves.length) {
+    const h = net.of(n, O)
+    for (const c of new Map(moves.map(m => [keyOf(m.control), m.control])).values()) {
+      const now = inView(h, c), to = { x: mask.get(`${keyOf(c)}|x`) ?? now.x, y: mask.get(`${keyOf(c)}|y`) ?? now.y }
+      if (c.kind === 'point') net.move(h, ch, [{ id: c.id, target: to }])
+      else net.moveHandle(h, ch, c.line, c.end, to)
+    }
+    // the old knots on O's edges, re-solved against O as the settle leaves it (§4): front → O
+    // (other knots of a moved axis) and O → its corners
+    const settledO = net.of(world.settled().network, O)
+    const resolve = (c: Control, e: views.Edge, axis: 'x' | 'y', knots: readonly Knot[], skip?: number): Knot[] => {
+      // the value each knot showed is read with the views as they were on entry, O before its move
+      const i0 = was(e.inner, c, axis), o0 = was(e.outer, c, axis)
+      const i1 = e.inner === O ? inView(settledO, c)[axis] : i0, o1 = e.outer === O ? inView(settledO, c)[axis] : o0
+      return knots.map(k => {
+        if (k[0] === skip) return k
+        const v = evaluate.onEdge(knots, k[0], i0, o0)
+        if (i1 === o1) {
+          if (v === i1) return k // still met whatever its value
+          throw new net.Refusal('correction-breaks-target', `correction-breaks-target: ${nameOf(c)}, axis ${axis}, on ${e.key} at progress ${k[0]}: both views become ${i1}, so its earlier target ${v} cannot be kept`, objectsOf(c))
+        }
+        const w = inverse(v, i1, o1)
+        if (!Number.isFinite(w)) throw new net.Refusal('correction-not-finite', `correction-not-finite: ${nameOf(c)}, axis ${axis}, on ${e.key} at progress ${k[0]}: its earlier target cannot be kept after the move`, objectsOf(c))
+        return [k[0], w] as Knot
+      })
+    }
+    for (const m of moves) {
+      const here = lists.get(listKey(m.control, edge.key, m.axis))!
+      here.knots = resolve(m.control, edge, m.axis, here.knots, t)
+      for (const e of touched) if (e !== edge) {
+        const knots = knotsOf(s, m.control, e.key, m.axis)
+        if (knots) lists.set(listKey(m.control, e.key, m.axis), { control: m.control, edge: e.key, axis: m.axis, knots: resolve(m.control, e, m.axis, knots) })
+      }
+    }
+    // every re-solved knot must show a number
+    for (const li of lists.values()) {
+      const e = views.EDGES.find(x => x.key === li.edge)!
+      const i1 = e.inner === O ? inView(settledO, li.control)[li.axis] : was(e.inner, li.control, li.axis)
+      const o1 = e.outer === O ? inView(settledO, li.control)[li.axis] : was(e.outer, li.control, li.axis)
+      for (const k of li.knots) if (!Number.isFinite(evaluate.onEdge(li.knots, k[0], i1, o1))) throw new net.Refusal('correction-not-finite', `correction-not-finite: ${nameOf(li.control)}, axis ${li.axis}, on ${li.edge} at progress ${k[0]}: its earlier target cannot be shown after the move`, objectsOf(li.control))
+    }
+  }
+  // linked points must hold identical response sets (package 2). Open allows linked points up to
+  // 1e-9 apart in every view, so each member's own solve or re-solve can differ: the sets as they
+  // would be after the write are compared, members that write nothing included; any difference
+  // refuses the whole step (dot 1791693096)
+  const proposed: RStore = { points: {}, handles: {} }
+  for (const id of points.keys()) put(proposed.points, id, structuredClone(own(s.points, id) ?? {}))
+  for (const li of lists.values()) if (li.control.kind === 'point') setKnots(proposed, li.control, li.edge, li.axis, li.knots)
+  for (const id of given.keys()) for (const m of component(l, id)) if (canon(own(proposed.points, m)) !== canon(own(proposed.points, id))) {
+    throw new net.Refusal('correction-link-differs', `correction-link-differs: linked points ${id} and ${m} would hold different responses after this correction (their views differ slightly); nothing was written`, [{ kind: 'point', id }, { kind: 'point', id: m }])
+  }
+  for (const li of lists.values()) setKnots(s, li.control, li.edge, li.axis, li.knots)
+  // 6. the final check, on the draft as the commit will settle it, against the draft on entry (§5)
+  const trial = world.settled(), after = posedAt(trial.model, pose, true)
   const notReproduced = (c: Control, why: string): never => { throw new net.Refusal('correction-not-reproduced', `correction-not-reproduced: ${nameOf(c)} ${why}`, objectsOf(c)) }
   for (const { control: c, q } of set) for (const axis of AXES) {
     const got = atPose(after, c)[axis]
-    if (!(Math.abs(got - q[axis]) <= 1e-9 * Math.max(1, Math.abs(q[axis])))) notReproduced(c, `shows ${got} on axis ${axis} at this pose, not its target ${q[axis]}`)
+    if (!near(got, q[axis])) notReproduced(c, `shows ${got} on axis ${axis} at this pose, not its target ${q[axis]}`)
   }
   const inSet = new Set(set.map(x => keyOf(x.control)))
   for (const id of Object.keys(before.points)) {
     const c: Control = { kind: 'point', id }
-    if (!inSet.has(keyOf(c)) && !sameVec(before.points[id]!, after.points[id]!)) notReproduced(c, 'is outside the targets but changed at this pose')
+    if (!inSet.has(keyOf(c))) for (const axis of AXES) if (before.points[id]![axis] !== after.points[id]![axis]) notReproduced(c, `is outside the targets but changed on axis ${axis} at this pose`)
   }
   for (const line of Object.keys(before.lines)) for (const end of ['a', 'b'] as const) {
     const c: Control = { kind: 'handle', line, end }
-    if (!inSet.has(keyOf(c)) && !sameVec(atPose(before, c), atPose(after, c))) notReproduced(c, 'is outside the targets but changed at this pose')
+    if (!inSet.has(keyOf(c))) for (const axis of AXES) if (atPose(before, c)[axis] !== atPose(after, c)[axis]) notReproduced(c, `is outside the targets but changed on axis ${axis} at this pose`)
   }
-  // protected targets at their recorded progress, never through a pose (dot 1791691388)
+  // every point position and handle vector of every shape layer: O's moved (control, axis) near its
+  // new value, every other scalar exactly as on entry, a moved point's other axis included (dot 1791694560)
+  const now = scalars(trial.network)
+  for (const [k, was] of entry) {
+    const [layer, ctl, axis] = k.split('|') as [string, string, 'x' | 'y']
+    const got = now.get(k)!, moved = layer === O ? mask.get(`${ctl}|${axis}`) : undefined
+    const c: Control = ctl.startsWith('p:') ? { kind: 'point', id: ctl.slice(2) } : { kind: 'handle', end: ctl[2] as net.End, line: ctl.slice(4) }
+    if (moved !== undefined ? !near(got, moved) : got !== was) notReproduced(c, moved !== undefined ? `is ${got} on axis ${axis} in ${layer}, not its move ${moved}` : `changed on axis ${axis} in ${layer} (${was} → ${got}), outside this correction's moves`)
+  }
+  // the protected targets at their recorded progress, never through a pose (dot 1791691388): exactly
+  // where nothing was re-solved, within the tolerance where a knot was re-solved
   for (const k of protectedBefore) {
-    if (edgeValue(knotsOf(s, k.c, edge.key, k.axis), k.t, inView(inner, k.c)[k.axis], inView(outer, k.c)[k.axis]) !== k.v) notReproduced(k.c, `lost its protected target at progress ${k.t} on ${edge.key}, axis ${k.axis}`)
+    const knots = knotsOf(s, k.c, k.e.key, k.axis)
+    const resolved = moves.some(m => m.axis === k.axis && keyOf(m.control) === keyOf(k.c))
+    const got = evaluate.onEdge(knots, k.t, inView(net.of(trial.network, k.e.inner), k.c)[k.axis], inView(net.of(trial.network, k.e.outer), k.c)[k.axis])
+    if (resolved ? !near(got, k.v) : got !== k.v) notReproduced(k.c, `lost its earlier target at progress ${k.t} on ${k.e.key}, axis ${k.axis} (${k.v} → ${got})`)
   }
 }
-const sameVec = (p: Vec, q: Vec) => p.x === q.x && p.y === q.y
