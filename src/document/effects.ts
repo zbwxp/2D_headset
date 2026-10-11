@@ -26,8 +26,13 @@ export interface Effect {
   readonly autoStructure: boolean
   /** The position settling it needs. */
   readonly settle: 'full' | 'non-front-positions' | 'none'
-  /** Whether it stands alone in its edit (only settle-free companions beside it). */
+  /** Whether it stands alone in its edit (only companions beside it). */
   readonly alone: boolean
+  /**
+   * Whether it may stand beside an alone operation: declared, not inferred from `settle: 'none'`
+   * (dot 1791701744). Selections and stroke broadcasts may; reference pictures may not.
+   */
+  readonly companion: boolean
 }
 
 /** The layer keys a range stands for, in a document with `all` view layers, edited in `edited`. */
@@ -50,7 +55,7 @@ const STRUCTURAL: readonly Shared[] = ['structure', 'groups', 'joins', 'links', 
 const STRUCTURAL_RESPONSES: readonly Shared[] = [...STRUCTURAL, 'animation']
 /** An ordinary edit: full settle (auto-bind in the edited view), not alone. */
 const full = (e: Partial<Effect> & Pick<Effect, 'reads'>): Effect =>
-  ({ intents: 'none', shapes: 'none', records: false, shared: [], autoStructure: true, settle: 'full', alone: false, ...e })
+  ({ intents: 'none', shapes: 'none', records: false, shared: [], autoStructure: true, settle: 'full', alone: false, companion: false, ...e })
 const trialWithout = (handlesAt: number) => (args: readonly unknown[]): Reads => (args[handlesAt] ? 'draft' : 'settled-trial')
 
 /** Every Editor operation's declaration. A call to an operation missing here fails its edit (`undeclared-operation`). */
@@ -101,8 +106,8 @@ export const EFFECTS: Record<string, Effect> = {
   fillVisible: full({ reads: 'draft', shared: ['fills'] }),
   reorderFill: full({ reads: 'draft', shared: ['fills'] }),
   // selection and transforms
-  select: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['selection'], autoStructure: false, settle: 'none', alone: false },
-  selectGroup: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['selection'], autoStructure: false, settle: 'none', alone: false },
+  select: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['selection'], autoStructure: false, settle: 'none', alone: false, companion: true },
+  selectGroup: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['selection'], autoStructure: false, settle: 'none', alone: false, companion: true },
   transform: full({ reads: 'settled-trial', intents: 'edited', shapes: 'edited' }),
   translate: full({ reads: 'settled-trial', intents: 'edited', shapes: 'edited' }),
   rotate: full({ reads: 'settled-trial', intents: 'edited', shapes: 'edited' }),
@@ -110,18 +115,18 @@ export const EFFECTS: Record<string, Effect> = {
   flip: full({ reads: 'settled-trial', intents: 'edited', shapes: 'edited' }),
   deleteSelection: full({ reads: 'settled-trial', shapes: 'all-views', records: true, shared: STRUCTURAL_RESPONSES }),
   // stage 2: read the draft's geometry, which their settle-free companions leave unchanged
-  broadcastShape: { reads: 'draft', intents: 'non-front', shapes: 'non-front', records: true, shared: [], autoStructure: false, settle: 'non-front-positions', alone: true },
-  draftCorners: { reads: 'draft', intents: 'corners', shapes: 'corners', records: false, shared: [], autoStructure: false, settle: 'non-front-positions', alone: true },
-  fit: { reads: 'draft', intents: 'none', shapes: 'none', records: true, shared: [], autoStructure: false, settle: 'none', alone: true },
+  broadcastShape: { reads: 'draft', intents: 'non-front', shapes: 'non-front', records: true, shared: [], autoStructure: false, settle: 'non-front-positions', alone: true, companion: false },
+  draftCorners: { reads: 'draft', intents: 'corners', shapes: 'corners', records: false, shared: [], autoStructure: false, settle: 'non-front-positions', alone: true, companion: false },
+  fit: { reads: 'draft', intents: 'none', shapes: 'none', records: true, shared: [], autoStructure: false, settle: 'none', alone: true, companion: false },
   // reference pictures: their own part only; an edit of these (and selections) never settles (dot 1791701244)
-  placeReference: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['reference'], autoStructure: false, settle: 'none', alone: false },
-  setReference: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['reference'], autoStructure: false, settle: 'none', alone: false },
-  removeReference: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['reference'], autoStructure: false, settle: 'none', alone: false },
+  placeReference: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['reference'], autoStructure: false, settle: 'none', alone: false, companion: false },
+  setReference: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['reference'], autoStructure: false, settle: 'none', alone: false, companion: false },
+  removeReference: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['reference'], autoStructure: false, settle: 'none', alone: false, companion: false },
   // stage 3b packages 3 and 4: knots on the responses; on an edge from the front, the outer view may
   // move (one of the front's four neighbours; that at most one changes is the final check's, not
   // this table's). The final check reads the settled trial (docs/stage3b-pkg4-move.md §8)
-  correct: { reads: 'settled-trial', intents: 'front-neighbours', shapes: 'front-neighbours', records: false, shared: ['animation'], autoStructure: false, settle: 'non-front-positions', alone: true },
-  broadcastStroke: { reads: 'draft', intents: 'none', shapes: 'others', records: false, shared: [], autoStructure: false, settle: 'none', alone: false },
+  correct: { reads: 'settled-trial', intents: 'front-neighbours', shapes: 'front-neighbours', records: false, shared: ['animation'], autoStructure: false, settle: 'non-front-positions', alone: true, companion: false },
+  broadcastStroke: { reads: 'draft', intents: 'none', shapes: 'others', records: false, shared: [], autoStructure: false, settle: 'none', alone: false, companion: true },
   // mirror (front only, so the edited view is the front). Inside the operation apply copies the
   // source's geometry, strokes, end strokes and line states onto the target in the front; sets or
   // removes the target's joins (an arc set gives every view and the baseline a radius, one removed
@@ -137,8 +142,8 @@ export type Mode = 'full' | 'keeps' | 'views'
 export function merge(calls: readonly string[]): { mode: Mode; alone: string[]; refuse?: string } {
   const decl = calls.map(c => EFFECTS[c]!)
   const alone = calls.filter((_, i) => decl[i]!.alone)
-  // an alone operation allows only settle-free companions beside it (selections, stroke broadcasts)
-  if (alone.length > 1 || (alone.length && decl.some(d => !d.alone && d.settle !== 'none'))) return { mode: 'full', alone, refuse: 'stage2-alone' }
+  // an alone operation allows only declared companions beside it (selections, stroke broadcasts)
+  if (alone.length > 1 || (alone.length && decl.some(d => !d.alone && !d.companion))) return { mode: 'full', alone, refuse: 'stage2-alone' }
   const mode: Mode = !calls.length ? 'full'
     : decl.every(d => d.settle === 'none') ? 'keeps'
     : decl.some(d => d.settle === 'full') ? 'full' : 'views'

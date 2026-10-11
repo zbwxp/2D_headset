@@ -60,7 +60,7 @@ describe('reference pictures', () => {
     expect(d.snapshot().points.map(p => p.id).sort()).toEqual(['a', 'b', 'c', 'e'])
   })
 
-  it('mixed edits keep their own rules: with a move it settles fully; beside correct it is a settle-free companion (dot 1791701244)', () => {
+  it('mixed edits keep their own rules: with a move it settles fully; beside correct it is refused, not a companion (dot 1791701744)', () => {
     const d = doc()
     d.edit(e => e.line('cd', { id: 'c', layer: 'L', position: { x: 50, y: 50 } }, { id: 'e', layer: 'L', position: { x: 60, y: 50 } }))
     d.edit(e => { e.placeReference(img('r1')); e.move([{ id: 'c', target: { x: 10, y: 0 } }]) }) // full settle: c binds with b
@@ -68,11 +68,12 @@ describe('reference pictures', () => {
     expect(d.in('view:0,0').references().map(r => r.id)).toEqual(['r1'])
     const d2 = doc()
     d2.editIn('view:90,0', e => e.move([{ id: 'b', target: { x: 20, y: 5 } }]))
-    // a settle-free companion of an alone operation, as a selection is (the merge rule of package 1): allowed, both applied
-    d2.edit(e => { e.placeReference(img('r2')); e.correct({ yaw: 45, pitch: 0 }, { points: [{ id: 'b', position: { x: 15, y: 3 } }] }) })
-    expect([d2.in('view:0,0').references().length, d2.atPose({ yaw: 45, pitch: 0 }).snapshot().points.find(p => p.id === 'b')!.position]).toEqual([1, { x: 15, y: 3 }])
-    // with another non-settle-free operation beside correct it is refused as before
-    expect(code(() => d2.edit(e => { e.placeReference(img('r3')); e.move([{ id: 'a', target: { x: 1, y: 1 } }]); e.correct({ yaw: 30, pitch: 0 }, { points: [] }) }))).toBe('stage2-alone')
+    // not a companion of an alone operation: refused (dot 1791701744), nothing published
+    const before = save(d2)
+    expect(code(() => d2.edit(e => { e.placeReference(img('r2')); e.correct({ yaw: 45, pitch: 0 }, { points: [{ id: 'b', position: { x: 15, y: 3 } }] }) }))).toBe('stage2-alone')
+    expect(save(d2)).toBe(before)
+    // a selection still is one
+    d2.edit(e => { e.select([]); e.correct({ yaw: 45, pitch: 0 }, { points: [{ id: 'b', position: { x: 15, y: 3 } }] }) })
   })
 
   it('a file keeps its pictures; a bad picture or an old version does not open; a clip carries none', () => {

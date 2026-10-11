@@ -49,7 +49,7 @@ Kept to v2's level that matters here, without its full PNG chunk walk ("roughly 
 1. **Late reads:** each App has its own counter, advanced by a view change, entering or leaving playback, an Open and unmounting; a read keeps the counter, `core`, its saved text and the view from its start and writes only if all are unchanged. A switch away and back still drops it. Tests: back-and-forth view switch, playback in and out, unmount.
 2. **Drawable size:** `width · scale` and `height · scale` finite (§3).
 3. **Decoding:** as §3's last item.
-4. **Mixed edits:** only an edit of reference operations (with or without selections) skips the settle. Mixed with a `move` it settles fully as any edit does. **Beside `correct` (or another alone operation)** it is, by package 1's merge rule, a settle-free companion like a selection, so it is **allowed**, not refused as first written here: refusing it would need a new rule in the merge, and the mix is harmless (`correct`'s checks do not read the reference part). An alone operation with any other non-settle-free operation is refused as before. Raised with dot; tests for each mix.
+4. **Mixed edits:** only an edit of reference operations (with or without selections) skips the settle. Mixed with a `move` it settles fully as any edit does; beside `correct` or another alone operation it is refused (`stage2-alone`). Whether an operation may stand beside an alone one is declared (`companion`, true only for selections and stroke broadcasts), not inferred from `settle: 'none'` (dot 1791701744). Tests for each mix.
 
 ## 6. Not now
 
