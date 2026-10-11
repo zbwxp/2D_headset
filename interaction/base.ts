@@ -70,6 +70,13 @@ export interface Preview {
   mirrorSource: Id[]
   /** The last refusal: its code, message and objects (kind + id). */
   refusal?: Feedback
+  /**
+   * The selection box (docs/selection-box-plan.md), with V / A and a selection that transforms: its bounds, the
+   * handles it has, and what the pointer is over (`hot`). Drawn and hit by the same rule.
+   */
+  selectionBox?: { min: Vec; max: Vec; handles: { id: string; at: Vec }[]; hot: string | null }
+  /** A handle drag in progress: the lines as they will be (core's preview of the same operation), the box around them, or why core refuses it. */
+  transform?: { lines: { id: Id; curve: Vec[] }[]; box: { min: Vec; max: Vec } | null; refused?: string }
 }
 
 /**

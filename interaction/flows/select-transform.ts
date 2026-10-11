@@ -7,11 +7,15 @@
 import { createMover, type Target } from '../../move'
 import type { Core, Snapshot, Vec } from '../../src'
 import type { Ctx, Flow, Id, Mods, Preview, Unit } from '../base'
+import { handlesOf, hitBox, opAt, startHandleDrag, type BoxOp, type Bounds, type HandleDrag } from './selection-box'
 
 export interface SelectTransform extends Flow {
   pointerDown(at: Vec, mods: Mods): boolean
-  pointerMove(at: Vec): void
-  pointerUp(at: Vec): void
+  /** `mods` are read live by a box handle's drag (Option: about the centre; Shift: 15° steps). */
+  pointerMove(at: Vec, mods?: Mods): void
+  pointerUp(at: Vec, mods?: Mods): void
+  /** The pointer moved with no button held: what it is over on the selection box (true if that changed). */
+  hover(at: Vec): boolean
   pointerCancel(): void
   /** Start a selection box; `clear`: a click without dragging clears the selection (V / A). */
   startBox(at: Vec, mods: Mods, clear: boolean): void
@@ -85,9 +89,48 @@ export function selectTransform(ctx: Ctx): SelectTransform {
   const startDrag = (at: Vec) => { const t = selectionTarget(); if (t) mover.press(t, { x: at.x, y: at.y }) }
   const stop = () => { mover.cancel(); box = null }
 
+  // the selection box (docs/selection-box-plan.md): around what a transform moves — lines, points and handles
+  // selected explicitly, never fills (dot 1791735873) — in the view edited, with V / A
+  const transformUnits = () => ctx.selection().filter(u => u.kind === 'line' || u.kind === 'point' || u.kind === 'handle')
+  const boxNow = (): Bounds | null => {
+    if (ctx.tool() !== 'V' && ctx.tool() !== 'A') return null
+    const units = transformUnits()
+    return units.length ? ctx.reader().selectionBounds(units) : null
+  }
+  let hot: ReturnType<typeof hitBox> = null
+  let mods: Mods = {} // the modifiers last seen during a press (read live by a handle drag)
+  /** A handle drag in progress: its basis (fixed at the start), the operation so far, and what it belongs to. */
+  let transforming: { core: Core; view: string; units: Unit[]; drag: HandleDrag; press: Vec; op: BoxOp | null } | null = null
+  const run = (op: BoxOp, units: Unit[]) => (e: Parameters<Parameters<Core['edit']>[0]>[0]) => {
+    if (op.kind === 'scale') e.scale(op.anchor, op.sx, op.sy, units)
+    else e.rotate(op.centre, op.angle, units)
+  }
+  const startHandle = (handle: Exclude<ReturnType<typeof hitBox>, 'inside' | null>, b: Bounds, at: Vec) => {
+    const owned = ctx.owned(), units = transformUnits(), press = { x: at.x, y: at.y }
+    const drag = startHandleDrag(handle, b, press, ctx.env.pixel())
+    const target: Target = {
+      begin: () => { transforming = { ...owned, units, drag, press, op: null }; return true },
+      preview: o => { if (transforming) transforming.op = opAt(drag, { x: press.x + o.x, y: press.y + o.y }, mods) },
+      commit: o => {
+        const op = opAt(drag, { x: press.x + o.x, y: press.y + o.y }, mods) // the release's modifiers decide
+        transforming = null
+        if (ctx.mine(owned)) ctx.commit(run(op, units))
+      },
+      cancel: () => { transforming = null },
+    }
+    mover.press(target, press)
+  }
+
   /** What the last A / V press picked (a box or nothing: null); read by the app's name labels (docs/name-labels-plan.md). */
   let lastPress: Unit['kind'] | null = null
   return {
+    hover(at) {
+      if (mover.running || box) return false
+      const b = boxNow(), now = b ? hitBox(b, at, ctx.env.pixel()) : null
+      if (now === hot) return false
+      hot = now
+      return true
+    },
     get lastPress() { return lastPress },
     get moving() { return mover.running },
     cancelLevel: 1,
@@ -98,26 +141,39 @@ export function selectTransform(ctx: Ctx): SelectTransform {
     },
     keyUp(key) { mover.keyUp(key) },
     startBox(at, mods, clear) { box = { ...ctx.owned(), from: { x: at.x, y: at.y }, to: { x: at.x, y: at.y }, mods: { ...mods }, clear } },
-    pointerDown(at, mods) {
+    pointerDown(at, m) {
       lastPress = null
+      mods = { ...m }
+      // the order (docs/selection-box-plan.md §2): A's points and Bézier handles keep their priority (dot 1791735216);
+      // then a box handle, which wins over a line and over grabbing the inside (dot 1791733296); then the line
+      const b = boxNow(), onBox = b ? hitBox(b, at, ctx.env.pixel()) : null
+      const direct = ctx.tool() === 'A' ? hitDirect(at) : undefined
+      const pointFirst = direct && (direct.kind === 'point' || direct.kind === 'handle')
+      if (!pointFirst && b && onBox && onBox !== 'inside') { startHandle(onBox, b, at); return true }
       const picked: Unit | undefined = ctx.tool() === 'V'
         ? (() => { const line = ctx.hitLine(at); return line ? { kind: 'line' as const, id: line } : undefined })()
-        : hitDirect(at)
-      if (!picked) { this.startBox(at, mods, true); return true }
+        : direct
+      // then what the tool picks, as today; then the inside of the box grabs the whole selection, unless
+      // Shift / Option ask for the marquee that adds / removes (dot 1791735216)
+      if (!picked && onBox === 'inside' && !m.shift && !m.alt) { startDrag(at); return true }
+      if (!picked) { this.startBox(at, m, true); return true }
+      const mods_ = m
       lastPress = picked.kind
       const already = ctx.selection().some(v => key(v) === key(picked))
-      if (!already || mods.shift || mods.alt) {
-        if (ctx.tool() === 'V' && picked.kind === 'line') ctx.commit(e => e.selectGroup(picked.id, mode(mods)))
-        else ctx.commit(e => e.select([picked], mode(mods)))
+      if (!already || mods_.shift || mods_.alt) {
+        if (ctx.tool() === 'V' && picked.kind === 'line') ctx.commit(e => e.selectGroup(picked.id, mode(mods_)))
+        else ctx.commit(e => e.select([picked], mode(mods_)))
       }
       startDrag(at)
       return true
     },
-    pointerMove(at) {
+    pointerMove(at, m) {
+      if (m) mods = { ...m }
       if (mover.running === 'drag') mover.drag(at)
       if (box) box.to = { x: at.x, y: at.y }
     },
-    pointerUp(at) {
+    pointerUp(at, m) {
+      if (m) mods = { ...m }
       const b = box
       box = null
       if (b && ctx.mine(b)) boxUp(b, at)
@@ -132,6 +188,24 @@ export function selectTransform(ctx: Ctx): SelectTransform {
     historyChanged() { stop() },
     preview(p: Preview) {
       if (moving && ctx.mine(moving)) p.drag = { units: structuredClone(moving.units), offset: { ...moving.offset } }
+      const b = boxNow()
+      if (b) {
+        const px = ctx.env.pixel()
+        // during a move of the inside the box follows the offset; during a handle drag, the result (dot 1791735431)
+        const o = moving && ctx.mine(moving) ? moving.offset : { x: 0, y: 0 }
+        p.selectionBox = { min: { x: b.min.x + o.x, y: b.min.y + o.y }, max: { x: b.max.x + o.x, y: b.max.y + o.y }, handles: handlesOf(b, px).map(h => ({ id: h.id, at: { x: h.at.x + o.x, y: h.at.y + o.y } })), hot: transforming ? transforming.drag.handle : hot }
+      }
+      if (transforming && transforming.op && ctx.mine(transforming)) {
+        const t = transforming
+        try {
+          // core's own preview of the very operation the release commits (dot 1791735216 §3)
+          const r = ctx.env.core().preview(t.view, run(t.op!, t.units))
+          if (r) {
+            const before = new Map(ctx.reader().geometry().lines.map(l => [l.id, JSON.stringify(l.curve)]))
+            p.transform = { lines: r.geometry().lines.filter(l => before.get(l.id) !== JSON.stringify(l.curve)).map(l => ({ id: l.id, curve: l.curve.map(v => ({ x: v.x, y: v.y })) })), box: r.selectionBounds(t.units) }
+          }
+        } catch (err) { p.transform = { lines: [], box: null, refused: (err as Error)?.message ?? String(err) } }
+      }
       if (box && ctx.mine(box)) p.box = { from: { ...box.from }, to: { ...box.to }, whole: box.to.x >= box.from.x }
       p.handles = handlesShown(ctx.snap())
     },

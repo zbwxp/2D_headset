@@ -12,6 +12,9 @@ const PEN = svg(`<path ${ink} d="M2 2 L10 5 L17 12 L12 17 L5 10 Z"/><path d="M2 
 /** A tipped paint bucket pouring; the hotspot is the end of the stream. */
 const BUCKET = svg(`<g transform="rotate(-45 14 11)"><path ${ink} d="M8 7 L20 7 L18.5 19 L9.5 19 Z"/><path d="M8 7 L20 7" stroke="#fff" stroke-width="1.2"/><path d="M8 7 Q14 -1 20 7" fill="none" stroke="#111" stroke-width="1.5"/></g><path ${ink} d="M4.5 13 C3 16 2 18 3 21 C4.5 19.5 5.5 17 5.5 13.5 Z"/>`, 3, 21, 'crosshair')
 
+/** A circular arrow; the hotspot is its centre. */
+const ROTATE = svg(`<path d="M18 12 A6 6 0 1 1 12 6" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"/><path d="M18 12 A6 6 0 1 1 12 6" fill="none" stroke="#111" stroke-width="2" stroke-linecap="round"/><path ${ink} d="M10 2 L15 6 L10 10 Z"/>`, 12, 12, 'crosshair')
+
 /** tool → [not pressed, pressed] */
 const TABLE: Readonly<Record<string, readonly [string, string]>> = {
   pen: [PEN, PEN],
@@ -19,6 +22,13 @@ const TABLE: Readonly<Record<string, readonly [string, string]>> = {
   A: ['grab', 'grabbing'],
   V: ['grab', 'grabbing'],
   Z: ['zoom-in', 'zoom-in'],
+  // the selection box (docs/selection-box-plan.md §6): what the pointer is over, by the same hit rule as a press
+  'box:inside': ['move', 'move'],
+  'box:nw': ['nwse-resize', 'nwse-resize'], 'box:se': ['nwse-resize', 'nwse-resize'],
+  'box:ne': ['nesw-resize', 'nesw-resize'], 'box:sw': ['nesw-resize', 'nesw-resize'],
+  'box:n': ['ns-resize', 'ns-resize'], 'box:s': ['ns-resize', 'ns-resize'],
+  'box:e': ['ew-resize', 'ew-resize'], 'box:w': ['ew-resize', 'ew-resize'],
+  'box:rotate': [ROTATE, ROTATE],
 }
 
 /** The CSS `cursor` for a tool; `pressed` while a press the tool took is held. Unknown tools: the arrow. */

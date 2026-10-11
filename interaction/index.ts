@@ -27,8 +27,11 @@ export interface Interaction {
   options(): Options
   /** Returns false when nothing was hit and the tool did nothing, so the app may pan. */
   pointerDown(at: Vec, mods?: Mods): boolean
-  pointerMove(at: Vec): void
-  pointerUp(at: Vec): void
+  /** `mods` during a press are read live by a box handle's drag (Option, Shift; docs/selection-box-plan.md §5). */
+  pointerMove(at: Vec, mods?: Mods): void
+  pointerUp(at: Vec, mods?: Mods): void
+  /** The pointer moved with no button held: updates what it is over on the selection box (the hover cursor). */
+  pointerHover(at: Vec): void
   pointerCancel(): void
   key(name: string, mods?: Mods): boolean
   cancel(): void
@@ -142,8 +145,9 @@ export function createInteraction(env: Env): Interaction {
     setOptions: o => act(() => { opts = { ...opts, ...o } }),
     options: () => ({ ...opts }),
     pointerDown: (at, mods) => act(() => pointerDown(at, mods)),
-    pointerMove: at => { if (st.dragging) act(() => st.pointerMove(at)) },
-    pointerUp: at => act(() => st.pointerUp(at)),
+    pointerMove: (at, mods) => { if (st.dragging) act(() => st.pointerMove(at, mods)) },
+    pointerUp: (at, mods) => act(() => st.pointerUp(at, mods)),
+    pointerHover: at => { if (st.hover(at)) act(() => {}) },
     pointerCancel: () => act(() => st.pointerCancel()),
     key: (name, mods) => act(() => key(name, mods)),
     cancel: () => act(cancel),

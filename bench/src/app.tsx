@@ -379,7 +379,8 @@ export function App() {
   // what a press on the canvas does, named for the cursor table in the same order as the canvas routes
   // the press: Zoom (a viewport tool) in every mode; else restoring takes none, playback drags the pose,
   // Move picture moves the picture, otherwise the tool; those three show the arrow (dot 1791710244, 1791727663)
-  const pressTakenBy = zoomTool ? 'Z' : restoring ? 'restoring' : pose ? 'playback' : moveRef ? 'movePicture' : ix.tool
+  const boxHot = !pose && !restoring && !moveRef ? pv.selectionBox?.hot ?? null : null
+  const pressTakenBy = zoomTool ? 'Z' : restoring ? 'restoring' : pose ? 'playback' : moveRef ? 'movePicture' : boxHot ? `box:${boxHot}` : ix.tool
   const note = (what: string) => { log.unshift({ calls: what, result: 'ok (diagnostic)' }); log.length = Math.min(log.length, 50) }
   const BUTTON_BIT = [1, 4, 2] // button 0 → buttons bit 1 (left), 1 → 4 (middle), 2 → 2 (right)
   const CLICK = 2 // screen px a press may move and still be a click (v1: 7205381 DrawingRoom zoom)
@@ -402,7 +403,7 @@ export function App() {
     const move = (ev: PointerEvent) => {
       if (ev.pointerId !== id) return
       if ((ev.buttons & bit) === 0) { if (kind === 'tool') note('release found by a move without the starting button held (pointerup missed)'); release(ev); return }
-      if (kind === 'tool') { ix.pointerMove(toDoc(ev)); return }
+      if (kind === 'tool') { ix.pointerMove(toDoc(ev), mods(ev)); return }
       follow(ev)
     }
     /** Pan or zoom to where the pointer is; also run on release, so a release far away with no move between is a drag, not a click (dot 1791554963). */
@@ -415,7 +416,7 @@ export function App() {
     const release = (ev: PointerEvent) => {
       if (ev.pointerId !== id) return
       stop()
-      if (kind === 'tool') { ix.pointerUp(toDoc(ev)); return }
+      if (kind === 'tool') { ix.pointerUp(toDoc(ev), mods(ev)); return }
       follow(ev)
       if (!moved && kind === 'zoom') zoomBy(ev.altKey || ev.ctrlKey ? 1.3 : 1 / 1.3) // a click zooms in ×1.3, Alt / Ctrl-click out (v1)
       else if (!moved && e.button === 2) ix.cancel() // the right click
@@ -946,10 +947,13 @@ export function App() {
         </div>
         <div style={{ display: 'flex', gap: 3 }}><fieldset disabled={!!pose || restoring} style={{ border: 0, padding: 0, margin: 0, display: 'flex', gap: 3 }}>{B('demo eyes', () => { try { demo() } catch { /* already there */ } ix.historyChanged(); bump() })}{B('v2 right eye', () => { try { v2Eye() } catch { /* already there */ } ix.historyChanged(); bump() })}</fieldset></div>
       </div>
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '4px 8px', borderBottom: '1px solid #ccc', minHeight: 18, color: (pose ? corrRefusal : pv.refusal) ? '#c00' : '#333' }}>{status}</div>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        {/* one line always, and the column never widened by it (minWidth 0): a status that wrapped would resize the canvas between a press and its release and move the press (a click on a curve with long ids nudged it) */}
+        <div data-testid="status" title={status} style={{ padding: '4px 8px', borderBottom: '1px solid #ccc', height: 18, lineHeight: '18px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: (pose ? corrRefusal : pv.refusal) ? '#c00' : '#333' }}>{status}</div>
         <svg ref={svg} style={{ flex: 1, background: '#fafafa', touchAction: 'none', cursor: cursorFor(pressTakenBy, pressed) }} data-testid="canvas" viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
-          onPointerDown={e => (viewportPress(e) ? onDown(e) : restoring ? undefined : pose ? onPoseDown(e) : moveRef ? onRefDown(e) : onDown(e))} onWheel={onWheel}
+          onPointerDown={e => (viewportPress(e) ? onDown(e) : restoring ? undefined : pose ? onPoseDown(e) : moveRef ? onRefDown(e) : onDown(e))}
+          // hovering tells interaction what the pointer is over on the selection box (the cursor follows; selection-box plan §6)
+          onPointerMove={e => { if (!gesture.current && !pose && !restoring && !moveRef && !zoomTool && e.buttons === 0) ix.pointerHover(toDoc(e)) }} onWheel={onWheel}
           // the right click itself is the unmoved right press (onDown); a right press during a left
           // drag comes only as this event, and cancels that drag (one level)
           onContextMenu={e => { e.preventDefault(); if (gesture.current && !gesture.current.right) gesture.current.cancel('a right click') }}>
@@ -995,6 +999,18 @@ export function App() {
           })}
           {pose && corrGhost && <circle data-ghost-point={corrGhost.id} cx={corrGhost.to.x} cy={corrGhost.to.y} r={4 * px} fill="#06f" />}
           {!pose && ghostLines.map((c, i) => <path key={'g' + i} d={path(c)} fill="none" stroke="#06f" strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />)}
+          {/* the selection box (docs/selection-box-plan.md): not in playback, while restoring or with Move picture — nor hit there */}
+          {!pose && !restoring && !moveRef && pv.transform && pv.transform.lines.map(l => <path key={'t' + l.id} data-transform-ghost={l.id} d={path(l.curve)} fill="none" stroke={pv.transform!.refused ? '#c00' : '#06f'} strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />)}
+          {!pose && !restoring && !moveRef && pv.selectionBox && (() => {
+            const b = pv.transform?.box ?? pv.selectionBox, top = pv.selectionBox.handles.find(h => h.id === 'rotate')
+            return <g data-selection-box="" pointerEvents="none">
+              <rect x={b.min.x} y={b.min.y} width={b.max.x - b.min.x} height={b.max.y - b.min.y} fill="none" stroke={pv.transform?.refused ? '#c00' : '#2a7fff'} strokeWidth={px} strokeDasharray={`${3 * px} ${2 * px}`} />
+              {top && !pv.transform && <line x1={top.at.x} y1={top.at.y} x2={top.at.x} y2={pv.selectionBox.min.y} stroke="#2a7fff" strokeWidth={px} />}
+              {!pv.transform && pv.selectionBox.handles.map(h => h.id === 'rotate'
+                ? <circle key={h.id} data-box-handle={h.id} cx={h.at.x} cy={h.at.y} r={4.5 * px} fill={pv.selectionBox!.hot === h.id ? '#2a7fff' : '#fff'} stroke="#2a7fff" strokeWidth={px} />
+                : <rect key={h.id} data-box-handle={h.id} x={h.at.x - 3.5 * px} y={h.at.y - 3.5 * px} width={7 * px} height={7 * px} fill={pv.selectionBox!.hot === h.id ? '#2a7fff' : '#fff'} stroke="#2a7fff" strokeWidth={px} />)}
+            </g>
+          })()}
           {!pose && pv.handles.map(({ line: id, end }) => {
             const l = line(id), p = pos(l[end]), h = add(p, end === 'a' ? l.ha : l.hb), on = isSel({ kind: 'handle', line: id, end })
             return <g key={id + end}>
