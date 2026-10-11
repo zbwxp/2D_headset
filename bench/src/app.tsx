@@ -377,8 +377,9 @@ export function App() {
     // unmoved right press is the right click (cancel one level); with Z, the left button zooms;
     // otherwise the tool gets the press, and a press that hits nothing only clears the selection
     const kind = e.button === 1 || e.button === 2 ? 'pan' : zoomTool ? 'zoom' : ix.pointerDown(at, mods(e)) ? 'tool' : null
-    // A or V took the press and started no box: it hit something, so the labels follow the tool (a line already selected included)
-    if (kind === 'tool' && (ix.tool === 'A' || ix.tool === 'V') && !ix.preview().box) setLabelKind(ix.tool === 'A' ? 'line' : 'curve')
+    // A or V picked a line (a line already selected included): the labels follow the tool. A point, a handle or
+    // nothing picked changes nothing (dot 1791732824); what was picked is the interaction's, not decided here
+    if (kind === 'tool' && (ix.tool === 'A' || ix.tool === 'V') && ix.lastPress() === 'line') setLabelKind(ix.tool === 'A' ? 'line' : 'curve')
     if (!kind) return
     let moved = false
     const zoomBy = (k: number) => setBox({ x: at.x - (at.x - from.x) * k, y: at.y - (at.y - from.y) * k, w: from.w * k, h: from.h * k })

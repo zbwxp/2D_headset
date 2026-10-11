@@ -68,6 +68,11 @@ export interface Interaction {
    */
   outcome(err?: unknown): void
   preview(): Preview
+  /**
+   * What the last press with V or A picked: 'line', 'point', 'handle', or null when it picked nothing
+   * (it started a box). Read only; the app's name labels switch on a line only (dot 1791732824).
+   */
+  lastPress(): 'line' | 'point' | 'handle' | 'fill' | null
   subscribe(listener: () => void): () => void
 }
 
@@ -152,6 +157,7 @@ export function createInteraction(env: Env): Interaction {
     drawingChanged: () => act(() => { for (const f of flows) f.drawingChanged(); ctx.feedback = undefined }),
     historyChanged: () => act(historyChanged),
     outcome: err => act(() => { ctx.feedback = err === undefined ? undefined : fromError(err); historyChanged() }),
+    lastPress: () => st.lastPress,
     preview() {
       const p: Preview = { cut: [], mirrorSource: [], handles: [], points: [] }
       if (POINT_TOOLS.has(tool)) {

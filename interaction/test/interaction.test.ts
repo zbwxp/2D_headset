@@ -799,3 +799,17 @@ describe('the selection box: a drag from nothing, in any tool but the pen (bowen
     expect(sel(core())).toEqual([])
   })
 })
+
+describe('what the last V / A press picked (docs/name-labels-plan.md; dot 1791732824)', () => {
+  it('V on a line → line; A on a line → line; A on a point → point; a press on nothing → null (a box)', () => {
+    const { ix } = setup()
+    const press = (at: Vec) => { ix.pointerDown(at); ix.pointerUp(at); return ix.lastPress() }
+    ix.setTool('V')
+    expect(press(P(50, 0))).toBe('line')
+    expect(press(P(500, 500))).toBeNull()
+    ix.setTool('A')
+    expect(press(P(50, 0))).toBe('line')
+    expect(press(P(0, 0))).toBe('point')
+    expect(press(P(500, 500))).toBeNull()
+  })
+})

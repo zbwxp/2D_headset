@@ -81,6 +81,18 @@ describe('name labels', () => {
     expect(t.labels()).toEqual([t.curve('solo').name])
   })
 
+  it('A hitting a point is not a line hit: after V, an A Shift-click on an end point keeps the curve name; an A click on a point then undo keeps it too (dot 1791732824)', async () => {
+    const t = await setup()
+    await t.tool('v'); await t.press(50, 100)
+    expect(t.labels()).toEqual([t.curve('solo').name])
+    await t.tool('a'); await t.press(100, 100, { shiftKey: true }) // the end point s1, added
+    expect(t.labels()).toEqual([t.curve('solo').name])
+    await t.press(0, 100) // the end point s0 alone: no line selected, no label
+    expect(t.labels()).toEqual([])
+    await act(async () => { t.button('Undo').click() }) // back to the curve and s1: still the curve's name
+    expect(t.labels()).toEqual([t.curve('solo').name])
+  })
+
   it('A on X, then V on Y, then undo back to X: X is labelled with its curve\'s name (one display kind, a stated trade-off); a mixed selection takes the last kind', async () => {
     const t = await setup()
     await t.tool('a'); await t.press(50, 100)

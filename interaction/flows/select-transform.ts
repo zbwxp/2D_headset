@@ -14,6 +14,8 @@ export interface SelectTransform extends Flow {
   pointerCancel(): void
   /** Start a selection box; `clear`: a click without dragging clears the selection (V / A). */
   startBox(at: Vec, mods: Mods, clear: boolean): void
+  /** What the last V / A press picked, or null (a box). */
+  readonly lastPress: Unit['kind'] | null
   readonly dragging: boolean
 }
 
@@ -60,15 +62,20 @@ export function selectTransform(ctx: Ctx): SelectTransform {
   // the press position is copied in, so a caller reusing its Vec never changes the offset (dot 1791544469)
   const startDrag = (at: Vec) => { drag = { ...ctx.owned(), start: { x: at.x, y: at.y }, units: ctx.selection(), offset: { x: 0, y: 0 } } }
 
+  /** What the last A / V press picked (a box or nothing: null); read by the app's name labels (docs/name-labels-plan.md). */
+  let lastPress: Unit['kind'] | null = null
   return {
+    get lastPress() { return lastPress },
     cancelLevel: 1,
     get dragging() { return !!drag || !!box },
     startBox(at, mods, clear) { box = { ...ctx.owned(), from: { x: at.x, y: at.y }, to: { x: at.x, y: at.y }, mods: { ...mods }, clear } },
     pointerDown(at, mods) {
+      lastPress = null
       const picked: Unit | undefined = ctx.tool() === 'V'
         ? (() => { const line = ctx.hitLine(at); return line ? { kind: 'line' as const, id: line } : undefined })()
         : hitDirect(at)
       if (!picked) { this.startBox(at, mods, true); return true }
+      lastPress = picked.kind
       const already = ctx.selection().some(v => key(v) === key(picked))
       if (!already || mods.shift || mods.alt) {
         if (ctx.tool() === 'V' && picked.kind === 'line') ctx.commit(e => e.selectGroup(picked.id, mode(mods)))
