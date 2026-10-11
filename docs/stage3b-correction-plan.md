@@ -102,7 +102,7 @@ Corrected after dot 1791687457: two of the three first-draft questions re-asked 
 - **Every protected target on every edge that view touches is re-solved** (dot 1791687532). Moving the outer view changes the coordinate a kept knot produces on its other edges.
   - Example: front and side both have 0 on an axis, and the upper corner has 10. The side → corner midpoint was corrected to 5. Moving the side to 4 to fix the front → side midpoint would turn that 5 into 7.
   - So each such knot is re-solved to keep its coordinate: `r' = (target − A') / (B' − A')` with the moved view's new value.
-  - If any re-solve is impossible (its two views become equal on that axis), the whole correction is refused (`correction-breaks-target`, naming the target).
+  - If on some edge the two views become equal on that axis: when the old target equals that common value it is still met (no change); only a different target makes the whole correction refused (`correction-breaks-target`, naming the target) (dot 1791687776).
 - **The cost must have a real minimum** (dot 1791687563). Minimising only the view's move has none: the response can grow without bound while the move tends to 0. So the response change is bounded, or penalised, or both. v103 did both:
   - penalty 0.005 on the response change;
   - trust radius ±8 around the old response;
@@ -117,7 +117,11 @@ Corrected after dot 1791687457: two of the three first-draft questions re-asked 
 1. **Response writes:** knots in the `animation` state.
 2. **Geometric intents:** the outer view's moves, through that view's own `net.move` / `net.moveHandle`, so links and springs see them.
 3. **Settle authority:** that view by positions only; no auto-bind anywhere; the front never settled (§6).
-4. **Final check:** after the settle, using the moved view's *settled* values (springs may have turned a handle), evaluate the pose and every protected target on every edge that view touches. Each must match within 1e-9, or the whole edit is refused (`correction-not-reproduced`, naming the target). Acceptance tests check all of them, not only the edited angle.
+4. **Final check:** after the settle, with the moved view's *settled* values (springs and links may have changed controls nobody dragged), for every control on the edges that view touches, not only the dragged ones (dot 1791687776):
+   - at the pose, a dragged control equals its target, and every other control equals its value before the edit;
+   - every protected target on those edges keeps its coordinate.
+
+   Each must match within 1e-9, or the whole edit is refused (`correction-not-reproduced`, naming the control and target). Acceptance tests check all of them, not only the edited angle and the dragged controls.
 
 **Linked points:** a target for one point is a target for its whole link component. Every member gets the same knots (§5). In every view the members coincide, so their A, B and the solve are the same.
 
@@ -137,12 +141,12 @@ One rule set, used by every path that changes structure, auto-bind included (dot
 
 | Edit | Responses |
 |---|---|
-| new line | none: linear |
+| new line | only the **new** points and the new line's handles start without responses (linear); an **existing** end point the line borrows keeps its responses (the same boundary as `base:angle`; dot 1791687776) |
 | delete a line | its handles' responses go; its end points' go with the points when they go |
-| bind (explicit or auto-bind) | the kept point keeps its own set; the removed point's set goes (step-2 rule: bind keeps the first point). If the removed point was linked, the kept point joins that link component, and the component must end with equal sets. If the two sets differ, the bind is refused (`bind-responses-differ`), auto-bind included (the edit is refused, not silently merged) |
+| bind (explicit or auto-bind) | the kept point keeps its own set; the removed point's set goes (step-2 rule: bind keeps the first point). If the removed point was linked, the kept point joins that link component, and the component must end with equal sets. If the two sets differ in behaviour (compared as for links), the bind is refused (`bind-responses-differ`), auto-bind included (the edit is refused, not silently merged) |
 | unbind | the new point copies the old point's set |
 | split | refused when the split line's end points or handles have responses (`split-has-responses`): exact carrying is not possible with this data, and a copied curve must not pose as shape-preserving (dot 1791687532) |
-| link | the second point's set becomes a copy of the first point's, as its position does (a link moves the second point onto the first in every view). *Proposal; the alternative is refusing links whose sets differ.* |
+| link | allowed only when the two points' sets **behave** the same; otherwise refused (`link-responses-differ`), so a second point's tuned in-betweens are never overwritten silently (dot 1791687776). "The same" is judged by behaviour: no response and an explicit linear one (knots on the diagonal) are equal; two sets are compared as functions at the union of their knots. A "reset to the first point's" operation, if wanted later, is defined separately |
 | unlink | each point keeps its copy |
 | delete one member of a link component | the others keep their copies; nothing is lost with it |
 | paste / copy part of a link component | each pasted point gets a copy of its source point's set, mapped to the new ids, as `base:angle` |
@@ -205,7 +209,7 @@ The tests walk each row, including a component whose first-made point is deleted
 
 1. ~~Archive format 4~~: refused as decided (§2).
 2. ~~Split with responses~~: refused in 3b (§5).
-3. **Link:** copy the first point's responses to the second (proposal, as positions), or refuse links whose sets differ. The rest of the link lifecycle is in §5.
+3. ~~Link~~: refuse sets that differ in behaviour (dot 1791687776, §5).
 4. **The 90° minimal move:** the cost terms (dragged controls only, or the in-between curve's shape too), how the response change is bounded or penalised so a minimum exists, the bounds on the move, and what is reachable. To be argued against the decided goal, not chosen for simplicity. Until then, package 3 refuses step 3.
 5. **Order of packages** (proposal):
    - **1:** ledger row 1, the declarations, no behaviour change;
