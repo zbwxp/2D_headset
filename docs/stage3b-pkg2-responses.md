@@ -34,14 +34,19 @@ Knot = [progress, value]
   - the curve is piecewise linear through (0, 0), the knots, (1, 1);
   - at most 256 knots.
 - **Controls:** a point (its position), or one end of a line (its handle vector). Arc radii have no responses; they blend linearly, as in v103.
-- **One content, one form:** empty axis lists, empty edges and empty controls are not stored. A response all of whose knots have value exactly equal to progress is the identity and is not stored either (it is the same function as no response). A control without an entry is linear.
+- **One content, one form:** empty axis lists, empty edges and empty controls are not stored. A control without an entry is linear. **Knots are never dropped for being on the diagonal:** each knot records an angle the user explicitly corrected, a protected target, even when its value happens to be linear (dot 1791689586, 1791689610).
 - **Ids are ordinary keys** (dot 1791689396), as in `shapes`: entries live in own-property records, read with `hasOwn` and written with `defineProperty`. So any legal id, `constructor`, `toString` and `__proto__` included, works; what is refused is *reading an inherited property*, never a name.
-- **"The same"** (to accept a link; dot 1791687776, tightened after dot 1791689543): two points' response sets are the same only when their **normal forms are identical**, compared exactly with no tolerance. By the normal form above, an explicit linear response (every knot exactly on the diagonal) equals a missing one, as dot asked. Any other difference, however small, refuses the link. A response value difference times a large coordinate span can be visible, so no difference is judged discardable on the user's behalf. Two responses that are the same function written with different knots (an extra knot exactly on a segment) are also refused: a conservative rule that never loses tuning, which the user resolves explicitly.
-- **Invariant: linked points hold *identical* stored response sets** (dot 1791689396). An approximate comparison is not transitive (A ≈ B and B ≈ C within 1e-12 does not give A ≈ C), and a tiny difference times a large coordinate span becomes a visible gap. So:
-  - **on a link** that is accepted, the two components' sets are already identical in normal form, so nothing is discarded. The second component's members are written in normal form, which only drops identity responses, the same function;
-  - linked points in every view coincide exactly (links settle them to one position), and their sets are identical, so `evaluate` gives them bit-identical results at every pose;
-  - **`correct`** (package 3) writes the same knots to every member of a component;
-  - **`open`** requires linked points' stored sets to be exactly equal (in normal form), and refuses otherwise.
+- **One rule for links** (dot 1791689586, 1791689610): *in a document, all points of a link component hold identical stored response sets.* It is kept by every edit and checked at `open`. A clip never carries links (clipboard: "Endpoint links and mirror pairs are never part of it"), so pasted points are unlinked copies and the rule has nothing to check in a clip.
+- **Creating a link** merges the two components' sets, conservatively:
+  - **Acceptance:** for every edge and axis, the two responses are evaluated at every knot progress in the union of both; every value must be **exactly** equal, with no tolerance (a missing response is the identity, so an explicit diagonal knot matches a missing response there). If equality cannot be confirmed, including a mismatch caused only by floating-point rounding, the link is refused (`link-responses-differ`, naming the points, edge and axis). No difference is judged close enough to overwrite.
+  - **Merge:** the merged response has the **union** of both sides' knot progresses, each with its (common) value. A knot either side had stays: it is a protected correction target. Example: the first side has no 30° knot and the second has one on the linear line; the merged response keeps the 30° knot.
+  - **Written to the whole group:** the merged set is written to every point of both components, so they stay identical.
+  - **More than 256 knots** after the union refuses the link (`link-responses-too-many`).
+  - So `link` writes `animation`: its declaration gains it (§5) and the read / write table has its row (§6).
+- **Consequences:**
+  - linked points coincide in every view (links settle them to one position) and hold identical sets, so `evaluate` gives them bit-identical results at every pose;
+  - `correct` (package 3) writes the same knots to every member of a component;
+  - `open` refuses a file whose linked points' stored sets differ in any way.
 
 ## 2. Evaluate with responses (`evaluate`)
 
@@ -77,7 +82,7 @@ Fields as `net.Changes` names them (dot 1791689396):
 
 **Checked before the operation, in the operation (`document`):**
 - **`split`** (and each mirror-paired split) is refused when the split line's handles or its end points have any response (`split-has-responses`, naming the line). A split with no responses goes through unchanged.
-- **`link`** (and each paired link) is refused when the two points' components' sets do not behave the same (`link-responses-differ`, naming both points). When accepted, the second component takes an exact copy of the first's (§1).
+- **`link`** (and each paired link) merges the two components' sets by the rule in §1: refused when the values at the union of knots are not exactly equal (`link-responses-differ`) or the union exceeds 256 knots (`link-responses-too-many`); otherwise the union is written to the whole group.
 
 **Insert (`paste`, `copyLayer`; dot 1791689360):**
 - **The clip gains an `animation` part:** the entries of exactly the clip's points and lines, extracted by `animation.extract`. It is read from the same version as the rest of the clip, and the two copy entries differ:
@@ -88,7 +93,7 @@ Fields as `net.Changes` names them (dot 1791689396):
   - a clip **with** the part is checked in full: every id is one of the clip's points or lines; edge keys valid; knots valid; own properties only. Anything wrong refuses the paste (`clip-invalid`, naming what). It is never read as "no responses".
 - **`insertClip` writes them to the new ids through the actual copy map** (`animation.insert`). A partial copy carries only what was copied.
 
-**No user operation writes knots in this package.** `correct` (package 3) is the first. Until then responses come only from an opened file or a pasted clip.
+**No user entry point edits knots directly in this package;** `correct` (package 3) is the first. Responses otherwise come from an opened file or a pasted clip, and existing records are rearranged by `follow` (deletions, unbind copies) and merged by `link`.
 
 ## 4. Archive
 
@@ -98,7 +103,7 @@ Fields as `net.Changes` names them (dot 1791689396):
   - every edge key is one of the 12;
   - every knot is valid: progress strictly increasing inside (0, 1), finite values, at most 256;
   - own properties only;
-  - linked points behave the same.
+  - every link component's points hold identical stored sets (the one rule of §1).
 
   Anything else is refused (`open-failed`, naming what).
 - **Save** writes the normalised form (§1).
@@ -109,6 +114,7 @@ Fields as `net.Changes` names them (dot 1791689396):
 - Operations whose `applyTopology` record can delete, merge or unbind points or lines, or insert, write it through `follow` / `insert`:
   - `deleteLine`, `deleteLayer`, `deleteSelection`, `bind`, `unbind`;
   - `paste`, `copyLayer`, which insert;
+  - `link`, which merges the two components' sets (§1);
   - `mirrorApply`, `mirrorLink`: no structural deletion, so not declared; checked by their cases.
 - Each declaration that gains `animation` gets a case with responses present, so the per-operation write test sees the write. A test asserts that no other operation writes `animation`.
 - Auto-bind's deletions are settle effects, authorised by `autoStructure`, not by an operation's declaration (package 1's rule).
@@ -119,7 +125,8 @@ Fields as `net.Changes` names them (dot 1791689396):
 |---|---|---|---|
 | evaluate | `Core.model()`: the published state's views and `animation`, a copy | nothing | `atPose`, playback |
 | follow | the edit's structural record | the draft's `animation` | inside each structural operation (`applyTopology`) |
-| split / link checks | the draft's `animation` (as written so far in the edit) | nothing (refuse or go on) | in the operation |
+| split check | the draft's `animation` (as written so far in the edit) | nothing (refuse or go on) | in the operation |
+| link merge | the draft's `animation` for both link components | the draft's `animation`: the merged set on every member | in the operation (`link`, each paired link) |
 | copy to the clipboard (`Core.copy`) | the **published** state's `animation`, for the clip's ids | the clip | `copy` |
 | copy a layer (`copyLayer`, in an edit) | the **draft's** `animation` as written so far in the edit (geometry from the settled trial, attributes from the draft, as today) | the clip, then the draft | in the operation |
 | clip check | the clip's `animation` part | the checked clip (`clipboard.check` returns it) | `paste` |
@@ -129,7 +136,7 @@ Fields as `net.Changes` names them (dot 1791689396):
 
 ## 7. Tests (package 2)
 
-- **Data:** normal form; "same behaviour" (missing = identity = explicit diagonal; unequal by a knot; equal with different knot sets that evaluate the same).
+- **Data:** one content, one form (empty parts not stored; knots on the diagonal kept); the link merge's equality check at the union of knots (missing = identity; exact, no tolerance).
 - **Evaluate:**
   - no responses → bit-for-bit 3a at sampled poses;
   - every one of the 12 edges: a response there acts exactly on its edge and on the two cells beside it;
@@ -150,8 +157,11 @@ Fields as `net.Changes` names them (dot 1791689396):
 - **Refusals:**
   - `split-has-responses` (ends, handles, a paired split) and a split without responses going through;
   - `link-responses-differ`, and a link between identity and explicit-linear responses going through;
-  - after an accepted link, every member of the second component holds a set identical to the first's, and linked points evaluate bit-identically at sampled poses;
-  - a difference of one ulp in one knot value refuses the link (no tolerance); an explicit diagonal against a missing response is accepted; the same function with an extra collinear knot is refused (conservative);
+  - after an accepted link, linked points evaluate bit-identically at sampled poses;
+  - a difference of one ulp at any union knot refuses the link (no tolerance);
+  - a 30° knot on the linear line against no response is accepted and the merged response keeps the 30° knot;
+  - union knots are kept from both sides; more than 256 refuses;
+  - the merged set is on every member of both components;
   - a file whose linked points' sets differ at all is refused at open.
 - **Insert:**
   - paste and copy-layer carry responses to the new ids, partial copies only what was copied;
