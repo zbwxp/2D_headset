@@ -34,6 +34,24 @@ function fixture() {
   d.editIn('view:90,0', e => e.lineStroke('ab', { width: 5, profile: 'uniform' })) // strokes differ for the stroke broadcast
   return d
 }
+/**
+ * Mirror cases that reach every branch of apply (dot 1791688672): a source triangle with an arc
+ * corner and a fill, a target triangle whose own arc sits on another corner (removed) and no
+ * fill; and two linked pairs across L and M, the source pair with a link join, the target without.
+ */
+function mirrorScene(d: Core) {
+  const at = (id: string, layer: string, x: number, y = 0) => ({ id, layer, position: P(x, y) })
+  d.edit(e => {
+    e.line('l1', at('A1', 'L', -30), at('B1', 'L', -20)); e.line('l2', 'B1', at('C1', 'L', -25, 10)); e.line('l3', 'C1', 'A1')
+    e.line('r1', at('A2', 'L', 30), at('B2', 'L', 20)); e.line('r2', 'B2', at('C2', 'L', 25, 10)); e.line('r3', 'C2', 'A2')
+    e.line('la', at('P1', 'L', -60, -20), at('P2', 'L', -50, -20)); e.line('lb', at('P3', 'M', -50, -20), at('P4', 'M', -40, -20))
+    e.line('ra', at('Q1', 'L', 60, -20), at('Q2', 'L', 50, -20)); e.line('rb', at('Q3', 'M', 50, -20), at('Q4', 'M', 40, -20))
+  })
+  d.edit(e => { e.join('B1', 'l1', 'l2', { mode: 'arc', radius: 2 }); e.join('C2', 'r2', 'r3', { mode: 'arc', radius: 3 }) })
+  d.edit(e => e.fill(d.snapshot().loops.find(l => l.route.some(u => u.line === 'l1'))!.id, '#0a0'))
+  d.edit(e => { e.link('P2', 'P3'); e.link('Q2', 'Q3') })
+  d.edit(e => e.linkJoin('P2', 'P3', 'la', 'lb', { mode: 'smooth' }))
+}
 const groupOf = (d: Core, line: string) => d.snapshot().groups.find(x => x.lines.includes(line))!.id
 const loops = (d: Core) => d.snapshot().loops.map(l => l.id)
 const sel = (...ids: string[]) => ids.map(id => ({ kind: 'line' as const, id }))
@@ -48,8 +66,11 @@ const CASES: Case[] = [
   { op: 'layerType', args: () => ['M', 'eye'] },
   { op: 'reorderLayer', args: () => ['M', 0] },
   { op: 'copyLayer', args: () => ['L', 'L2'] },
+  { op: 'copyLayer', args: () => ['M', 'M2'], note: 'a typed layer: the type is copied', setup: d => d.edit(e => e.layerType('M', 'eye')) },
   { op: 'paste', args: d => [d.copy(['qr']), 'L', P(5, 5), 'p'] },
+  { op: 'paste', args: d => [d.copy(['ab', 'bc', 'cd', 'da']), 'M', P(200, 0), 'p'], note: 'a clip with a join and a fill' },
   { op: 'deleteLayer', args: () => ['M'] },
+  { op: 'deleteLayer', args: () => ['M'], note: 'a typed layer: its type goes', setup: d => d.edit(e => e.layerType('M', 'eye')) },
   { op: 'lineState', args: () => ['ab', { visible: false }] },
   { op: 'fillState', args: d => [loops(d)[0], { visible: false }] },
   { op: 'groupState', args: d => [groupOf(d, 'ab'), { locked: true }] },
@@ -97,7 +118,11 @@ const CASES: Case[] = [
   { op: 'broadcastStroke', args: () => [sel('ab')], setup: d => d.editIn('view:90,45', e => e.lineStroke('ab', { width: 7, profile: 'uniform' })) },
   { op: 'deleteSelection', args: () => [sel('xy')] },
   { op: 'mirrorApply', args: () => [['qr'], ['st']], views: [FRONT] },
+  { op: 'mirrorApply', args: () => [['l1', 'l2', 'l3'], ['r1', 'r2', 'r3']], views: [FRONT], note: 'arc set and removed, fill copied', setup: mirrorScene },
+  { op: 'mirrorApply', args: () => [['la', 'lb'], ['ra', 'rb']], views: [FRONT], note: 'link join copied', setup: mirrorScene },
   { op: 'mirrorLink', args: d => [[groupOf(d, 'qr')], [groupOf(d, 'st')]], views: [FRONT] },
+  { op: 'mirrorLink', args: d => [[groupOf(d, 'l1')], [groupOf(d, 'r1')]], views: [FRONT], note: 'arc set and removed, fill copied', setup: mirrorScene },
+  { op: 'mirrorLink', args: d => [[groupOf(d, 'la'), groupOf(d, 'lb')], [groupOf(d, 'ra'), groupOf(d, 'rb')]], views: [FRONT], note: 'link join copied', setup: mirrorScene },
   { op: 'unmirror', args: () => [['st']], views: [FRONT], setup: d => d.edit(e => e.mirrorLink([groupOf(d, 'qr')], [groupOf(d, 'st')])) },
 ]
 

@@ -109,9 +109,13 @@ export const EFFECTS: Record<string, Effect> = {
   draftCorners: { reads: 'draft', intents: 'corners', shapes: 'corners', records: false, shared: [], autoStructure: false, settle: 'non-front-positions', alone: true },
   fit: { reads: 'draft', intents: 'none', shapes: 'none', records: true, shared: [], autoStructure: false, settle: 'none', alone: true },
   broadcastStroke: { reads: 'draft', intents: 'none', shapes: 'others', records: false, shared: [], autoStructure: false, settle: 'none', alone: false },
-  // mirror (front only, so the edited view is the front)
-  mirrorApply: full({ reads: 'settled-trial', intents: 'edited', shapes: 'edited', shared: ['structure', 'apply'] }),
-  mirrorLink: full({ reads: 'settled-trial', intents: 'edited', shapes: 'edited', shared: ['structure', 'apply'] }),
+  // mirror (front only, so the edited view is the front). Inside the operation apply copies the
+  // source's geometry, strokes, end strokes and line states onto the target in the front; sets or
+  // removes the target's joins (an arc set gives every view and the baseline a radius, one removed
+  // drops it from all of them); copies or removes link joins; fills or clears the target's loops
+  // (src/apply/index.ts mirrorApply; dot 1791688672)
+  mirrorApply: full({ reads: 'settled-trial', intents: 'edited', shapes: 'all-views', records: true, shared: ['structure', 'joins', 'links', 'fills', 'apply'] }),
+  mirrorLink: full({ reads: 'settled-trial', intents: 'edited', shapes: 'all-views', records: true, shared: ['structure', 'joins', 'links', 'fills', 'apply'] }),
   unmirror: full({ reads: 'draft', shared: ['apply'] }),
 }
 
