@@ -69,6 +69,22 @@ describe('the Rename component', () => {
     expect(t.calls).toEqual(['眼睛'])
   })
 
+  it('keys typed in the field reach neither a parent nor the window, with or without an input method (dot 1791709183)', async () => {
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const parent: string[] = [], win: string[] = []
+    await act(async () => { createRoot(host).render(<div onKeyDown={e => parent.push(e.key)}><Rename name="eye" onRename={() => {}} /></div>) })
+    const onWin = (e: KeyboardEvent) => win.push(e.key)
+    window.addEventListener('keydown', onWin)
+    try {
+      await act(async () => { fire(host.querySelector('[data-name]')!, 'dblclick') })
+      const f = host.querySelector('[data-rename]') as HTMLInputElement
+      await act(async () => { for (const k of ['v', 'p', 'Delete', 'Escape']) keyOn(f, k); keyOn(f, 'Enter', false, true) })
+      // outside the field, keys still reach both (the listeners work)
+      await act(async () => { keyOn(host.firstElementChild!, 'x') })
+    } finally { window.removeEventListener('keydown', onWin) }
+    expect([parent, win]).toEqual([['x'], ['x']])
+  })
+
   it('Esc followed by a blur commits nothing', async () => {
     const t = await alone()
     await t.edit()

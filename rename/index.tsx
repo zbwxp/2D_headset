@@ -41,6 +41,9 @@ export function Rename({ name, onRename, onClick, title, style, fieldStyle }: Re
     onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}
     onBlur={e => finish(e.target.value)}
     onKeyDown={e => {
+      // a key typed here is the field's own: it never reaches the row, the page or the tool shortcuts,
+      // whatever the caller's own typing check does (dot 1791709183)
+      e.stopPropagation()
       if (e.nativeEvent.isComposing || e.keyCode === 229) return // the input method's own Enter / Esc
       if (e.key === 'Enter') finish((e.target as HTMLInputElement).value)
       else if (e.key === 'Escape') finish(null)
