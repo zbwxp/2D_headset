@@ -228,6 +228,27 @@ describe('one handover barrier through the whole chain (dot 1791705686)', () => 
     expect([third.d.applied, s.writes.length, s.data[CURRENT]]).toEqual([['B'], 0, 'B'])
   })
 
+  for (const lands of [true, false]) {
+    it(`instance 1 writing, instance 2 waiting in start, instance 3 takes over: 3 waits for instance 1, whose B ${lands ? 'lands (3 restores it)' : 'fails (3 is handed B)'} (dot 1791705540)`, async () => {
+      const s = slowStore({ [CURRENT]: 'A' }), first = drawing()
+      const a = createAutosave(s.store, first.options)
+      await a.start()
+      first.d.text = 'B'; a.want(); await tick() // B in flight
+      const second = drawing(), b = createAutosave(s.store, second.options)
+      const startedB = b.start(); await tick() // waiting for instance 1, not disposed
+      const third = drawing(), c = createAutosave(s.store, third.options)
+      const startedC = c.start(); await tick(); await tick()
+      expect([second.d.applied, third.d.applied, s.writes.length]).toEqual([[], [], 1])
+      const w = s.writes.shift()!
+      if (lands) w.done(); else w.fail('quota')
+      await startedB; await startedC; await tick()
+      expect([second.d.applied, third.d.applied]).toEqual([[], ['B']]) // 2 was replaced: it applies nothing
+      expect(s.writes.map(x => x.value)).toEqual(lands ? [] : ['B'])
+      if (!lands) { s.writes.shift()!.done(); await tick() }
+      expect([s.data[CURRENT], c.status().state, c.unsaved()]).toEqual(['B', 'saved', false])
+    })
+  }
+
   it('a failed C is handed over through an instance that never started', async () => {
     const s = slowStore({ [CURRENT]: 'A' }), first = drawing()
     const a = createAutosave(s.store, first.options)
