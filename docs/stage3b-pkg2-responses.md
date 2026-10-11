@@ -34,11 +34,11 @@ Knot = [progress, value]
   - the curve is piecewise linear through (0, 0), the knots, (1, 1);
   - at most 256 knots.
 - **Controls:** a point (its position), or one end of a line (its handle vector). Arc radii have no responses; they blend linearly, as in v103.
-- **One content, one form:** empty axis lists, empty edges and empty controls are not stored. A control without an entry is linear.
+- **One content, one form:** empty axis lists, empty edges and empty controls are not stored. A response all of whose knots have value exactly equal to progress is the identity and is not stored either (it is the same function as no response). A control without an entry is linear.
 - **Ids are ordinary keys** (dot 1791689396), as in `shapes`: entries live in own-property records, read with `hasOwn` and written with `defineProperty`. So any legal id, `constructor`, `toString` and `__proto__` included, works; what is refused is *reading an inherited property*, never a name.
-- **"Same behaviour"** (only to *accept* a link, dot 1791687776): two responses of one edge and axis behave the same when, evaluated at the union of their knot progresses, every value is equal within 1e-12. A missing response is the identity, so an explicit linear one (knots on the diagonal) equals a missing one. Response values are progress (dimensionless).
+- **"The same"** (to accept a link; dot 1791687776, tightened after dot 1791689543): two points' response sets are the same only when their **normal forms are identical**, compared exactly with no tolerance. By the normal form above, an explicit linear response (every knot exactly on the diagonal) equals a missing one, as dot asked. Any other difference, however small, refuses the link. A response value difference times a large coordinate span can be visible, so no difference is judged discardable on the user's behalf. Two responses that are the same function written with different knots (an extra knot exactly on a segment) are also refused: a conservative rule that never loses tuning, which the user resolves explicitly.
 - **Invariant: linked points hold *identical* stored response sets** (dot 1791689396). An approximate comparison is not transitive (A ≈ B and B ≈ C within 1e-12 does not give A ≈ C), and a tiny difference times a large coordinate span becomes a visible gap. So:
-  - **on a link** that is accepted, every point of the second point's link component takes an **exact copy** of the first point's component's set (the first component's members are already identical). This matches positions: a link moves the second point onto the first. The discarded differences are within the 1e-12 acceptance, not tuning;
+  - **on a link** that is accepted, the two components' sets are already identical in normal form, so nothing is discarded. The second component's members are written in normal form, which only drops identity responses, the same function;
   - linked points in every view coincide exactly (links settle them to one position), and their sets are identical, so `evaluate` gives them bit-identical results at every pose;
   - **`correct`** (package 3) writes the same knots to every member of a component;
   - **`open`** requires linked points' stored sets to be exactly equal (in normal form), and refuses otherwise.
@@ -151,7 +151,7 @@ Fields as `net.Changes` names them (dot 1791689396):
   - `split-has-responses` (ends, handles, a paired split) and a split without responses going through;
   - `link-responses-differ`, and a link between identity and explicit-linear responses going through;
   - after an accepted link, every member of the second component holds a set identical to the first's, and linked points evaluate bit-identically at sampled poses;
-  - a chain A–B then B–C whose neighbours each differ by under 1e-12 ends with all three identical (no drift);
+  - a difference of one ulp in one knot value refuses the link (no tolerance); an explicit diagonal against a missing response is accepted; the same function with an extra collinear knot is refused (conservative);
   - a file whose linked points' sets differ at all is refused at open.
 - **Insert:**
   - paste and copy-layer carry responses to the new ids, partial copies only what was copied;
