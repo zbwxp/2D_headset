@@ -373,8 +373,9 @@ export function App() {
   // ends the drag in interaction (a pan simply stops) — never only one of the two (dot 1791552803)
   // `right` marks a right-button pan, whose own release (unmoved) is the right click (bowen 1791554290)
   const gesture = useRef<null | { id: number; right: boolean; cancel: (why: string) => void }>(null)
-  // where the pointer rests over the canvas (no button held): Shift / Option pressed there update the hover at once
-  const hoverAt = useRef<Vec | null>(null)
+  // where the pointer rests over the canvas (no button held), in screen coordinates — a pan or zoom maps it anew
+  // (dot 1791737579) — with its modifiers; the hover is asked again after every render and on Shift / Option
+  const hoverAt = useRef<{ clientX: number; clientY: number; mods: ReturnType<typeof mods> } | null>(null)
   // a press the tool took is held: the canvas cursor asks cursor/ with it (A / V grab). Set where the
   // gesture starts, cleared in its one `stop` (release, cancel, blur, tool change, playback) (dot 1791708548)
   const [pressed, setPressed] = useState(false)
@@ -383,6 +384,13 @@ export function App() {
   // Move picture moves the picture, otherwise the tool; those three show the arrow (dot 1791710244, 1791727663)
   const boxShown = !pose && !restoring && !moveRef && !!pv.selectionBox
   const boxHot = boxShown ? pv.selectionBox?.hot ?? null : null
+  // the resting pointer asked again — after every render (a tool, view, selection, pan or zoom change) and on Shift / Option
+  const rehover = useRef(() => {})
+  rehover.current = () => {
+    const h = hoverAt.current
+    if (h && !gesture.current && !pose && !restoring && !moveRef && !zoomTool) ix.pointerHover(toDoc(h), h.mods)
+  }
+  useEffect(() => { rehover.current() })
   const pressTakenBy = zoomTool ? 'Z' : restoring ? 'restoring' : pose ? 'playback' : moveRef ? 'movePicture' : boxHot ? `box:${boxHot}` : ix.tool
   const note = (what: string) => { log.unshift({ calls: what, result: 'ok (diagnostic)' }); log.length = Math.min(log.length, 50) }
   const BUTTON_BIT = [1, 4, 2] // button 0 → buttons bit 1 (left), 1 → 4 (middle), 2 → 2 (right)
@@ -656,7 +664,7 @@ export function App() {
   }
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if ((e.key === 'Shift' || e.key === 'Alt') && hoverAt.current && !gesture.current) ix.pointerHover(hoverAt.current, mods(e))
+      if ((e.key === 'Shift' || e.key === 'Alt') && hoverAt.current) { hoverAt.current.mods = mods(e); rehover.current() }
       // Esc first: it cancels a gesture even in playback and with a field focused (dot 1791696958)
       if (e.key === 'Escape' && gesture.current) { gesture.current.cancel('Esc'); e.preventDefault(); return }
       // only a field that takes typing keeps its keys (dot 1791544530), an input method its own (dot 1791727663);
@@ -685,7 +693,7 @@ export function App() {
     }
     // a key release ends a key run wherever focus is: no typing check here (dot 1791733489)
     const up = (e: KeyboardEvent) => {
-      if ((e.key === 'Shift' || e.key === 'Alt') && hoverAt.current && !gesture.current) ix.pointerHover(hoverAt.current, mods(e))
+      if ((e.key === 'Shift' || e.key === 'Alt') && hoverAt.current) { hoverAt.current.mods = mods(e); rehover.current() }
       if (!isArrow(e.key)) return; ix.keyUp(e.key); picMover.keyUp(e.key) }
     // a key run ends on leaving the window, and when focus moves inside the page to a field or a slider
     const blur = () => { if (gesture.current?.id === KEYS) gesture.current.cancel('leaving the window') }
@@ -959,7 +967,7 @@ export function App() {
         <svg ref={svg} style={{ flex: 1, background: '#fafafa', touchAction: 'none', cursor: cursorFor(pressTakenBy, pressed) }} data-testid="canvas" viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
           onPointerDown={e => (viewportPress(e) ? onDown(e) : restoring ? undefined : pose ? onPoseDown(e) : moveRef ? onRefDown(e) : onDown(e))}
           // hovering tells interaction what the pointer is over on the selection box (the cursor follows; selection-box plan §6)
-          onPointerMove={e => { if (!gesture.current && !pose && !restoring && !moveRef && !zoomTool && e.buttons === 0) { hoverAt.current = toDoc(e); ix.pointerHover(hoverAt.current, mods(e)) } }} onPointerLeave={() => { hoverAt.current = null }} onWheel={onWheel}
+          onPointerMove={e => { if (!gesture.current && !pose && !restoring && !moveRef && !zoomTool && e.buttons === 0) { hoverAt.current = { clientX: e.clientX, clientY: e.clientY, mods: mods(e) }; rehover.current() } }} onPointerLeave={() => { hoverAt.current = null; ix.pointerHover(null) }} onWheel={onWheel}
           // the right click itself is the unmoved right press (onDown); a right press during a left
           // drag comes only as this event, and cancels that drag (one level)
           onContextMenu={e => { e.preventDefault(); if (gesture.current && !gesture.current.right) gesture.current.cancel('a right click') }}>

@@ -31,7 +31,8 @@ export interface Interaction {
   pointerMove(at: Vec, mods?: Mods): void
   pointerUp(at: Vec, mods?: Mods): void
   /** The pointer moved with no button held: updates what it is over on the selection box (the hover cursor). */
-  pointerHover(at: Vec, mods?: Mods): void
+  /** The pointer resting over the canvas (no button), or `null` when it leaves; the box's hot handle follows. */
+  pointerHover(at: Vec | null, mods?: Mods): void
   pointerCancel(): void
   key(name: string, mods?: Mods): boolean
   cancel(): void

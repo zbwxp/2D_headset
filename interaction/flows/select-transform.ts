@@ -15,7 +15,7 @@ export interface SelectTransform extends Flow {
   pointerMove(at: Vec, mods?: Mods): void
   pointerUp(at: Vec, mods?: Mods): void
   /** The pointer moved with no button held: what it is over on the selection box (true if that changed). */
-  hover(at: Vec, mods?: Mods): boolean
+  hover(at: Vec | null, mods?: Mods): boolean
   pointerCancel(): void
   /** Start a selection box; `clear`: a click without dragging clears the selection (V / A). */
   startBox(at: Vec, mods: Mods, clear: boolean): void
@@ -97,7 +97,15 @@ export function selectTransform(ctx: Ctx): SelectTransform {
     const units = transformUnits()
     return units.length ? ctx.reader().selectionBounds(units) : null
   }
-  let hot: ReturnType<typeof hitBox> = null
+  // where the pointer rests (no button) and its modifiers — the inputs only; what is hot is worked out from them on
+  // each preview, so a tool, view or selection change never leaves a stale answer (docs/selection-box-problems.md)
+  let resting: { at: Vec; mods: Mods } | null = null
+  const hotNow = (): ReturnType<typeof hitBox> => {
+    if (!resting || mover.running || box) return null
+    // what a press here would do, so the cursor never promises another action (dot 1791737043)
+    const hit = boxNow() ? pressHit(resting.at, resting.mods) : null
+    return hit?.kind === 'box' ? hit.handle : hit?.kind === 'inside' ? 'inside' : null
+  }
   let mods: Mods = {} // the modifiers last seen during a press (read live by a handle drag)
   /** A handle drag in progress: its basis (fixed at the start), the operation so far, and what it belongs to. */
   let transforming: { core: Core; view: string; units: Unit[]; drag: HandleDrag; press: Vec; op: BoxOp | null } | null = null
@@ -145,13 +153,9 @@ export function selectTransform(ctx: Ctx): SelectTransform {
   let lastPress: Unit['kind'] | null = null
   return {
     hover(at, m = {}) {
-      if (mover.running || box) return false
-      // what a press here would do, so the cursor never promises another action (dot 1791737043)
-      const hit = boxNow() ? pressHit(at, m) : null
-      const now = hit?.kind === 'box' ? hit.handle : hit?.kind === 'inside' ? 'inside' : null
-      if (now === hot) return false
-      hot = now
-      return true
+      const was = hotNow()
+      resting = at ? { at: { x: at.x, y: at.y }, mods: { ...m } } : null
+      return hotNow() !== was
     },
     get lastPress() { return lastPress },
     get moving() { return mover.running },
@@ -164,6 +168,7 @@ export function selectTransform(ctx: Ctx): SelectTransform {
     keyUp(key) { mover.keyUp(key) },
     startBox(at, mods, clear) { box = { ...ctx.owned(), from: { x: at.x, y: at.y }, to: { x: at.x, y: at.y }, mods: { ...mods }, clear } },
     pointerDown(at, m) {
+      resting = null
       lastPress = null
       mods = { ...m }
       const hit = pressHit(at, m)
@@ -207,7 +212,7 @@ export function selectTransform(ctx: Ctx): SelectTransform {
         const px = ctx.env.pixel()
         // during a move of the inside the box follows the offset; during a handle drag, the result (dot 1791735431)
         const o = moving && ctx.mine(moving) ? moving.offset : { x: 0, y: 0 }
-        p.selectionBox = { min: { x: b.min.x + o.x, y: b.min.y + o.y }, max: { x: b.max.x + o.x, y: b.max.y + o.y }, handles: handlesOf(b, px).map(h => ({ id: h.id, at: { x: h.at.x + o.x, y: h.at.y + o.y } })), hot: transforming ? transforming.drag.handle : hot }
+        p.selectionBox = { min: { x: b.min.x + o.x, y: b.min.y + o.y }, max: { x: b.max.x + o.x, y: b.max.y + o.y }, handles: handlesOf(b, px).map(h => ({ id: h.id, at: { x: h.at.x + o.x, y: h.at.y + o.y } })), hot: transforming ? transforming.drag.handle : hotNow() }
       }
       if (transforming && transforming.op && ctx.mine(transforming)) {
         const t = transforming

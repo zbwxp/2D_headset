@@ -211,5 +211,25 @@ describe('the box in interaction', () => {
     t.ix.pointerUp(P(150, 150))
     expect(JSON.stringify(shown.arcs.map(a => a.curve))).toBe(JSON.stringify(t.d.geometry().arcs.map(a => a.curve)))
   })
+
+  it('the hot handle follows a tool or selection change with the pointer at rest; leaving the canvas clears it (dot 1791737542)', () => {
+    const t = setup()
+    t.ix.setTool('V'); t.press(P(50, 0))
+    t.ix.pointerHover(P(100.5, 100.5))
+    expect(t.ix.preview().selectionBox!.hot).toBe('se')
+    t.ix.setTool('A') // the press there would now edit the point c
+    expect(t.ix.preview().selectionBox!.hot).toBe(null)
+    t.ix.setTool('V')
+    expect(t.ix.preview().selectionBox!.hot).toBe('se')
+    t.ix.pointerHover(P(50, 50), { alt: true }) // Option inside: a marquee, not a move
+    expect(t.ix.preview().selectionBox!.hot).toBe(null)
+    t.ix.pointerHover(P(50, 50))
+    t.d.edit(e => e.select([{ kind: 'line', id: 'h' }])) // the box shrinks to h: (50, 50) is no longer inside it
+    expect(t.ix.preview().selectionBox!.hot).toBe(null)
+    t.d.edit(e => e.selectGroup('h', 'replace'))
+    expect(t.ix.preview().selectionBox!.hot).toBe('inside')
+    t.ix.pointerHover(null)
+    expect(t.ix.preview().selectionBox!.hot).toBe(null)
+  })
 })
 

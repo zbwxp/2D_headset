@@ -114,5 +114,30 @@ describe('the selection box in the bench', () => {
     expect(t.host.querySelectorAll('[data-transform-ghost-arc]').length).toBe(1)
     await act(async () => { window.dispatchEvent(pe('pointerup', 150, t.Y + 150, 0)) })
   })
+
+  it('the cursor follows a tool change with the pointer at rest over a corner (dot 1791737542)', async () => {
+    const t = await setup()
+    await act(async () => { t.svg.dispatchEvent(pe('pointermove', 100, t.Y + 100, 0)) })
+    expect(t.svg.style.cursor).toBe('nwse-resize')
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true })) }) // A: the point c is there
+    expect(t.svg.style.cursor).not.toBe('nwse-resize')
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', bubbles: true })) })
+    expect(t.svg.style.cursor).toBe('nwse-resize')
+  })
+
+  it('after a pan the resting pointer is mapped anew: the cursor follows what is now under it (dot 1791737579)', async () => {
+    const t = await setup()
+    const g = globalThis as { DOMPoint?: unknown }, kept = g.DOMPoint
+    let pan = 0 // the view's shift in drawing units, as a pan gives
+    class Shifted { constructor(public x = 0, public y = 0) {} matrixTransform() { return { x: this.x + pan, y: this.y + pan } } }
+    g.DOMPoint = Shifted
+    try {
+      await act(async () => { t.svg.dispatchEvent(pe('pointermove', 100, t.Y + 100, 0)) })
+      expect(t.svg.style.cursor).toBe('nwse-resize')
+      pan = 30
+      await act(async () => { bench().refresh() }) // a render, as the pan's own
+      expect(t.svg.style.cursor).not.toBe('nwse-resize')
+    } finally { g.DOMPoint = kept }
+  })
 })
 
