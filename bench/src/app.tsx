@@ -13,10 +13,6 @@ type Unit = Snapshot['selection'][number]
 
 let core = Core.newDocument({ axis: 0 })
 let seq = 0
-// playback (stage 3a, docs/stage3a-playback-plan.md): while on, the bench writes nothing. The
-// panels are disabled and the keys stopped, and every edit / undo / redo through the logged
-// Core is refused here too, so no path can write (dot 1791683911).
-let posing = false
 // New ids carry a per-session prefix: an opened file may hold ids used by an earlier session,
 // including deleted ones that core still keeps reserved (dot 1791512144); existing ones are skipped too.
 const session = Date.now().toString(36)
@@ -40,30 +36,37 @@ function withNames(m: string) {
   const s = core.snapshot(), names = new Map<string, string>([...s.lines.map(l => [l.id, l.name] as const), ...s.groups.map(g => [g.id, g.name] as const)])
   return m.replace(/[^\s(),"]+/g, w => (names.has(w) ? `${w}「${names.get(w)}」` : w))
 }
-/** The open Core seen through a logging wrapper (one wrapper per Core, so interaction's identity checks hold). */
-const wrappers = new WeakMap<Core, Core>()
-function logged(c: Core): Core {
-  let w = wrappers.get(c)
-  if (w) return w
-  w = new Proxy(c, {
-    get(t, k) {
-      if (k === 'edit' || k === 'editIn') return (...args: unknown[]) => {
-        const [view, fn] = (k === 'edit' ? ['view:0,0', args[0]] : args) as [string, (e: Editor) => void]
-        if (posing) { log.unshift({ calls: `${k}(…)`, result: '✗ read only during playback' }); throw new Error('read-only-playback: nothing is written during playback') }
-        const calls: string[] = []
-        const rec = (e: Editor) => new Proxy(e, { get: (x, n) => { const v = Reflect.get(x, n); return typeof v === 'function' ? (...a: unknown[]) => { calls.push(`${String(n)}(${a.map(short).join(', ')})`); return v.apply(x, a) } : v } })
-        const head = view === 'view:0,0' ? '' : `[${view}] `
-        try { t.editIn(view, e => fn(rec(e))); log.unshift({ calls: head + calls.join('; '), result: 'ok' }) }
-        catch (err) { log.unshift({ calls: head + calls.join('; '), result: '✗ ' + withNames((err as Error).message) }); throw err }
-        finally { log.length = Math.min(log.length, 50) }
-      }
-      if (k === 'undo' || k === 'redo') return () => { if (posing) { log.unshift({ calls: `${k}()`, result: '✗ read only during playback' }); return } const could = k === 'undo' ? t.canUndo : t.canRedo; t[k](); log.unshift({ calls: `${k}()`, result: could ? 'ok' : `ok (nothing to ${k})` }) }
-      const v = Reflect.get(t, k, t)
-      return typeof v === 'function' ? v.bind(t) : v
-    },
-  })
-  wrappers.set(c, w)
-  return w
+/**
+ * The open Core seen through a logging wrapper, one per App and Core (so interaction's identity
+ * checks hold). `readOnly` is that App's playback: while it is on, every edit / undo / redo
+ * through the wrapper is refused, so no path of that App can write (stage 3a; dot 1791683911,
+ * 1791686247: the flag and the wrapper belong to the App instance, not the module).
+ */
+function loggedFor(readOnly: () => boolean): (c: Core) => Core {
+  const wrappers = new WeakMap<Core, Core>()
+  return c => {
+    let w = wrappers.get(c)
+    if (w) return w
+    w = new Proxy(c, {
+      get(t, k) {
+        if (k === 'edit' || k === 'editIn') return (...args: unknown[]) => {
+          const [view, fn] = (k === 'edit' ? ['view:0,0', args[0]] : args) as [string, (e: Editor) => void]
+          if (readOnly()) { log.unshift({ calls: `${k}(…)`, result: '✗ read only during playback' }); throw new Error('read-only-playback: nothing is written during playback') }
+          const calls: string[] = []
+          const rec = (e: Editor) => new Proxy(e, { get: (x, n) => { const v = Reflect.get(x, n); return typeof v === 'function' ? (...a: unknown[]) => { calls.push(`${String(n)}(${a.map(short).join(', ')})`); return v.apply(x, a) } : v } })
+          const head = view === 'view:0,0' ? '' : `[${view}] `
+          try { t.editIn(view, e => fn(rec(e))); log.unshift({ calls: head + calls.join('; '), result: 'ok' }) }
+          catch (err) { log.unshift({ calls: head + calls.join('; '), result: '✗ ' + withNames((err as Error).message) }); throw err }
+          finally { log.length = Math.min(log.length, 50) }
+        }
+        if (k === 'undo' || k === 'redo') return () => { if (readOnly()) { log.unshift({ calls: `${k}()`, result: '✗ read only during playback' }); return } const could = k === 'undo' ? t.canUndo : t.canRedo; t[k](); log.unshift({ calls: `${k}()`, result: could ? 'ok' : `ok (nothing to ${k})` }) }
+        const v = Reflect.get(t, k, t)
+        return typeof v === 'function' ? v.bind(t) : v
+      },
+    })
+    wrappers.set(c, w)
+    return w
+  }
 }
 
 // ---- demo scenes (test data, not a load feature) -----------------------------------------
@@ -110,10 +113,10 @@ export function App() {
   // read started before one is dropped), `openSeq` counts Opens (only the latest may open)
   const [pose, setPose] = useState<null | { yaw: number; pitch: number }>(null)
   const poseGen = useRef(0), openSeq = useRef(0)
-  // the module-level flag the logged Core reads follows this App's state on every render, so it
-  // can never outlive the state it stands for (a remount starts editing again)
-  posing = pose !== null
-  useEffect(() => () => { posing = false }, [])
+  // this App's read-only flag and its own logged wrapper: another App mounting, posing or
+  // unmounting never touches them (dot 1791686247)
+  const posing = useRef(false) // set only by startPose / stopPose, with the pose state
+  const logged = useRef(loggedFor(() => posing.current)).current
   const svg = useRef<SVGSVGElement>(null)
   // one screen pixel in document units, from the canvas's real size (the viewBox is fitted, so the
   // larger ratio wins); the old fixed 900-pixel width made picking about half as wide as meant
@@ -250,11 +253,11 @@ export function App() {
   const startPose = () => {
     gesture.current?.cancel('entering playback')
     ix.cancelAll()
-    posing = true; poseGen.current++
+    posing.current = true; poseGen.current++
     const [yaw, pitch] = shown.slice('view:'.length).split(',').map(Number)
     setPose({ yaw: yaw!, pitch: pitch! })
   }
-  const stopPose = () => { posing = false; setPose(null) }
+  const stopPose = () => { posing.current = false; setPose(null) }
   /** A tool change (key or button, Z included) ends any gesture through its one cancel path (dot 1791554909). */
   const chooseTool = (t: Tool | 'Z') => {
     gesture.current?.cancel('a tool change')
@@ -268,7 +271,7 @@ export function App() {
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       // playback first, before the typing check: a focused slider must not pass keys on (dot 1791683911)
-      if (posing) return
+      if (posing.current) return
       // only a field that takes typing keeps its keys (dot 1791544530); a focused button never blocks a
       // shortcut (bowen 1791556992: after clicking Flip or Zoom, V / A / ⌘Z still work)
       const t = e.target as HTMLElement
@@ -429,7 +432,7 @@ export function App() {
               // the drawing is replaced only if the file opens; only then does interaction hear of it
               try {
                 const text = await f.text()
-                if (mine !== openSeq.current || gen !== poseGen.current || posing) {
+                if (mine !== openSeq.current || gen !== poseGen.current) {
                   log.unshift({ calls: `open(${f.name})`, result: `✗ dropped: ${mine !== openSeq.current ? 'a later Open was started' : 'playback was entered meanwhile'}` })
                   bump(); return
                 }
@@ -457,7 +460,7 @@ export function App() {
           <line x1={s.axis} x2={s.axis} y1={box.y - 1e4} y2={box.y + 1e4} stroke="#9cf" strokeDasharray={`${6 * px} ${4 * px}`} strokeWidth={px} />
           {g.fills.filter(f => f.visible).map(f => <path key={f.id} d={f.parts.map((p, i) => (i ? path(p.curve).replace(/^M[^C]*/, '') : path(p.curve))).join(' ') + ' Z'}
             fill={f.color} opacity={cutLines.size && s.loops.find(l => l.id === f.id)?.route.every(u => cutLines.has(u.line)) ? 0.35 : 1}
-            stroke={isSel({ kind: 'fill', id: f.id }) ? '#06f' : 'none'} strokeWidth={2 * px} />)}
+            stroke={!pose && isSel({ kind: 'fill', id: f.id }) ? '#06f' : 'none'} strokeWidth={2 * px} />)}
           {/* the selection box (bowen 1791558733): solid blue = wholly inside (dragged right), dashed green = touching (dragged left) */}
           {!pose && pv.box && <rect x={Math.min(pv.box.from.x, pv.box.to.x)} y={Math.min(pv.box.from.y, pv.box.to.y)} width={Math.abs(pv.box.to.x - pv.box.from.x)} height={Math.abs(pv.box.to.y - pv.box.from.y)}
             fill={pv.box.whole ? 'rgba(42,127,255,0.08)' : 'rgba(40,170,90,0.08)'} stroke={pv.box.whole ? '#2a7fff' : '#28aa5a'} strokeWidth={px}
@@ -472,7 +475,8 @@ export function App() {
           })()}
           {g.lines.map(G => {
             const l = line(G.id), on = selLines.includes(l.id), picked = pv.pick?.kind === 'line' && pv.pick.id === l.id
-            const stroke = cutLines.has(l.id) ? '#bbb' : picked ? '#f80' : pv.mirrorSource.includes(l.id) ? '#a3c' : on ? '#06f' : l.state.locked ? '#933' : '#111'
+            // while posing, no edit marks: neither selection nor picks (dot 1791686247)
+            const stroke = pose ? (l.state.locked ? '#933' : '#111') : cutLines.has(l.id) ? '#bbb' : picked ? '#f80' : pv.mirrorSource.includes(l.id) ? '#a3c' : on ? '#06f' : l.state.locked ? '#933' : '#111'
             return <path key={G.id} d={path(G.curve)} fill="none" stroke={stroke} strokeWidth={l.stroke.width}
               strokeDasharray={l.state.visible ? undefined : `${4 * px} ${4 * px}`} opacity={l.state.visible ? 1 : 0.35} strokeLinecap="round" />
           })}

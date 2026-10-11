@@ -3,7 +3,7 @@
 // any gesture and unfinished operation; while posing, keys, the canvas and the panels write
 // nothing; an Open read that returns during playback (or after a later Open) is dropped.
 // Real App, real Core, real interaction; jsdom events.
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach } from 'vitest'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Core, save } from '../../src'
@@ -14,6 +14,9 @@ class Pt { constructor(public x = 0, public y = 0) {} matrixTransform() { return
 ;(globalThis as { DOMPoint?: unknown }).DOMPoint ??= Pt
 const wait = (ms = 0) => new Promise(r => setTimeout(r, ms))
 let n = 0
+// every App of a test is unmounted after it: a mounted App listens on the window and would take keys and window.bench
+const roots: { unmount(): void }[] = []
+afterEach(async () => { await act(async () => { for (const r of roots.splice(0)) r.unmount() }) })
 type B = { core: Core; ix: { setTool(t: string): void; tool: string; preview(): { drag?: unknown } }; refresh(): void; chooseView(k: string): void; pose(): null | { yaw: number; pitch: number } }
 const bench = () => (window as unknown as { bench: B }).bench
 
@@ -25,7 +28,8 @@ function pe(type: string, x: number, y: number, buttons: number) {
 async function setup() {
   const k = ++n
   const host = document.createElement('div'); document.body.appendChild(host)
-  await act(async () => { createRoot(host).render(<App />) })
+  const root = createRoot(host); roots.push(root)
+  await act(async () => { root.render(<App />) })
   const svg = host.querySelector('svg')!
   ;(svg as unknown as { getScreenCTM: () => unknown }).getScreenCTM = () => ({ inverse: () => ({}) })
   Object.defineProperty(svg, 'clientWidth', { value: 800 }); Object.defineProperty(svg, 'clientHeight', { value: 600 })
@@ -41,7 +45,7 @@ async function setup() {
     const el = slider(id)
     await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(el, String(v)); el.dispatchEvent(new Event('input', { bubbles: true })) })
   }
-  return { host, svg, k, button, slider, setSlider }
+  return { host, svg, k, root, button, slider, setSlider }
 }
 const state = () => ({ file: save(bench().core), undo: bench().core.canUndo, redo: bench().core.canRedo })
 const curve = (view: string, id: string) => bench().core.in(view).geometry().lines.find(l => l.id === id)!.curve
@@ -152,12 +156,42 @@ describe('bench playback', () => {
     void host
   })
 
-  it('a fresh bench mounted while another was posing edits normally: the read-only flag follows the app\'s own state', async () => {
-    const first = await setup()
-    await act(async () => { first.button('Playback').click() })
-    const { svg, k } = await setup() // a second App: editing
-    await act(async () => { svg.dispatchEvent(pe('pointerdown', 0, 300 * k, 1)); window.dispatchEvent(pe('pointermove', 20, 300 * k + 40, 1)); window.dispatchEvent(pe('pointerup', 20, 300 * k + 40, 0)) })
-    expect(bench().core.in('view:0,0').snapshot().points.find(p => p.id === `p${k}`)!.position).toEqual({ x: 20, y: 300 * k + 40 })
+  it('the read-only flag and the logged wrapper belong to each App: a second App mounting or unmounting leaves the first one read-only (dot 1791686247)', async () => {
+    const a = await setup()
+    await act(async () => { a.button('Playback').click() })
+    const layers = () => bench().core.snapshot().layers.map(l => l.id)
+    const newLayerIcon = (host: HTMLElement) => [...host.querySelectorAll('svg > title')].find(x => x.textContent === '新建图层')!.parentElement!
+    // B mounts, editing: B edits; A, still posing, writes nothing through its own panel
+    const b = await setup()
+    await act(async () => { b.svg.dispatchEvent(pe('pointerdown', 0, 300 * b.k, 1)); window.dispatchEvent(pe('pointermove', 20, 300 * b.k + 40, 1)); window.dispatchEvent(pe('pointerup', 20, 300 * b.k + 40, 0)) })
+    expect(bench().core.in('view:0,0').snapshot().points.find(p => p.id === `p${b.k}`)!.position).toEqual({ x: 20, y: 300 * b.k + 40 })
+    const before = layers()
+    await act(async () => { newLayerIcon(a.host).dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    expect(layers()).toEqual(before)
+    // B unmounts: A is still read-only
+    await act(async () => { b.root.unmount() })
+    await act(async () => { newLayerIcon(a.host).dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    expect(layers()).toEqual(before)
+    // and A, once it leaves playback, writes again
+    await act(async () => { a.button('Leave playback').click() })
+    await act(async () => { newLayerIcon(a.host).dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    expect(layers().length).toBe(before.length + 1)
+  })
+
+  it('no selection colour is drawn while posing: neither a selected line\'s nor a selected fill\'s (dot 1791686247)', async () => {
+    const { svg, k, button } = await setup()
+    await act(async () => {
+      bench().core.edit(e => { e.line(`t${k}`, `q${k}`, { id: `r${k}`, layer: 'layer-1', position: { x: 50, y: 300 * k + 80 } }); e.line(`u${k}`, `r${k}`, `p${k}`) })
+      const loop = bench().core.snapshot().loops.find(l => l.route.some(u => u.line === `t${k}`))!
+      bench().core.edit(e => e.fill(loop.id, '#88cc88'))
+      bench().core.edit(e => e.select([{ kind: 'line', id: `v${k}` }, { kind: 'fill', id: loop.id }]))
+      bench().refresh()
+    })
+    expect(svg.outerHTML).toContain('stroke="#06f"')
+    await act(async () => { button('Playback').click() })
+    expect(svg.outerHTML).not.toContain('#06f')
+    expect(svg.outerHTML).not.toContain('#2a7fff')
+    await act(async () => { button('Leave playback').click() })
   })
 
   it('leaving playback, normal editing works again: a drag commits and undo undoes it', async () => {
