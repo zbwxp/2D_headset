@@ -1,6 +1,6 @@
 # Stage 3b, package 3: the correction on an edge (`correct`) — rules and read / write flow
 
-**Status:** for dot's check (dot 1791691047: rules and read / write flow first). Nothing is coded until this passes.
+**Status:** rules accepted by dot 1791691453 as this package's acceptance basis (rule review only; the code is not written). Coding waits for bowen's confirmation of the edges-only scope. Earlier: for dot's check (dot 1791691047).
 
 **Scope and what is not claimed:**
 - **On the edges between neighbouring views only.** bowen has not yet confirmed that this round is edges only (asked 1791687531, 1791688562). Package 3 builds the edge case, which is needed in any answer. It does **not** deliver corrections "at any angle": inside a cell nothing can be corrected directly yet.
@@ -29,7 +29,7 @@
 ## 1a. The order of the steps (dot 1791691213)
 
 1. **Explicit targets:** the points and handle vectors given, checked as in §1.
-2. **Link expansion:** each given point stands for its whole link component (§3). The **target set** is every member of every component touched. Two members of one component given different targets are refused (`correction-link-conflict`).
+2. **Link expansion:** each given point stands for its whole link component (§3). The **target set** is the link-expanded points (every member of every component touched) plus the handle vectors given explicitly (handles are never expanded). Two members of one component given different targets are refused (`correction-link-conflict`).
 3. **Checks on the full target set:**
    - locks (§4) are checked for every point and handle in the target set, members reached only through a link included;
    - the axis cases of §2 run for every control in the target set.
@@ -98,7 +98,7 @@ So the merged commit is today's `keeps`: no settle. Only selections and stroke b
 | r (current response) | the draft's `animation` | — |
 | locks, link components | the draft's network and links | — |
 | knots | — | the draft's `animation`, every member of a link component (`animation.setKnot`) |
-| final check | `evaluate(modelOf(draft))` at the pose and at each protected target, against the same before the write | — |
+| final check | this drag's targets: `evaluate(modelOf(draft))` at the actual pose; protected knots: the edge evaluation at each knot's recorded t (no angle round trip); both against the same before the write | — |
 | undo | the state stack | — |
 
 ## 8. Tests (package 3)
