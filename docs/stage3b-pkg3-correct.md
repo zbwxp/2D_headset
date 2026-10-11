@@ -46,8 +46,9 @@ A and B are the control's values on that axis in the edge's inner and outer view
 
 1. **Already met:** `q === p` (exact, the value the pose already shows): nothing is written for this axis, and no view moves (dot 1791687532).
 2. **Reachable by the response:** `B ≠ A`.
-   - The knot value is `w = (q − A) / (B − A)`.
-   - If w is not finite (a tiny span), the correction is refused (`correction-not-finite`).
+   - **The knot value is solved without intermediate overflow** (dot 1791691300): with s = max(|A|, |B|, |q|), `w = (q/s − A/s) / (B/s − A/s)`. Example: A = −1e308, B = 1e308, q = 0 gives w = 0.5, which `evaluate` turns into exactly 0. A plain `(q − A)/(B − A)` overflows to 0 there, and the case must not be reported as unreachable or as a tiny span.
+   - If w is not finite, the correction is refused (`correction-not-finite`).
+   - Whether w really reaches q is decided by the final check (§5), never by this formula.
    - Otherwise the knot `[t, w]` is inserted, replacing a knot at exactly t. Every other knot stays, so every protected target on this edge keeps its coordinate.
    - More than 256 knots refuses (`correction-too-many-knots`).
 3. **Not reachable:** `B === A` and `q ≠ p`: refused (`correction-axis-fixed`, naming the control, the axis and the edge), until package 4.
@@ -71,11 +72,11 @@ The correction is solved, the knots are written to the draft's `animation`, and 
 
 | Control | Must hold |
 |---|---|
-| a control in the target set (given, or reached through a link), each axis | equals its target within 1e-9 · max(1, \|A\|, \|B\|, \|q\|) |
+| a control in the target set (given, or reached through a link), each axis | equals its target within **1e-9 · max(1, \|q\|)**: the target's own scale only (dot 1791691300). The views' coordinates may be used to analyse the numbers but never widen what counts as reached. |
 | any control outside the target set (points not reached; every handle vector not given) | equals its value before the edit, exactly |
 | every protected target on the edge (every knot of every control there) | its coordinate unchanged, exactly, except the knots written now |
 
-Anything else refuses the whole edit (`correction-not-reproduced`, naming the control). This is the check package 4 will need when a view moves. Here it guards the solve and the write.
+Anything else refuses the whole edit (`correction-not-reproduced`, naming the control). This is the check package 4 will need when a view moves. Here it guards the solve and the write, and it is where a target the numbers cannot represent is refused. Example: A = −1e12, B = 1e12, q = 0.00001. w rounds to exactly 0.5, the pose stays at 0, and 0.00001 is not reached: refused, not counted as done. The guarantee is "reached reliably, or refused explicitly", not arbitrary precision.
 
 ## 6. Declaration and transaction
 
@@ -114,6 +115,10 @@ So the merged commit is today's `keeps`: no settle. Only selections and stroke b
   - a tiny span giving a non-finite w → `correction-not-finite`;
   - 256 + 1 → `correction-too-many-knots`.
 - **Handles:** a handle vector target, both ends.
+- **Numbers** (dot 1791691300):
+  - A = −1e308, B = 1e308, q = 0 → w = 0.5, and the pose shows exactly 0;
+  - A = −1e12, B = 1e12, q = 1e-5 → `correction-not-reproduced` (the drag cannot be represented), the state unchanged;
+  - the tolerance follows the target: a small q is held to a small absolute error even next to huge view coordinates.
 - **Links:**
   - a target on one member writes all members, which stay identical and evaluate bit-identically;
   - the member reached through the link counts as a target in the final check, not as "unchanged";
