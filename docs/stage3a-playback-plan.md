@@ -47,7 +47,7 @@
    - **stroke profile** and anything else discrete: from the dominant view, i.e. the largest weight; ties go to the front, then the yaw view, then the pitch view (*question 2*);
    - **shared structure** (connections, names, order, fills, join modes, visibility, links): one copy, not blended.
 4. **Links stay together.** Linked points coincide in every view after settling, and rule 2 uses the same weights for both, so they coincide at every pose. No extra step.
-5. **Smooth joins** (*question 1*): the plain vector blend of two aligned handle pairs is in general not exactly aligned between views. Proposal: **no correction in 3a**. The blend is exact at every view and has no hidden rule. The bench measures the largest angle error at smooth joins on bowen's drawings; if it shows, 3b or a follow-up decides.
+5. **Smooth joins** (*question 1*): the plain vector blend of two aligned handle pairs is in general not exactly aligned between views. Proposal: **no correction in 3a, as an explicit experiment, not a solution** (dot 1791684152). The blend is exact at every view and has no hidden rule, but the size of the bend is **not yet measured**: with handles near zero length, or views that differ a lot, it can be clearly visible. 3a reports the measured bends with examples; the smooth transition between views stays an open question until bowen decides on that report.
 6. **Non-linear progress (place for 3b).** In 3a, u and v are used as they are (linear). 3b will add response curves that change the weights; `evaluate`'s input type will gain them then. 3a defines nothing about their keying, so it decides nothing for 3b.
 
 3a. **End strokes, key by key** (dot 1791683897). An end stroke is an open dictionary `{ taper?: number; [key]: number | string }` per point per view, and a view may have none. Only views with weight > 0 at the pose ("contributing views") are looked at.
@@ -143,7 +143,7 @@ Nothing is written; there is no draft and no undo step.
   - `atPose` changes nothing: the saved file, undo history and every view snapshot are equal before and after; the scratch layer never appears in `views()` or in a save;
   - `evaluate` given the same model twice returns equal results;
   - the model is a copy: changing it after `model()` does not change the document.
-- **Smooth-join measure** (not a pass / fail): the largest angle error at smooth joins over a pose grid, reported for the bench demo drawings.
+- **Smooth-join measure** (not a pass / fail; the experiment of rule 5): over a pose grid, the bend angle at every smooth join, reported as the largest and typical values with the worst examples drawn. Cases include handles near zero length and views that differ strongly at the join. The report goes to bowen; it does not close the question.
 - **Bench:**
   - the sliders draw the pose; at a grid angle the drawing equals that view;
   - **entering playback during a drag, then a late pointer release:** nothing is committed, no undo step, the drag's preview is gone (dot 1791683911);
