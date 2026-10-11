@@ -19,7 +19,7 @@ async function mount() {
 }
 const bench = () => (window as unknown as { bench: { core: Core } }).bench
 async function openFile(host: HTMLElement, text: string) {
-  const input = host.querySelector('input[type=file]') as HTMLInputElement
+  const input = host.querySelector('[data-testid="open"]') as HTMLInputElement
   const file = new File([text], 'other.json', { type: 'application/json' })
   Object.defineProperty(input, 'files', { value: [file], configurable: true })
   await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); await wait(50) })

@@ -57,7 +57,7 @@ async function setup(opts: { seed?: boolean } = {}) {
   return { host, svg, k, root, button, input, type, status, play, posed, drag, lateUp }
 }
 async function openFile(host: HTMLElement, text: string) {
-  const input = host.querySelector('input[type=file]') as HTMLInputElement
+  const input = host.querySelector('[data-testid="open"]') as HTMLInputElement
   Object.defineProperty(input, 'files', { value: [new File([text], 'd.json', { type: 'application/json' })], configurable: true })
   await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); await wait(50) })
 }

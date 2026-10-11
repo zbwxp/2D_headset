@@ -20,8 +20,9 @@ const ALLOWED: Record<string, string[]> = {
   names: ['network', 'groups'],
   meta: ['network', 'names'],
   animation: ['geometry', 'network', 'views', 'links', 'evaluate'],
+  reference: ['network', 'views'],
   clipboard: ['shapes', 'network', 'groups', 'joins', 'fills', 'names', 'views', 'animation'],
-  document: ['geometry', 'network', 'groups', 'joins', 'links', 'fills', 'derived', 'locks', 'editing', 'apply', 'names', 'clipboard', 'views', 'meta', 'animation', 'evaluate'],
+  document: ['geometry', 'network', 'groups', 'joins', 'links', 'fills', 'derived', 'locks', 'editing', 'apply', 'names', 'clipboard', 'views', 'meta', 'animation', 'evaluate', 'reference'],
   evaluate: ['geometry'],
   archive: ['document'],
 }

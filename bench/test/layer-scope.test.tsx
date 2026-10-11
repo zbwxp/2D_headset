@@ -15,7 +15,7 @@ type B = { core: Core; ix: { setTool(t: string): void; preview(): { points: stri
 const bench = () => (window as unknown as { bench: B }).bench
 
 async function openDoc(host: HTMLElement, d: Core) {
-  const input = host.querySelector('input[type=file]') as HTMLInputElement
+  const input = host.querySelector('[data-testid="open"]') as HTMLInputElement
   Object.defineProperty(input, 'files', { value: [new File([save(d)], 'd.json')], configurable: true })
   await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); await new Promise(r => setTimeout(r, 50)) })
 }

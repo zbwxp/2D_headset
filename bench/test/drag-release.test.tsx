@@ -384,7 +384,7 @@ describe('a tool change or a successful open ends a pan or zoom; a failed open d
   if (!Blob.prototype.text) Blob.prototype.text = function (this: Blob) { return new Promise<string>(res => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.readAsText(this) }) }
   const box = (svg: Element) => svg.getAttribute('viewBox')
   async function openFile(host: HTMLElement, text: string) {
-    const input = host.querySelector('input[type=file]') as HTMLInputElement
+    const input = host.querySelector('[data-testid="open"]') as HTMLInputElement
     Object.defineProperty(input, 'files', { value: [new File([text], 'other.json')], configurable: true })
     await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); await new Promise(r => setTimeout(r, 50)) })
   }

@@ -61,6 +61,9 @@ function mirrorScene(d: Core) {
 }
 const groupOf = (d: Core, line: string) => d.snapshot().groups.find(x => x.lines.includes(line))!.id
 const loops = (d: Core) => d.snapshot().loops.map(l => l.id)
+/** A real 1 × 1 PNG, and a reference image of it in the front view. */
+const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+const refImage = (id: string) => ({ id, view: FRONT, src: PNG, width: 1, height: 1, x: 0, y: 0, scale: 10, angle: 0, opacity: 0.5, visible: true })
 const sel = (...ids: string[]) => ids.map(id => ({ kind: 'line' as const, id }))
 
 /** One representative call per operation (an operation may have more than one case). */
@@ -128,6 +131,9 @@ const CASES: Case[] = [
   // the corner's own stroke differs too, so a broadcast from either view writes the other
   { op: 'broadcastStroke', args: () => [sel('ab')], setup: d => d.editIn('view:90,45', e => e.lineStroke('ab', { width: 7, profile: 'uniform' })) },
   { op: 'deleteSelection', args: () => [sel('xy')] },
+  { op: 'placeReference', args: () => [refImage('r1')] },
+  { op: 'setReference', args: () => ['r1', { opacity: 0.9 }], setup: d => d.edit(e => e.placeReference(refImage('r1'))) },
+  { op: 'removeReference', args: () => ['r1'], setup: d => d.edit(e => e.placeReference(refImage('r1'))) },
   { op: 'mirrorApply', args: () => [['qr'], ['st']], views: [FRONT] },
   { op: 'mirrorApply', args: () => [['l1', 'l2', 'l3'], ['r1', 'r2', 'r3']], views: [FRONT], note: 'arc set and removed, fill copied', setup: mirrorScene },
   { op: 'mirrorApply', args: () => [['la', 'lb'], ['ra', 'rb']], views: [FRONT], note: 'link join copied', setup: mirrorScene },
@@ -146,7 +152,7 @@ function written(x: BeforeSettle) {
   const shapes = ds.shapes.layers.filter(l => json(l) !== json(ps.shapes.layers.find(q => q.key === l.key))).map(l => l.key)
   const shared: Shared[] = []
   if ((['layers', 'points', 'lines', 'usedPoints', 'usedLines'] as const).some(k => json(ds[k]) !== json(ps[k]))) shared.push('structure')
-  for (const k of ['groups', 'joins', 'links', 'fills', 'selection', 'apply', 'names', 'meta', 'animation'] as const) {
+  for (const k of ['groups', 'joins', 'links', 'fills', 'selection', 'apply', 'names', 'meta', 'animation', 'reference'] as const) {
     if (json((x.draft as unknown as Record<string, unknown>)[k]) !== json((x.published as unknown as Record<string, unknown>)[k])) shared.push(k)
   }
   const intents = [...new Set([...x.changes.targets, ...x.changes.held, ...x.changes.handleTips].map(i => i.layer))]
@@ -261,7 +267,7 @@ describe('the merged commit is today\'s, operation by operation (no behaviour ch
     return m
   }
   it('select, selectGroup, broadcastStroke and fit skip settling; broadcastShape and draftCorners settle the non-front views; everything else, and an empty edit, settles fully', () => {
-    const today: Record<string, string> = { select: 'keeps', selectGroup: 'keeps', broadcastStroke: 'keeps', fit: 'keeps', correct: 'views', broadcastShape: 'views', draftCorners: 'views' }
+    const today: Record<string, string> = { placeReference: 'keeps', setReference: 'keeps', removeReference: 'keeps', select: 'keeps', selectGroup: 'keeps', broadcastStroke: 'keeps', fit: 'keeps', correct: 'views', broadcastShape: 'views', draftCorners: 'views' }
     for (const c of CASES) for (const layer of c.views ?? [FRONT]) {
       const d = fixture()
       c.setup?.(d)

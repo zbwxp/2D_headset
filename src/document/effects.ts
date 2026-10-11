@@ -8,7 +8,7 @@ import * as views from '../views'
 /** A range of shape layers, resolved to concrete layer keys from the edited view. */
 export type Range = 'none' | 'edited' | 'all-views' | 'non-front' | 'others' | 'corners' | 'front-neighbours'
 /** The shared parts of the state an operation may write directly (structure = layers, points, lines, ids). */
-export type Shared = 'structure' | 'groups' | 'joins' | 'links' | 'fills' | 'selection' | 'apply' | 'names' | 'meta' | 'animation'
+export type Shared = 'structure' | 'groups' | 'joins' | 'links' | 'fills' | 'selection' | 'apply' | 'names' | 'meta' | 'animation' | 'reference'
 export type Reads = 'draft' | 'settled-trial'
 
 export interface Effect {
@@ -113,6 +113,10 @@ export const EFFECTS: Record<string, Effect> = {
   broadcastShape: { reads: 'draft', intents: 'non-front', shapes: 'non-front', records: true, shared: [], autoStructure: false, settle: 'non-front-positions', alone: true },
   draftCorners: { reads: 'draft', intents: 'corners', shapes: 'corners', records: false, shared: [], autoStructure: false, settle: 'non-front-positions', alone: true },
   fit: { reads: 'draft', intents: 'none', shapes: 'none', records: true, shared: [], autoStructure: false, settle: 'none', alone: true },
+  // reference pictures: their own part only; an edit of these (and selections) never settles (dot 1791701244)
+  placeReference: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['reference'], autoStructure: false, settle: 'none', alone: false },
+  setReference: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['reference'], autoStructure: false, settle: 'none', alone: false },
+  removeReference: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['reference'], autoStructure: false, settle: 'none', alone: false },
   // stage 3b packages 3 and 4: knots on the responses; on an edge from the front, the outer view may
   // move (one of the front's four neighbours; that at most one changes is the final check's, not
   // this table's). The final check reads the settled trial (docs/stage3b-pkg4-move.md §8)

@@ -1,6 +1,6 @@
 # Reference images — rules before code
 
-**Status:** direction accepted by dot 1791701244, with the four boundaries of §7 added; scope kept small (no CRC walk, masks or slots).
+**Status:** direction accepted by dot 1791701244, with the four boundaries of §7 added; scope kept small (no CRC walk, masks or slots). **Coded** for dot's check: `src/reference/index.ts`, the `reference` part and three operations in `src/document`, archive 5, the bench's Reference panel; tests `test/reference.test.ts`, `bench/test/reference.test.tsx`, the cases in `test/effects.test.ts`. **Not tested:** the status error for a stored picture that fails to draw (jsdom fires no SVG image error); the code sets it from the `<image>` element's `onError`.
 
 **Asked by bowen** 1791700171, 1791700193 (v2's background reference images, in the new version, a separate module, no editing), 1791701099 ("独立package做差不多能用就行 之后可以再优化": roughly usable first, optimise later). **v2 for reference:** `4bc7cc2`, `proto/base` (`schema.ts` `ImageRecord`, `imageCommands.ts`, `imageData.ts`, `ui/imagePanel.tsx`, `view/images.ts`).
 
@@ -49,7 +49,7 @@ Kept to v2's level that matters here, without its full PNG chunk walk ("roughly 
 1. **Late reads:** each App has its own counter, advanced by a view change, entering or leaving playback, an Open and unmounting; a read keeps the counter, `core`, its saved text and the view from its start and writes only if all are unchanged. A switch away and back still drops it. Tests: back-and-forth view switch, playback in and out, unmount.
 2. **Drawable size:** `width · scale` and `height · scale` finite (§3).
 3. **Decoding:** as §3's last item.
-4. **Mixed edits:** only an edit of reference operations (with or without selections) skips the settle. Mixed with a `move` it settles fully as any edit does; with `correct` or another alone operation it is refused (`stage2-alone`). Tests for each mix.
+4. **Mixed edits:** only an edit of reference operations (with or without selections) skips the settle. Mixed with a `move` it settles fully as any edit does. **Beside `correct` (or another alone operation)** it is, by package 1's merge rule, a settle-free companion like a selection, so it is **allowed**, not refused as first written here: refusing it would need a new rule in the merge, and the mix is harmless (`correct`'s checks do not read the reference part). An alone operation with any other non-settle-free operation is refused as before. Raised with dot; tests for each mix.
 
 ## 6. Not now
 

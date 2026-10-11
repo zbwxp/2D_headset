@@ -147,6 +147,12 @@ export function App() {
   const [corrRefusal, setCorrRefusal] = useState<null | { message: string; objects: readonly { kind: string; id: string }[] }>(null)
   const [corrGhost, setCorrGhost] = useState<null | { id: Id; to: Vec }>(null)
   const [poseText, setPoseText] = useState({ yaw: '0', pitch: '0' })
+  // reference pictures (docs/reference-images-plan.md §7.1): this App's counter, advanced by a view change,
+  // entering or leaving playback, an Open and unmounting; a picture read keeps it and writes only if unchanged
+  const refGen = useRef(0)
+  useEffect(() => () => { refGen.current++ }, [])
+  // pictures that failed to draw (a stored picture that does not decode): shown in the status, nothing else changes
+  const [refBroken, setRefBroken] = useState<string[]>([])
   // this App's read-only flag and its own logged wrapper: another App mounting, posing or
   // unmounting never touches them (dot 1791686247)
   const posing = useRef(false) // set only by startPose / stopPose, with the pose state
@@ -349,6 +355,7 @@ export function App() {
   const chooseView = (k: string) => {
     gesture.current?.cancel('a view change')
     env.current = { ...env.current, view: k }
+    refGen.current++
     setView(k); ix.viewChanged()
   }
   /**
@@ -358,11 +365,11 @@ export function App() {
   const startPose = () => {
     gesture.current?.cancel('entering playback')
     ix.cancelAll()
-    posing.current = true; poseGen.current++
+    posing.current = true; poseGen.current++; refGen.current++
     const [yaw, pitch] = shown.slice('view:'.length).split(',').map(Number)
     setPose({ yaw: yaw!, pitch: pitch! }); setPoseText({ yaw: String(yaw), pitch: String(pitch) }); setCorrRefusal(null)
   }
-  const stopPose = () => { gesture.current?.cancel('leaving playback'); posing.current = false; setPose(null); setCorrRefusal(null) }
+  const stopPose = () => { gesture.current?.cancel('leaving playback'); refGen.current++; posing.current = false; setPose(null); setCorrRefusal(null) }
   /** A valid pose change ends a playback drag first: a target belongs to one pose (dot 1791696847). */
   const changePose = (next: { yaw: number; pitch: number }) => { gesture.current?.cancel('a pose change'); setCorrRefusal(null); setPose(next) }
   const LIMITS = { yaw: 90, pitch: 45 } as const
@@ -452,6 +459,7 @@ export function App() {
   const status = pose ? (corrRefusal ? '✗ ' + withNames(corrRefusal.message)
     : `playback yaw ${pose.yaw}, pitch ${pose.pitch} · ${!where ? '' : 'edge' in where ? `on the line ${where.inner} → ${where.outer} at t = ${+where.t.toFixed(3)} · drag a point to correct` : where.code === 'correction-at-view' ? 'at a view · read only (edit the view itself)' : where.code === 'correction-off-edge' ? 'inside a cell · read only (this round corrects on lines only)' : '✗ ' + where.message}${posed instanceof Error ? ' · ✗ ' + posed.message : ''}`)
     : pv.refusal ? '✗ ' + withNames(pv.refusal.message)
+    : refBroken.some(id => core.in(shown).references().some(r => r.id === id)) ? `✗ reference picture ${refBroken.join(', ')} could not be drawn (the drawing is unaffected)`
     : `view ${shown} · tool ${ix.tool} · layer ${drawLayer} · selection ${sel.map(u => u.kind[0] + ':' + ('id' in u ? u.id : u.line + '.' + u.end)).join(' ') || '—'}${pv.pick ? ' · first pick ' + pv.pick.id : ''}${pv.cut.length ? ' · cut pending (paste moves, Esc cancels)' : ''}${pv.mirrorSource.length ? ' · mirror source ' + pv.mirrorSource.length : ''}`
 
   return (
@@ -514,6 +522,33 @@ export function App() {
           {B('Fit', () => ix.fit(), 'accept the selected lines\' front as the baseline; no view changes')}
           {B('Draft corners', () => ix.draftCorners(), 'the four corner views of the selected lines = front + yaw change + pitch change')}
         </div>
+        <b>Reference ({shown})</b>
+        <div data-testid="reference" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <label>Place… <input type="file" data-testid="ref-file" accept="image/png,image/jpeg,image/webp" onChange={e => {
+            const f = e.target.files?.[0]; e.target.value = ''
+            if (!f) return
+            // bound at the start: this App's counter, the drawing and the view (§7.1)
+            const start = { gen: refGen.current, core, text: save(core), view: shown, box }
+            const reader = new FileReader()
+            reader.onload = () => {
+              const src = String(reader.result), pic = new Image()
+              pic.onload = () => {
+                if (start.gen !== refGen.current || start.core !== core || save(core) !== start.text) { note(`reference ${f.name} dropped: the drawing, view or mode changed while it was read`); bump(); return }
+                const k = Math.min(1, 0.9 * start.box.w / pic.width, 0.9 * start.box.h / pic.height)
+                run(x => x.placeReference({ id: nid('ref-'), view: start.view, src, width: pic.width, height: pic.height, x: start.box.x + start.box.w / 2, y: start.box.y + start.box.h / 2, scale: k, angle: 0, opacity: 0.5, visible: true }))
+              }
+              pic.onerror = () => { note(`reference ${f.name} not placed: the picture does not decode`); bump() }
+              pic.src = src
+            }
+            reader.readAsDataURL(f)
+          }} /></label>
+          {core.in(shown).references().map(r => <div key={r.id} data-ref={r.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+            <input type="checkbox" checked={r.visible} onChange={e => run(x => x.setReference(r.id, { visible: e.target.checked }))} />
+            {(['x', 'y', 'scale', 'angle', 'opacity'] as const).map(k => <label key={k}>{k} <input type="number" style={{ width: 54 }} defaultValue={r[k]} step={k === 'opacity' ? 0.1 : undefined}
+              onKeyDown={e => { if (e.key === 'Enter') { const v = Number((e.target as HTMLInputElement).value); if ((e.target as HTMLInputElement).value.trim() !== '' && Number.isFinite(v)) run(x => x.setReference(r.id, { [k]: v })) } }} /></label>)}
+            {B('Remove', () => run(x => x.removeReference(r.id)))}
+          </div>)}
+        </div>
         <b>Names</b>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
           {B('Rename line', () => { if (selLines.length !== 1) return; const n = prompt('line name', line(selLines[0]!).name); if (n !== null) run(x => x.renameLine(selLines[0]!, n)) })}
@@ -561,6 +596,7 @@ export function App() {
                 const next = open(text)
                 gesture.current?.cancel('opening another drawing') // only once the file opened (dot 1791554909)
                 core = next
+                refGen.current++
                 const ls = core.snapshot().layers, top = ls[ls.length - 1]?.id ?? ''; setLayer(top); setLayers([top])
                 ix.drawingChanged(); setDrawing(k => k + 1)
                 log.unshift({ calls: `open(${f.name})`, result: 'ok' })
@@ -579,6 +615,11 @@ export function App() {
           // the right click itself is the unmoved right press (onDown); a right press during a left
           // drag comes only as this event, and cancels that drag (one level)
           onContextMenu={e => { e.preventDefault(); if (gesture.current && !gesture.current.right) gesture.current.cancel('a right click') }}>
+          {!pose && core.in(shown).references().filter(r => r.visible).map(r => {
+            const w = r.width * r.scale, h = r.height * r.scale
+            return <image key={r.id} data-reference={r.id} href={r.src} x={r.x - w / 2} y={r.y - h / 2} width={w} height={h} opacity={r.opacity} preserveAspectRatio="none"
+              transform={`rotate(${r.angle} ${r.x} ${r.y})`} onError={() => setRefBroken(b => (b.includes(r.id) ? b : [...b, r.id]))} />
+          })}
           <line x1={s.axis} x2={s.axis} y1={box.y - 1e4} y2={box.y + 1e4} stroke="#9cf" strokeDasharray={`${6 * px} ${4 * px}`} strokeWidth={px} />
           {g.fills.filter(f => f.visible).map(f => <path key={f.id} d={f.parts.map((p, i) => (i ? path(p.curve).replace(/^M[^C]*/, '') : path(p.curve))).join(' ') + ' Z'}
             fill={f.color} opacity={cutLines.size && s.loops.find(l => l.id === f.id)?.route.every(u => cutLines.has(u.line)) ? 0.35 : 1}

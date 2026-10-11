@@ -10,9 +10,10 @@ export const FORMAT = 'headset-v3-drawing'
  * - 1: single view; not supported (bowen 1791651929).
  * - 2: shape layers, nine views (stage 1); not supported since 3 (dot 1791680650).
  * - 3: plus animation's owned record layer `base:angle` (stage 2); `copyNew` only on owned layers; not supported since 4.
- * - 4: plus the in-between responses (`animation`, stage 3b package 2).
+ * - 4: plus the in-between responses (`animation`, stage 3b package 2); not supported since 5.
+ * - 5: plus reference pictures (`reference`, docs/reference-images-plan.md).
  */
-export const VERSION = 4
+export const VERSION = 5
 
 export function save(core: Core): string {
   return JSON.stringify({ format: FORMAT, version: VERSION, document: exportState(core) })

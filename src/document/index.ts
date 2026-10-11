@@ -15,6 +15,7 @@ import * as clipboard from '../clipboard'
 import * as views from '../views'
 import * as meta from '../meta'
 import * as animation from '../animation'
+import * as reference from '../reference'
 import * as evaluate from '../evaluate'
 import { EFFECTS, merge, resolve } from './effects'
 import type { Vec } from '../geometry'
@@ -38,6 +39,8 @@ export interface State {
   meta: meta.MetaState
   /** In-between responses per control and edge (stage 3b package 2), owned by animation. */
   animation: animation.ResponsesState
+  /** Reference pictures, one view each, never part of the drawing (owned by reference). */
+  reference: reference.ReferenceState
 }
 
 /** A drawing has its nine view layers from the start (graph "Views"; step 3, Claude 1791653309). */
@@ -49,7 +52,7 @@ function viewedNetwork(): net.NetworkState {
 }
 const createState = (axis = 0): State => ({
   network: viewedNetwork(), groups: groups.create(), joins: joins.create(), links: links.create(), fills: fills.create(), selection: editing.create(),
-  apply: apply.create(axis), names: names.create(), meta: meta.create(), animation: animation.createResponses(),
+  apply: apply.create(axis), names: names.create(), meta: meta.create(), animation: animation.createResponses(), reference: reference.create(),
 })
 
 export interface Snapshot {
@@ -421,6 +424,10 @@ export class Editor {
       settled: () => { const trial = this.view(); return { network: trial.network, model: modelOf(trial) } },
     })
   }
+  /** Reference pictures (docs/reference-images-plan.md): place, change or remove one; never settles. */
+  placeReference(image: reference.ReferenceImage) { reference.place(this.s.reference, image) }
+  setReference(id: Id, props: reference.ReferenceProps) { reference.set(this.s.reference, id, props) }
+  removeReference(id: Id) { reference.remove(this.s.reference, id) }
   /**
    * Stroke broadcast: the selected lines' (or `units`') own strokes and their end points'
    * end strokes, as in this view, assigned to every other view (views.broadcastStroke).
@@ -705,6 +712,8 @@ export class LayerReader {
   }
 
   geometry(): Geometry { const s = this.state(); return structuredClone(derived.derive(this.n, s.joins, s.fills)) }
+  /** The reference pictures of this view (copies). */
+  references(): reference.ReferenceImage[] { return reference.list(this.state().reference, this.layer) }
 
   /**
    * Copy (graph "Cut, paste / copy"): the lines given, or the selected lines, as a clip
@@ -730,7 +739,7 @@ export class LayerReader {
 
 // ---- for the archive module only (not exported from the package root) -----------
 
-const PARTS = ['network', 'groups', 'joins', 'links', 'fills', 'apply', 'names', 'meta', 'animation'] as const
+const PARTS = ['network', 'groups', 'joins', 'links', 'fills', 'apply', 'names', 'meta', 'animation', 'reference'] as const
 
 /** The document as plain data, without the selection (docs/archive-plan.md). */
 export function exportState(core: Core): Record<string, unknown> {
@@ -762,6 +771,7 @@ export function importState(data: unknown): Core {
       meta: meta.restore(d.meta, network),
       selection: editing.create(),
       animation: animation.restoreResponses(d.animation, network, l),
+      reference: reference.restore(d.reference),
     }
   } catch (err) {
     const m = (err as Error).message
