@@ -29,8 +29,8 @@ So the lessons were too loose to apply mechanically. The list below makes them a
 ## 3. What changes from now on
 
 Before the first code commit of a package, its plan lists:
-1. **Every invariant the code relies on, with where it is enforced and how strongly, at each entry** that can create the state (an edit's commit, open, paste). An invariant enforced only within a tolerance at some entry is designed for at that tolerance, or refused there, explicitly.
+1. **Every invariant the code relies on, with where it is enforced and how strongly, at each entry** that can create the state (an edit's commit, open, paste, a direct clip, the state inside an edit between calls). An invariant enforced only within a tolerance at some entry is designed for at that tolerance, or refused there, explicitly.
 2. **Every throw of every function on the operation's path** (not only its own checks), each mapped to a declared refusal or stated as an internal error the operation does not expect.
-3. A test for each item that is reachable, built through the weakest entry (e.g. a file, not only the editor operation).
+3. A test for each reachable item, built through **that invariant's actual weakest entry**, which is not always a file (dot 1791693587): a sparse list can only come from a clip passed straight to `paste`; a state in the middle of an edit (after one call, before the commit) can be weaker than any file. Each invariant names its entries, and each reachable path is tested.
 
 This applies to package 4 (the 90° move), whose plan has not been written yet.
