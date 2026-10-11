@@ -4,6 +4,7 @@
 
 **Ledger check** (`docs/consolidation-ledger.md`):
 - Row 1 (commit settling by name lists) is not triggered: playback writes nothing.
+- **Row 8 is triggered** (dot 1791684079): the bench's Open must not replace the document during playback. 3a fixes it with request order and a mode check (bench playback flow below), and closes the row.
 - **Row 6 is triggered** (dot 1791683214: the next new read API reviews all read entries together). 3a adds `Core.model()` / `Core.atPose()`, so it includes that review; see "Read entries" below.
 
 ## Inputs
@@ -62,9 +63,9 @@
 
 **The read path** (`Core.atPose(p)`, inside `document`):
 1. `evaluate(this.model(), p)` → the posed parameters.
-2. A **private scratch copy** of the published state (`structuredClone`, as every read already does). In it, a scratch shape layer `pose` is added from the front (`net.addShapeLayer`).
-3. The posed parameters are written into that scratch layer with the existing network / joins writers: positions (`net.setPositions`), handles (`net.setHandles`), width and profile, each arc row's radius, each point's end stroke (set or cleared).
-4. A `LayerReader` over the scratch copy and layer `pose` gives `snapshot()` and `geometry()` exactly as `in(view)` does: `geometry()` is `derived.derive(layer, joins, fills)`.
+2. A **private scratch copy** of the published state (`structuredClone`, as every read already does). In it, a scratch shape layer is added from the front (`net.addShapeLayer`). Its key is chosen to differ from every layer key in the copy (`pose`, then `pose~1`, `pose~2`, … until free), so it can never collide with a layer a file brought in (dot 1791684079).
+3. The posed parameters are written into that scratch layer with the existing network / joins writers: positions (`net.setPositions`), handles (`net.setHandles`), width and profile, each arc row's radius, and **every** point's end stroke: set to the posed value, or **cleared** where the posed result has none. Nothing copied from the front is left standing (dot 1791684079).
+4. A `LayerReader` over the scratch copy and the scratch layer gives `snapshot()` and `geometry()` exactly as `in(view)` does: `geometry()` is `derived.derive(layer, joins, fills)`.
 5. The copy is dropped. Nothing is published, no settle runs on it, and there is no undo step.
 
 **What `derived` reads, and where it comes from at a pose:**
@@ -97,6 +98,7 @@ Playback promises to change nothing, so every write entry is closed while it is 
   - canvas pointer input;
   - keyboard: delete, paste, cut, undo / redo, tool keys, every interaction key. Today's key handler lets keys through when an `<input type="range">` has focus (`bench/src/app.tsx`, the `typing` check), so the playback check comes **first** in that handler, before the typing check: no key reaches interaction or undo while posing, whatever has focus (arrow keys still move the focused slider, natively);
   - buttons and panels that write: layers panel, properties (stroke, end stroke, join), Broadcast stroke / shape, Fit, Draft corners, Open, the demo builders. Save stays (it reads only).
+  - **a file read already in flight** (dot 1791684079; ledger row 8, triggered here): disabling Open does not stop a read started before playback from returning during it. Each Open takes a request number and records the bench's mode at the start. When the read returns, it replaces the document only if it is still the latest request **and** playback has not been entered since; otherwise it is dropped (a status message says so). This also closes ledger row 8's original case, an earlier slow read replacing a later one.
 - **Leaving:** the view picker shows the last chosen view; editing works as before; no gesture, selection change or undo step came from playback.
 - **Not touched:** the edit transaction. These are read-only promises kept by the bench, as dot noted.
 
@@ -147,7 +149,9 @@ Nothing is written; there is no draft and no undo step.
   - **entering playback during a drag, then a late pointer release:** nothing is committed, no undo step, the drag's preview is gone (dot 1791683911);
   - **with a playback slider focused, Delete / ⌘V / ⌘Z / ⇧⌘Z / a tool key:** nothing changes (state, undo history, tool);
   - the write buttons and panels are disabled while posing;
-  - **leaving playback, then a normal edit** (draw a line, drag, undo): works as before.
+  - **leaving playback, then a normal edit** (draw a line, drag, undo): works as before;
+  - **late file read:** Open starts, playback is entered, the read returns → the document is unchanged and playback goes on; two Opens whose reads return out of order → only the later request opens;
+  - **scratch layer:** a file holding a layer keyed `pose` poses correctly and its own `pose` layer is untouched; a point with an end stroke at the front and none in the posed result shows none at that pose.
 
 ## Questions
 
