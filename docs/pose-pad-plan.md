@@ -1,4 +1,4 @@
-# Pose pad: yaw and pitch on one grid — rules before code
+# Playback: pose pad, and the viewport tools — rules before code
 
 Asked by bowen 1791727397: playback keeps its yaw and pitch sliders, and gains a coordinate grid where the mouse slides freely through any combination of yaw and pitch.
 
@@ -19,6 +19,17 @@ Asked by bowen 1791727397: playback keeps its yaw and pitch sliders, and gains a
 - Each new value goes through the bench's existing `changePose` — the same path as the sliders: it ends a playback correction drag first (dot 1791696847) and writes nothing to the drawing.
 - The drag belongs to the pointer and button that started it and is tracked on the window (as the canvas gestures are, since pointer capture proved unreliable on bowen's trackpad): it ends on that pointer's release, on a move without that button held, on pointercancel, on leaving the window, and when the pad goes (leaving playback, unmount) — its window listeners removed every time. A second pointer meanwhile is ignored.
 - No keyboard control (not asked; the fields remain for exact values).
+
+## Viewport tools in playback (bowen 1791727452)
+
+bowen: Zoom is a viewport tool and must work in playback. **Rule, for every mode:** a viewport tool changes only the camera — what part of the drawing the canvas shows — never the drawing, so it works while editing, in playback and while restoring alike; a tool that writes is the only kind a mode can disable.
+
+Today in playback: the wheel zooms; the right- and middle-button pan does not (the playback press takes the left button only and ignores the rest); **Z** (key and button) is disabled with the editing tools.
+
+- The viewport tools — Zoom (Z key, Zoom Z button), the wheel, right- and middle-button pan, a right click that cancels — act in playback exactly as in editing, through the same code.
+- The Zoom Z button moves out of the editing tools' disabled group into its own **View** group, always enabled; the Z key is handled before playback's "no shortcut writes" check. In playback, the tool keys that write stay inert, as now.
+- In playback with Z on, a left press zooms (click in, Alt-click out, drag up / down), as in editing; with Z off, a left press is playback's correction drag, as now. The cursor follows: `zoom-in` with Z on, the arrow otherwise (the cursor table's order puts Z before playback).
+- Tests: in playback, Z key and button turn zoom on; a left press with Z zooms and writes nothing; a right-button drag pans and writes nothing; Z off, a left press on a line still starts a correction; the cursor shows `zoom-in` with Z in playback. Feature-off: with playback's presses not routed to the viewport tools, the tests fail.
 
 ## Not now
 
