@@ -1,6 +1,6 @@
 # Stage 3b, package 5: dragging during playback in the bench — the interaction flow, before code
 
-**Status:** first draft for dot's check (asked by dot 1791696516). No code until dot accepts it. Packages 3 and 4 are accepted (`d6502dc`, `302b35c`).
+**Status:** accepted for coding by dot 1791696958 (point dragging; undo in playback and handles stay pending bowen, §7). `correctionEdge` approved as a pure query with core's own rule. Packages 3 and 4 are accepted (`d6502dc`, `302b35c`).
 
 **What this is:** the bench is throwaway glue (bowen 1791477975: graph parts pristine, glue fastest). This package adds one gesture to playback: drag a point (or a handle) at the pose shown, and on release make one `correct` edit. All rules stay in core; the bench only picks, previews, calls and shows the result. Quick pass (bowen 1791556525): build the ask minimally, fix only use-breaking bugs, record edge cases.
 
@@ -29,7 +29,7 @@
 ## 3. Preview and commit
 
 - **What a press binds** (dot 1791696808): the drawing (the `core` object and its saved text, `save(core)`), the pose, the picked control, and its position at the pose at the press. The target is that position plus the pointer's displacement since the press, so a press off the point's centre does not make the point jump to the pointer.
-- **During the drag:** a ghost only, no core call. The picked point drawn at the pointer, and the lines ending there redrawn with that end moved (as the editing ghost does); for a handle, its line with that handle moved. The posed drawing underneath is unchanged.
+- **During the drag:** a ghost only, no core call. The picked point drawn at its start plus the pointer's displacement (not at the pointer; dot 1791696958), and the lines ending there redrawn with that end moved (as the editing ghost does); for a handle, its line with that handle moved. The posed drawing underneath is unchanged.
 - **On release, first a check:** if the `core` object or its saved text is not what the press bound (another App on the page edited, undid or opened a file meanwhile; they share the module's `core`), the drag is cancelled with a note in the log (`drag cancelled: the drawing changed during the drag`) and nothing is written. Not only leaving playback cancels it.
 - **Then one edit:** `core.edit(e => e.correct(pose, { points: [{ id, position }] }))` (or `handles: [{ line, end, vector }]`), through the App's logged wrapper. An unmoved press (≤ `CLICK` screen px) commits nothing.
 - **After a commit:** the pose stays; the drawing is re-read with `atPose`, so the corrected angle shows the target and the views that moved (package 4) show in the nine-view panel after leaving playback. The log shows the call and `ok` or the refusal.
@@ -63,6 +63,11 @@ Today `loggedFor(readOnly)` refuses every edit, undo and redo while posing (dot 
 | the drawing changed since the press (another App's edit, undo, redo or Open) | detected at release: drag cancelled, nothing written |
 | release | one `correct` edit (§3) |
 
+- **Event order** (dot 1791696958):
+  - Esc is handled first in the key handler, before playback's early return and before the typing guard, so Esc cancels a drag even with a number field focused (and does nothing else in playback);
+  - a right click anywhere in the window, not only on the canvas, cancels the drag (a window `contextmenu` listener for the gesture's life);
+  - another pointer's move, up or cancel never ends this pointer's gesture (each listener checks `pointerId`).
+- Every cancel removes all of the gesture's window listeners, each added one removed once.
 - The drag uses the bench's existing single gesture slot (`gesture.current`, one cancel path; dot 1791552803), so a playback drag and any other gesture never coexist within an App.
 - **Across Apps** (dot 1791696828): `gesture.current` is one per App, so a new press of the same pointer in another App would not reach this App's `onDown`, and this App's window `pointerup` listener would still commit on that press's release. So every gesture also listens on the window, in the capture phase, for `pointerdown` of its own pointer, and cancels itself there. This is in the shared gesture code, so editing gestures get it too; it fixes an existing gap of the same kind as ledger row 11, not a playback-only rule.
 - **Refusals:** the refusal of the `correct` edit (any code: `correction-*`, `locked`, `pose-not-finite`, `coordinates-not-finite`) is shown in the status line in red, with names (`withNames`), and as a red cross on each object it names, drawn on the posed drawing. It stays until the next press, pose change or leaving playback. Nothing else changes (core published nothing).
@@ -89,7 +94,7 @@ Each success test is also run with its feature switched off and must fail then (
   - an async callback that calls `correct` once → refused by core's synchronous check, nothing published;
   - exactly one `correct` → published;
   - and as today: tool keys, ⌘Z / ⇧⌘Z, the panel's buttons and Open write nothing during playback (the existing playback tests kept).
-- **Cancel flows:** each row of §5's table → no edit, the log unchanged, no window listener left (pointermove after the cancel does nothing).
+- **Cancel flows:** each row of §5's table, plus Esc with a number field focused, a right click outside the canvas, and another pointer's move / up / cancel (which must not end the drag) → no edit, the log unchanged. After every cancel a late `pointerup` of the original pointer is delivered and commits nothing; window listeners are counted (each `addEventListener` matched by a `removeEventListener`), not only checked by a pointermove that changes nothing.
 - **Per App:** two Apps, one in playback dragging, the other editing → the other's edits unaffected; unmounting the posing App cancels its drag.
 
 ## 7. Questions for bowen — pending, not rules (asked 1791696687; dot 1791696734)
@@ -103,4 +108,4 @@ Neither is treated as decided. Until bowen answers: undo and redo keep today's b
 
 - No live preview through core (no dry run exists); the ghost is geometric only.
 - No drag inside a cell (later, open item 6 of the plan).
-- No change to interaction's module, to core, or to the editing gestures; the only core-side addition is the root export of §1 (dropped if dot prefers).
+- No change to interaction's module or to core's rules; the only core-side addition is the root export of §1. The shared gesture code does change (the cross-App cancel of §5), so editing gestures get it too.
