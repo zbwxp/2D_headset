@@ -2,33 +2,46 @@
 
 Asked by bowen 1791733125 (a box after selecting: scale, rotate, width or height alone; grab the whole selection anywhere in it); the feel confirmed by bowen 1791734097: corners scale proportionally, edge midpoints stretch one axis, **rotation by a small handle above the box (PowerPoint style)**, Option scales about the centre, Shift rotates in 15° steps. Package 1 (`docs/move-plan.md`, accepted dot 1791734961) gave the move sessions; this package adds the box. Later stages stay tracked there (the playback correction and the view's pan by keyboard).
 
-## 1. The box
+## 1. The box (dot 1791735216 §1)
 
-- Shown with **V or A** when the scoped selection (`ix.selection()`) holds lines or points, in the view being edited; not in playback, not while restoring, not with Move picture on.
-- It is the axis-aligned bounds of what the selection moves, in this view: the selected lines' curves (handles included as the curves bend) and the selected points. After a rotation it is the bounds of the result (it does not stay turned).
-- A side shorter than a few screen pixels (one point, a straight horizontal line) has no handles on that axis; the box can still be grabbed and the selection still rotated if the other side has length.
+- Shown with **V or A** when the scoped selection (`ix.selection()`) holds lines, points or handles, in the view being edited. **Not drawn and not hit** in playback, while restoring, or with Move picture on; viewport presses (Zoom, middle / right button) come first as now.
+- **Its extent is exactly what the transform moves**, read from core (the transform's owner) through a new read, `selectionBounds(units)`: the **exact Bézier extrema** of the selected lines' curves (core's existing `bounds`, not the control points' hull), the selected points, and the tips of selected handles — the same expansion core's `transformPlan` uses, so the box never grows into whole curves, groups or linked objects, and the transform's target is unchanged. **Selected hidden lines count** (they are transformed); a handle in a mixed A selection counts by its tip.
+- Axis-aligned; after a rotation it is the bounds of the result.
 
-## 2. What a press does (picking stays interaction's)
+## 2. What a press does (picking stays interaction's; dot 1791735216 §2)
 
-In this order, so a handle always wins (dot 1791733296):
-1. **A box handle** within its reach, measured in **screen pixels** (the same feel at any zoom): the rotation handle, a corner, an edge midpoint.
-2. **Something the tool picks** (as today): a press on another line, point or handle selects it, as now.
-3. **Inside the box, or within a margin around it** (in screen pixels): grabs the **whole selection** — a `move/` drag session of the selection, exactly what is selected (a marquee's lines stay those lines; dot 1791733296).
+In this order — one function, `boxHit(at)`, gives the order for pressing, for the hover cursor and for drawing the hot handle, with the same screen-pixel reach (§6):
+1. **A box handle** within reach (screen pixels): the rotation handle, a corner, an edge midpoint — only the handles that exist (§4).
+2. **What the tool picks today:** A's points and handles first, then a line, as now; V's line, as now. A press on an item selects it as today (so A's point and handle editing keep priority over the box).
+3. **Inside the box or within its margin** (screen pixels), with no Shift / Option: grabs the **whole selection** — a `move/` drag session, exactly what is selected. With **Shift / Option** a blank press inside the box starts the marquee that adds / removes, as today; it is not a drag.
 4. Otherwise a marquee, as today.
 
-## 3. The handles
+## 3. Preview equals commit (dot 1791735216 §3)
 
-Each handle drag is a `move/` drag session: the module gives the pointer's offset; the box's target turns it into a scale or a rotation, previews it as a ghost, and commits **one** core operation on release (one undo step) — `scale(centre, sx, sy, units)` or `rotate(centre, angle, units)`, which core already has. The selection is taken when the drag begins and the drawing re-checked at commit, as for a move.
+A scale or a rotation also moves what constraints carry (an end point alone, neighbouring curves, links, mirrors, smooth joins), so the preview is not the selection's drawing transformed: core gets a read-only **`preview(layer, fn) → LayerReader`** that runs the same edit pipeline as `editIn` (declarations, the settle, links, mirrors, springs) on a copy and returns a reader of the result; it never touches the document, its history or autosave. The box drag previews with exactly the operation it will commit, and draws the returned geometry; on release the same operation is committed once. (Its cost is measured on bowen's drawing; if a frame is too slow the plan comes back before code goes further.)
 
-- **Corners:** proportional scale (sx = sy), about the opposite corner; with **Option**, about the box's centre.
-- **Edge midpoints:** one axis only (the other factor 1), about the opposite edge; with Option, about the centre.
-- **Rotation:** a short stem and a round handle above the top edge's middle (PowerPoint); the angle follows the pointer around the box's centre; with **Shift**, in 15° steps.
-- **Crossing over:** dragging a side past its anchor mirrors the selection (a negative factor), as Illustrator and PowerPoint do; a factor that would be exactly 0 is held at the size of one screen pixel, so nothing collapses to a line.
-- Locks and refusals: core decides; a refused commit is shown as any refusal is and writes nothing.
+## 4. The handles — formulas (dot 1791735216 §4)
 
-## 4. Drawing
+Each handle drag is a `move/` drag session; the box's target turns the pointer into one `scale(anchor, sx, sy, units)` or `rotate(centre, angle, units)` (core already has both) and commits it once on release.
 
-The box and its handles are drawn from interaction's preview (a new `selectionBox`: the bounds, which handles exist, which one is hot); the bench draws them at a constant screen size; the cursor follows (`cursor/` gains rows for the box: move over the inside, resize arrows over corners and edges, a rotate cursor over the rotation handle).
+- **Grab offset:** the press point's offset from the handle is kept; the handle's position is the pointer minus that offset (so a press slightly off the handle does not jump).
+- **Corner — proportional:** anchor A = the opposite corner (with **Option**, the box's centre); H0 = the corner at the start, H = its dragged position; **s = ((H − A) · (H0 − A)) / |H0 − A|²**, sx = sy = s. Both factors negative is a **180° turn**, not a mirror.
+- **Edge midpoint — one axis:** anchor = the opposite edge's line (Option: the centre); for a left / right edge **sx = (Hx − Ax) / (H0x − Ax), sy = 1**; for a top / bottom edge the same in y. A negative factor is a **mirror** on that axis.
+- **Near zero:** a factor is held to |f| ≥ max(1 screen pixel / the box side in that axis, the value that keeps core's determinant above its 1e-12 limit), keeping its sign; so nothing collapses and core never refuses the drag for that.
+- **Zero width or height** (thinner than 1 screen pixel): no handle that would scale that axis — zero width: no left / right edges and no corners; zero height: no top / bottom edges and no corners; both: no scale handles. Rotation exists when either side has length.
+- **Rotation:** centre C = the box's centre at the start; angle = the pointer's angle about C minus the start angle, **unwrapped continuously across ±180°** (accumulated small steps); while the pointer is within 1 screen pixel of C the last valid angle is kept; with **Shift**, rounded to 15°.
+- The rotation handle: a short stem and a round handle above the top edge's middle (PowerPoint).
+
+## 5. Sessions (dot 1791735216 §5)
+
+- A handle session **fixes at its start** the box, the anchor candidates, the centre and the selection's units; frames never recompute the box.
+- **Option and Shift are read live**, on every move and on the release (the release event's modifiers decide the committed result), so pressing or letting go of Option mid-drag switches the anchor at once, as in Illustrator.
+- **Undo during a mouse drag** (moving the inside, or a handle) is ignored until the release, as the selection's drag is today (interaction waits); Esc, a tool change, a view change, playback and the other cancel paths end it with nothing written. (Keyboard runs: undo ends the run, package 1.)
+
+## 6. One hit rule for cursor, drawing and press (dot 1791735216 §6)
+
+- `boxHit(at)` with one reach in screen pixels serves the press (§2), the **hover cursor** and the hot handle's drawing. Hovering needs an input path: interaction gains `pointerHover(at)` (no button held), called by the bench on canvas moves when no gesture runs; it only updates what is hot.
+- The cursor table (`cursor/`) gains the box's rows: the inside — move; corners — diagonal resize; edges — horizontal / vertical resize; the rotation handle — a rotate cursor.
 
 ## Not now
 
@@ -36,5 +49,6 @@ The box and its handles are drawn from interaction's preview (a new `selectionBo
 
 ## Tests
 
-- Interaction: the box's bounds for a selection (lines, points, curved handles); handles absent on a zero-length axis; the press order — a handle wins over the inside, a picked item over the inside, the inside over a marquee, the margin in screen pixels the same at two zooms; a corner drag scales proportionally about the opposite corner, Option about the centre; an edge drag scales one axis; the rotation handle rotates about the centre, Shift in 15° steps; crossing over mirrors; a factor near 0 is held; each drag one operation and one undo step, nothing written before release; Esc / a tool change / undo during a handle drag write nothing; a marquee-selected part moves as selected, never grown.
-- Bench: the box and handles drawn with V / A and a selection, not in playback or with Move picture; the cursor over each handle; dragging the inside of the box moves the selection in one undo step; feature-off: without the inside rule, the inside-drag test fails.
+- Core: `selectionBounds` gives exact Bézier extrema (a curve whose control points stick out further than the curve), counts hidden selected lines and handle tips, never grows to the group; `preview` returns the same geometry `editIn` then commits (an end point alone with a neighbouring curve, a linked point, a mirrored pair, a smooth join), and leaves the document, history and autosave untouched.
+- Interaction: the box's bounds for a selection (lines, points, curved handles); handles absent per axis (zero width, zero height, both); the press order — a handle wins over the inside, a picked item over the inside, the inside over a marquee, the margin in screen pixels the same at two zooms; a corner drag scales proportionally about the opposite corner (s by the formula), Option about the centre, live (pressed and released mid-drag); a press off the handle does not jump; an edge drag scales one axis; corner through the anchor is a 180° turn, an edge through it a mirror; a factor near 0 is held and core accepts it; the rotation handle rotates about the centre, Shift in 15° steps, continuously past ±180°, the angle kept at the centre; the preview's geometry equals the committed one; each drag one operation and one undo step, nothing written before release; Esc / a tool change during a handle drag write nothing and a late release writes nothing; undo during a mouse drag is ignored until the release; Shift / Option inside the box start the add / remove marquee; A on a point inside the box edits the point; a marquee-selected part moves as selected, never grown.
+- Bench: the box and handles drawn with V / A and a selection, not in playback, restoring or with Move picture (and not hit there); hovering updates the cursor by the same hit rule as pressing; the cursor over each handle; dragging the inside of the box moves the selection in one undo step; feature-off: without the inside rule, the inside-drag test fails.
