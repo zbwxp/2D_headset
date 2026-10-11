@@ -54,14 +54,15 @@ Today `loggedFor(readOnly)` refuses every edit, undo and redo while posing (dot 
 |---|---|
 | Esc | drag cancelled; pose and drawing unchanged |
 | right click, or a right press | drag cancelled |
-| pointercancel, window blur, a new press of the same pointer | drag cancelled |
+| pointercancel, window blur, a new press of the same pointer — in this App or **in another App on the page** | drag cancelled |
 | a slider or number field changes the pose | drag cancelled first, then the pose changes (a target belongs to one pose) |
 | Leave playback | drag cancelled, then playback left |
 | the App unmounts | drag cancelled |
 | the drawing changed since the press (another App's edit, undo, redo or Open) | detected at release: drag cancelled, nothing written |
 | release | one `correct` edit (§3) |
 
-- The drag uses the bench's existing single gesture slot (`gesture.current`, one cancel path; dot 1791552803), so a playback drag and any other gesture never coexist.
+- The drag uses the bench's existing single gesture slot (`gesture.current`, one cancel path; dot 1791552803), so a playback drag and any other gesture never coexist within an App.
+- **Across Apps** (dot 1791696787): `gesture.current` is one per App, so a new press of the same pointer in another App would not reach this App's `onDown`, and this App's window `pointerup` listener would still commit on that press's release. So every gesture also listens on the window, in the capture phase, for `pointerdown` of its own pointer, and cancels itself there. This is in the shared gesture code, so editing gestures get it too; it fixes an existing gap of the same kind as ledger row 11, not a playback-only rule.
 - **Refusals:** the refusal of the `correct` edit (any code: `correction-*`, `locked`, `pose-not-finite`, `coordinates-not-finite`) is shown in the status line in red, with names (`withNames`), and as a red cross on each object it names, drawn on the posed drawing. It stays until the next press, pose change or leaving playback. Nothing else changes (core published nothing).
 
 ## 6. Tests (bench, jsdom, through the App as a user drives it)
@@ -73,7 +74,8 @@ Each success test is also run with its feature switched off and must fail then (
 - **A move case:** a point equal in front and side dragged at yaw 45 → the side view's point moved (read after leaving playback).
 - **Not on a line:** at a view and inside a cell, a press starts no drag and no edit; the status says why.
 - **Off-centre press:** a press 6 screen px from the point and a 20-px drag → the target is the point's position + 20 px, not the pointer.
-- **Hidden and covered:** a point on a hidden line next to a visible one, pressed nearer the hidden one → the visible one is picked; a point whose lines are all hidden (a hidden layer) is never picked.
+- **Hidden and covered:** a point on a hidden line next to a visible one, pressed nearer the hidden one → the visible one is picked; a point whose lines are all hidden (a hidden layer) is never picked. Only the existing visibility flags are used, no fill occlusion or pixel hit testing (dot 1791696787).
+- **Same pointer, two Apps:** A drags in playback, the same pointer presses in B, then releases → A's drag is cancelled at B's press and writes nothing; B's own gesture alone acts; a late release delivered after that writes nothing for A.
 - **The drawing changes during the drag:** a second App on the page edits (and, separately, opens a file) between press and release → the release writes nothing, the log says why; the other App's change stands.
 - **Refusal:** a locked line's point dragged → `locked` in red in the status, a cross on the line, nothing published, the cross gone after the next press.
 - **The gate, through the wrapper's real calls** (a test hook `window.bench.edit` runs a callback through the App's own logged wrapper; dot 1791696773: not only disabled buttons):
