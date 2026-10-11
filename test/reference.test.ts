@@ -107,6 +107,33 @@ describe('reference pictures', () => {
     expect(open(JSON.stringify(without)).in('view:0,0').references()[0]!.slots).toEqual([])
   })
 
+  it('flipped (§9): set and undone in one step; a file keeps it; a file without it opens unmirrored; slots unchanged by it', () => {
+    const d = doc()
+    d.edit(e => e.placeReference(img('r1', { slots: [{ name: 's', placement: { x: 1, y: 2, scale: 3, angle: 4 } }] })))
+    expect(d.in('view:0,0').references()[0]!.flipped).toBe(false)
+    d.edit(e => e.setReference('r1', { flipped: true, angle: -30 }))
+    expect(d.in('view:0,0').references()[0]).toMatchObject({ flipped: true, angle: -30, slots: [{ name: 's', placement: { x: 1, y: 2, scale: 3, angle: 4 } }] })
+    const text = save(d)
+    expect(open(text).in('view:0,0').references()[0]!.flipped).toBe(true)
+    d.undo()
+    expect(d.in('view:0,0').references()[0]).toMatchObject({ flipped: false, angle: 0 })
+    const without = JSON.parse(text); delete without.document.reference.images[0].flipped
+    expect(open(JSON.stringify(without)).in('view:0,0').references()[0]!.flipped).toBe(false)
+    expect(drawing(open(text))).toBe(drawing(d)) // the drawing itself untouched
+  })
+
+  it('flipped must be true or false: refused when placing, in setReference and in a file', () => {
+    const d = doc()
+    d.edit(e => e.placeReference(img('r1')))
+    for (const v of [null, 0, 1, 'true', {}]) {
+      expect([v, code(() => d.edit(e => e.placeReference(img('n', { flipped: v as never }))))]).toEqual([v, 'reference-bad-value'])
+      expect([v, code(() => d.edit(e => e.setReference('r1', { flipped: v as never })))]).toEqual([v, 'reference-bad-value'])
+    }
+    expect(code(() => d.edit(e => e.setReference('r1', { flipped: undefined })))).toBe('reference-bad-value')
+    const file = JSON.parse(save(d)); file.document.reference.images[0].flipped = 'yes'
+    expect(() => open(JSON.stringify(file))).toThrow(/open-failed: reference: reference-bad-value/)
+  })
+
   it('bad slots are refused, in an edit and in a file: null, an object, a bad slot, a scale whose drawn size overflows, too many', () => {
     const d = doc()
     d.edit(e => e.placeReference(img('r1', { width: 16384 })))

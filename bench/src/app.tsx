@@ -266,7 +266,7 @@ export function App() {
   /** A one-shot panel command: straight to core, then interaction checks its unfinished operations (doc 22 §3.5). */
   /** The picture a binding names, if the drawing, the counter, the view's list and its source still hold. */
   const refNow = (b: RefBind | null) => (b && b.core === core && b.gen === refGen.current ? core.in(shown).references().find(r => r.id === b.id && r.src === b.src) : undefined)
-  const SETTABLE = ['x', 'y', 'scale', 'angle', 'opacity', 'visible'] as const
+  const SETTABLE = ['x', 'y', 'scale', 'angle', 'opacity', 'visible', 'flipped'] as const
   const sameBase = (a: ReferenceImage, b: ReferenceImage) => SETTABLE.every(k => a[k] === b[k])
   /** A live change of one picture, drawn but not written (§8.1). */
   const previewRef = (r: ReferenceImage, props: ReferenceProps) => {
@@ -284,6 +284,14 @@ export function App() {
     run(x => x.setReference(p.id, p.props))
   }
   const cancelPreview = () => { previewNow.current = null; setRefPreview(null) }
+  /** Mirror ⇆ (§9): what is seen, flipped left-right about the picture's centre — flipped toggled, angle
+   *  negated. A preview still open ends first by its one ending; the values are then read from the
+   *  document, so a late blur or pointerup of that preview finds nothing to write (dot 1791717133). */
+  const mirrorRef = (id: string) => {
+    commitPreview()
+    const r = core.in(shown).references().find(x => x.id === id)
+    if (r) run(x => x.setReference(id, { flipped: !r.flipped, angle: 0 - r.angle }))
+  }
   const run = (fn: (e: Editor) => void) => {
     // the outcome goes to interaction, the one owner of feedback (dot 1791551067)
     try { logged(core).editIn(env.current.view, fn); ix.outcome(); return true }
@@ -717,6 +725,7 @@ export function App() {
                   onChange={e => previewRef(r, { [k]: fromSlider(Number(e.target.value)) })} onPointerUp={commitPreview} onKeyUp={commitPreview} onBlur={commitPreview} />
               </label>
             })}
+            {B('Mirror ⇆', () => mirrorRef(r.id))}
             {B('Remove', () => run(x => x.removeReference(r.id)))}
             <div data-slots={r.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 2, width: '100%' }}>
               {r.slots.map((sl, k) => <span key={k} data-slot={k} style={{ border: '1px solid #ccc', padding: '0 3px' }}>
@@ -807,7 +816,8 @@ export function App() {
             const r = refPreview && refPreview.id === r0.id && refNow(refPreview) ? { ...r0, ...refPreview.props } : r0
             const w = r.width * r.scale, h = r.height * r.scale
             return <image key={r.id} data-reference={r.id} href={r.src} x={r.x - w / 2} y={r.y - h / 2} width={w} height={h} opacity={r.opacity} preserveAspectRatio="none"
-              transform={`rotate(${r.angle} ${r.x} ${r.y})`} onError={() => { const at = core; setRefBroken(b => (b.some(x => x.core === at && x.id === r.id && x.src === r.src) ? b : [...b, { core: at, id: r.id, src: r.src }])) }} />
+              // the picture's own left-right mirror first, then its rotation about the centre (SVG applies the list right to left)
+              transform={`rotate(${r.angle} ${r.x} ${r.y})${r.flipped ? ` translate(${r.x} ${r.y}) scale(-1 1) translate(${-r.x} ${-r.y})` : ''}`} onError={() => { const at = core; setRefBroken(b => (b.some(x => x.core === at && x.id === r.id && x.src === r.src) ? b : [...b, { core: at, id: r.id, src: r.src }])) }} />
           })}
           <line x1={s.axis} x2={s.axis} y1={box.y - 1e4} y2={box.y + 1e4} stroke="#9cf" strokeDasharray={`${6 * px} ${4 * px}`} strokeWidth={px} />
           {g.fills.filter(f => f.visible).map(f => <path key={f.id} d={f.parts.map((p, i) => (i ? path(p.curve).replace(/^M[^C]*/, '') : path(p.curve))).join(' ') + ' Z'}

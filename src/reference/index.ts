@@ -22,11 +22,13 @@ export interface ReferenceImage {
   readonly angle: number
   readonly opacity: number
   readonly visible: boolean
+  /** Drawn mirrored left-right in its own frame, before its rotation (§9; bowen 1791716942). */
+  readonly flipped: boolean
   /** Saved placements (v2's 存 / 调出 / ×; docs/reference-images-plan.md §8.3): at most 1000. */
   readonly slots: readonly ReferenceSlot[]
 }
-/** What placing takes: a picture whose slots may be left out (none). */
-export type ReferenceInput = Omit<ReferenceImage, 'slots'> & { readonly slots?: readonly ReferenceSlot[] }
+/** What placing takes: a picture whose slots may be left out (none) and whose `flipped` may be left out (not mirrored). */
+export type ReferenceInput = Omit<ReferenceImage, 'slots' | 'flipped'> & { readonly slots?: readonly ReferenceSlot[]; readonly flipped?: boolean }
 export interface Placement { readonly x: number; readonly y: number; readonly scale: number; readonly angle: number }
 export interface ReferenceSlot { readonly name: string; readonly placement: Placement | null }
 export type ReferenceProps = Partial<Omit<ReferenceImage, 'id' | 'view' | 'src' | 'width' | 'height'>>
@@ -69,9 +71,11 @@ export function check(v: unknown): ReferenceImage {
   if (!(scale > 0) || !Number.isFinite(w * scale) || !Number.isFinite(h * scale)) refuse('reference-bad-value', 'scale must be positive and give a finite size')
   if ((i.opacity as number) < 0 || (i.opacity as number) > 1) refuse('reference-bad-value', 'opacity must be within 0–1')
   if (typeof i.visible !== 'boolean') refuse('reference-bad-value', 'visible must be true or false')
+  // flipped: missing is not mirrored (an optional field of version 5); present must be true or false (§9)
+  if (i.flipped !== undefined && typeof i.flipped !== 'boolean') refuse('reference-bad-value', 'flipped must be true or false')
   // slots: missing is none (an optional field of version 5); present must be a list of good slots, copied (dot 1791703489)
   const slots = i.slots === undefined ? [] : checkSlots(i.slots, w, h)
-  return { id: i.id as string, view: i.view as string, src: src as string, width: w, height: h, x: i.x as number, y: i.y as number, scale, angle: i.angle as number, opacity: i.opacity as number, visible: i.visible as boolean, slots }
+  return { id: i.id as string, view: i.view as string, src: src as string, width: w, height: h, x: i.x as number, y: i.y as number, scale, angle: i.angle as number, opacity: i.opacity as number, visible: i.visible as boolean, flipped: i.flipped === true, slots }
 }
 
 function checkSlots(v: unknown, w: number, h: number): ReferenceSlot[] {
@@ -103,7 +107,9 @@ export function set(s: ReferenceState, id: string, props: ReferenceProps) {
   if (i < 0) refuse('reference-unknown', `no reference image ${JSON.stringify(id)}`)
   const was = S(s).images[i]!, p = (props ?? {}) as Record<string, unknown>
   const pick = <K extends keyof ReferenceImage>(k: K) => (Object.hasOwn(p, k) ? p[k] : was[k])
-  S(s).images[i] = check({ ...was, x: pick('x'), y: pick('y'), scale: pick('scale'), angle: pick('angle'), opacity: pick('opacity'), visible: pick('visible'), slots: pick('slots') })
+  // in a change, flipped given must be true or false: an explicit undefined is not "leave it" nor "unmirror" (§9)
+  if (Object.hasOwn(p, 'flipped') && typeof p.flipped !== 'boolean') refuse('reference-bad-value', 'flipped must be true or false')
+  S(s).images[i] = check({ ...was, x: pick('x'), y: pick('y'), scale: pick('scale'), angle: pick('angle'), opacity: pick('opacity'), visible: pick('visible'), flipped: pick('flipped'), slots: pick('slots') })
 }
 export function remove(s: ReferenceState, id: string) {
   const i = S(s).images.findIndex(x => x.id === id)

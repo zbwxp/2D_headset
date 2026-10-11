@@ -184,3 +184,105 @@ describe('position slots in the panel (§8.3)', () => {
     expect([slots().querySelector('[data-rename]'), t.pic().slots[0]!.name]).toEqual([null, ''])
   })
 })
+
+// Mirror ⇆ (§9; bowen 1791716942; dot 1791717133): what is seen, mirrored about the picture's centre
+describe('mirror a picture left-right (§9)', () => {
+  /** The image's drawn transform as a matrix [a b c d e f], composed in list order (SVG semantics). */
+  function drawnMatrix(el: Element) {
+    let M = [1, 0, 0, 1, 0, 0]
+    const mul = (A: number[], B: number[]) => [A[0]! * B[0]! + A[2]! * B[1]!, A[1]! * B[0]! + A[3]! * B[1]!, A[0]! * B[2]! + A[2]! * B[3]!, A[1]! * B[2]! + A[3]! * B[3]!, A[0]! * B[4]! + A[2]! * B[5]! + A[4]!, A[1]! * B[4]! + A[3]! * B[5]! + A[5]!]
+    for (const [, f, args] of (el.getAttribute('transform') ?? '').matchAll(/(\w+)\(([^)]*)\)/g)) {
+      const n = args!.trim().split(/[\s,]+/).map(Number)
+      const T = (x: number, y: number) => [1, 0, 0, 1, x, y]
+      if (f === 'translate') M = mul(M, T(n[0]!, n[1] ?? 0))
+      else if (f === 'scale') M = mul(M, [n[0]!, 0, 0, n[1] ?? n[0]!, 0, 0])
+      else if (f === 'rotate') { const a = n[0]! * Math.PI / 180, R = [Math.cos(a), Math.sin(a), -Math.sin(a), Math.cos(a), 0, 0]; M = n.length === 3 ? mul(mul(mul(M, T(n[1]!, n[2]!)), R), T(-n[1]!, -n[2]!)) : mul(M, R) }
+      else throw new Error(`unexpected transform ${f}`)
+    }
+    return M
+  }
+  /** Where marks at fractions (u, v) of the picture land on the canvas. */
+  const marks = (host: HTMLElement, id: string) => {
+    const el = host.querySelector(`[data-reference="${id}"]`)!, M = drawnMatrix(el)
+    const x0 = Number(el.getAttribute('x')), y0 = Number(el.getAttribute('y')), w = Number(el.getAttribute('width')), h = Number(el.getAttribute('height'))
+    return [[0, 0], [1, 0], [0.8, 0.3], [0.1, 0.9]].map(([u, v]) => { const px = x0 + u! * w, py = y0 + v! * h; return { x: M[0]! * px + M[2]! * py + M[4]!, y: M[1]! * px + M[3]! * py + M[5]! } })
+  }
+
+  it('a lopsided picture tilted 30°: after Mirror every mark is reflected about the centre\'s vertical line, its height kept; twice gives back the picture exactly; one undo step', async () => {
+    const t = await setup()
+    await act(async () => { setValue(t.field('x'), '40'); key('Enter', t.field('x')) })
+    await act(async () => { setValue(t.field('angle'), '30'); key('Enter', t.field('angle')) })
+    const before = marks(t.host, t.id), cx = t.pic().x, text = save(bench().core)
+    await act(async () => { t.button('Mirror ⇆', t.host.querySelector(`[data-ref="${t.id}"]`)!).click() })
+    expect(t.pic()).toMatchObject({ flipped: true, angle: -30, x: 40 })
+    const after = marks(t.host, t.id)
+    after.forEach((p, i) => { expect(p.x).toBeCloseTo(2 * cx - before[i]!.x, 6); expect(p.y).toBeCloseTo(before[i]!.y, 6) })
+    await act(async () => { t.button('Undo').click() })
+    expect(save(bench().core)).toBe(text)
+    await act(async () => { t.button('Mirror ⇆', t.host.querySelector(`[data-ref="${t.id}"]`)!).click() }); await act(async () => { t.button('Mirror ⇆', t.host.querySelector(`[data-ref="${t.id}"]`)!).click() })
+    expect([t.pic().flipped, t.pic().angle, marks(t.host, t.id)]).toEqual([false, 30, before])
+  })
+
+  it('Mirror while the angle field is previewing: the preview ends first (written), then the mirror reads the document; a late blur or pointerup writes nothing back (dot 1791717133)', async () => {
+    const t = await setup()
+    await act(async () => { setValue(t.field('angle'), '30'); key('Enter', t.field('angle')) })
+    await act(async () => { setValue(t.field('angle'), '45') }) // previewing, not written
+    expect(t.pic().angle).toBe(30)
+    await act(async () => { t.button('Mirror ⇆', t.host.querySelector(`[data-ref="${t.id}"]`)!).click() })
+    expect(t.pic()).toMatchObject({ angle: -45, flipped: true })
+    const text = save(bench().core)
+    await act(async () => { t.field('angle').dispatchEvent(new FocusEvent('focusout', { bubbles: true })); t.slider('angle').dispatchEvent(new MouseEvent('pointerup', { bubbles: true })) })
+    expect(save(bench().core)).toBe(text)
+    await act(async () => { setValue(t.slider('angle'), '60') }) // a slider preview, then Mirror, then its late pointerup
+    await act(async () => { t.button('Mirror ⇆', t.host.querySelector(`[data-ref="${t.id}"]`)!).click() })
+    await act(async () => { t.slider('angle').dispatchEvent(new MouseEvent('pointerup', { bubbles: true })) })
+    expect(t.pic()).toMatchObject({ angle: -60, flipped: false })
+    await act(async () => { t.button('Undo').click() }) // the mirror, one step
+    expect(t.pic()).toMatchObject({ angle: 60, flipped: true })
+  })
+
+  it('a preview whose picture was mirrored underneath is dropped, not written (flipped is part of the base)', async () => {
+    const t = await setup()
+    await act(async () => { setValue(t.field('angle'), '45') })
+    await act(async () => { (bench() as unknown as { edit(f: (e: import('../../src').Editor) => void): void }).edit(e => e.setReference(t.id, { flipped: true })) })
+    await act(async () => { key('Enter', t.field('angle')) })
+    expect(t.pic()).toMatchObject({ angle: 0, flipped: true })
+  })
+
+  it('a slot saved, then Mirror, then recalled: the placement comes back, the mirror stays (dot 1791717144)', async () => {
+    const t = await setup()
+    const row = t.host.querySelector(`[data-ref="${t.id}"]`)!, slots = () => t.host.querySelector(`[data-slots="${t.id}"]`)!
+    await act(async () => { setValue(t.field('angle'), '30'); key('Enter', t.field('angle')) })
+    await act(async () => { setValue(t.field('x'), '25'); key('Enter', t.field('x')) })
+    await act(async () => { t.button('＋ 加一格', slots()).click() })
+    await act(async () => { t.button('存', slots()).click() })
+    await act(async () => { t.button('Mirror ⇆', row).click() })
+    await act(async () => { setValue(t.field('x'), '-80'); key('Enter', t.field('x')) })
+    await act(async () => { t.button('调出', slots()).click() })
+    expect(t.pic()).toMatchObject({ x: 25, angle: 30, flipped: true })
+  })
+
+  it('Move picture picks the mirrored, tilted picture by its new rectangle: a point inside only the old one misses, a point inside only the new one hits (dot 1791717144)', async () => {
+    const t = await setup() // 400 × 300 at scale 1, centred at (0, 0)
+    await act(async () => { setValue(t.field('angle'), '30'); key('Enter', t.field('angle')) })
+    // (190, 140) of the picture's own frame, turned +30° and −30°: inside the 30° picture only, and the −30° one only
+    const P = { x: 94.545, y: 216.244 }, Q = { x: 234.545, y: 26.244 }
+    await t.moveMode(true)
+    const drag = async (at: { x: number; y: number }) => { await act(async () => { t.svg.dispatchEvent(pe('pointerdown', at.x, at.y, 1)); window.dispatchEvent(pe('pointermove', at.x + 10, at.y, 1)); window.dispatchEvent(pe('pointerup', at.x + 10, at.y, 0)) }) }
+    await drag(P)
+    expect(t.pic().x).toBeCloseTo(10, 9)
+    await act(async () => { t.button('Mirror ⇆', t.host.querySelector(`[data-ref="${t.id}"]`)!).click() })
+    // the picture moved by 10: its rectangle moved too
+    await drag({ x: P.x + 10, y: P.y })
+    expect(t.pic().x).toBeCloseTo(10, 9)
+    await drag({ x: Q.x + 10, y: Q.y })
+    expect(t.pic()).toMatchObject({ angle: -30, flipped: true })
+    expect(t.pic().x).toBeCloseTo(20, 9)
+  })
+
+  it('Mirror is unavailable in playback', async () => {
+    const t = await setup()
+    await act(async () => { t.button('Playback').click() })
+    expect(t.button('Mirror ⇆', t.host.querySelector(`[data-ref="${t.id}"]`)!).matches(':disabled')).toBe(true)
+  })
+})
