@@ -59,33 +59,40 @@ export interface Options {
 export interface Autosave {
   /** Restore, then start saving; resolves when restoring has ended (whatever its outcome). */
   start(): Promise<void>
-  /** The drawing changed: save its current text, in order. */
+  /** The drawing may have changed: a new text is saved, in order; the same text again does nothing. */
   want(): void
+  /** Try the newest text again after a failure (an explicit retry, not a re-render). */
+  retry(): void
   status(): Status
-  /** Whether the newest text is not yet on disk (for the leave-page prompt). */
+  /** Whether the newest text is not on disk (for the leave-page prompt); with autosave off, whether anything changed since. */
   unsaved(): boolean
-  /** Stop: no restore applied, no new saves taken, no further writes. */
+  /** Take no new saves. Text already asked for is still written (the page's next instance waits for it). */
   dispose(): void
 }
 
 export const CURRENT = 'current'
 
-// one write queue per page (dot 1791704242): the newest instance owns the store; an older one stops
-// writing once replaced, and the new one waits for the old one's write in flight
+// one writer per page (dot 1791704242, 1791705088, 1791705181): a new instance waits until the previous
+// one's queue has drained (its newest text written, or failed) before it reads or writes; the previous
+// one takes no new saves once replaced. So the store is never read before a pending newer text lands,
+// and never written by two instances at once.
 let owner: object | null = null
-let inFlight: Promise<unknown> = Promise.resolve()
+let previousIdle: () => Promise<void> = () => Promise.resolve()
 
 export function createAutosave(store: Store, o: Options): Autosave {
   const me = {}
+  const before = previousIdle
   owner = me
   let state: State = 'restoring', error: string | undefined, notice: string | undefined
   let disposed = false, writing = false
-  /** The text last durably written, and the newest text asked for. */
-  let disk: string | undefined, wanted: string | undefined
-  // the bench re-renders on every notice and asks to save on every render: notify only a real change
-  const set = (s: State, e?: string) => { if (s === state && e === error) return; state = s; error = e; if (!disposed) o.changed() }
-  const mine = () => !disposed && owner === me
-
+  /** The text last durably written; the newest text asked for; with autosave off, the text when it went off. */
+  let disk: string | undefined, wanted: string | undefined, offBase: string | undefined
+  let idleWaiters: (() => void)[] = []
+  const idle = () => (!writing && (wanted === undefined || wanted === disk || error !== undefined) ? Promise.resolve() : new Promise<void>(r => { idleWaiters.push(r) }))
+  previousIdle = idle
+  const accepting = () => !disposed && owner === me
+  const notify = () => { if (!disposed) o.changed() }
+  const set = (s: State, e?: string) => { if (s === state && e === error) return; state = s; error = e; notify() }
   const settle = () => {
     if (state === 'off' || state === 'restoring') return
     if (error !== undefined) set('failed', error)
@@ -93,63 +100,70 @@ export function createAutosave(store: Store, o: Options): Autosave {
   }
   const pump = async () => {
     if (writing) return
-    // after every write, the newest wanted text is compared again with the disk (A → B → undo A writes A)
-    while (mine() && wanted !== undefined && wanted !== disk) {
+    // after every write, the newest wanted text is compared again with the disk (A → B → undo A writes A).
+    // A replaced or disposed instance still finishes what it was asked for; the next one waits for it.
+    while (wanted !== undefined && wanted !== disk) {
       const text = wanted
-      writing = true; error = undefined; settle()
+      writing = true; settle()
       try {
-        await inFlight
-        if (!mine()) break
-        const w = store.put(CURRENT, text)
-        inFlight = w.catch(() => undefined)
-        await w
+        await store.put(CURRENT, text)
         disk = text
+        error = undefined
       } catch (err) {
-        // a failure keeps the baseline and the newest text; the next change or write retries
+        // a failure keeps the baseline, the newest text and the error until a write succeeds; only a
+        // new text or an explicit retry tries again, never a mere re-render (dot 1791705120)
         writing = false
-        error = (err as Error)?.message ?? String(err)
-        settle()
-        return
+        set('failed', (err as Error)?.message ?? String(err))
+        break
       }
       writing = false
     }
     writing = false
     settle()
+    if (!writing) { const w = idleWaiters; idleWaiters = []; for (const r of w) r() }
   }
+  const off = (why: string) => { if (accepting()) { offBase = o.current(); state = 'off'; error = why; notify() } }
 
   return {
     async start() {
-      const off = (why: string) => { if (mine()) { state = 'off'; error = why; o.changed() } }
+      await before() // the previous instance's newest text lands first (dot 1791705181)
+      if (!accepting()) return // unmounted or replaced: a late restore changes nothing
       let stored: string | undefined
       try { stored = await store.get(CURRENT) } catch (err) { off(`could not read the saved drawing: ${(err as Error)?.message ?? err}`); return }
-      if (!mine()) return // unmounted or replaced: a late restore changes nothing
+      if (!accepting()) return
       if (stored !== undefined) {
         try { o.apply(stored); disk = stored }
         catch (err) {
           // never overwritten silently: backed up first; if the backup fails, autosave stays off
           const key = `unreadable-${(o.now ?? Date.now)()}`
           try { await store.put(key, stored) } catch (e) { off(`the saved drawing does not open and could not be backed up: ${(e as Error)?.message ?? e}`); return }
-          if (!mine()) return
+          if (!accepting()) return
           notice = `the saved drawing did not open (${(err as Error)?.message ?? err}); it was kept as ${key}`
         }
       }
-      state = 'saved'; o.changed()
+      state = 'saved'; notify()
       // restoring has ended here; the first save runs on in the queue
       wanted = o.current()
       void pump()
     },
     want() {
-      if (!mine() || state === 'restoring' || state === 'off') return
+      if (!accepting() || state === 'restoring' || state === 'off') return
       const text = o.current()
-      if (text === wanted && (error === undefined || writing)) return // nothing new to ask for
+      if (text === wanted) return // nothing new: a re-render never retries a failure
       wanted = text
       void pump()
     },
+    retry() { if (accepting() && state === 'failed') void pump() },
     status: () => ({ state, ...(error !== undefined ? { error } : {}), ...(notice !== undefined ? { notice } : {}) }),
-    unsaved: () => state !== 'off' && state !== 'restoring' && (writing || (wanted !== undefined && wanted !== disk) || error !== undefined),
+    unsaved() {
+      if (state === 'restoring') return false
+      // autosave off is not "saved": anything drawn since it went off is unsaved (dot 1791705120)
+      if (state === 'off') return offBase !== undefined && o.current() !== offBase
+      return writing || (wanted !== undefined && wanted !== disk)
+    },
     dispose() { disposed = true; if (owner === me) owner = null },
   }
 }
 
-/** @internal for tests: forget the page's owner and in-flight write. */
-export function resetPage() { owner = null; inFlight = Promise.resolve() }
+/** @internal for tests: forget the page's writer. */
+export function resetPage() { owner = null; previousIdle = () => Promise.resolve() }

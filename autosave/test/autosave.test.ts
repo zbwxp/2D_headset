@@ -120,4 +120,78 @@ describe('saving in order', () => {
     second.d.text = 'E'; b.want(); await tick()
     expect(s.writes.map(w => w.value)).toEqual(['E'])
   })
+
+  it('a new instance started while the old one writes B reads only after B lands: it restores B and never writes A back (dot 1791705088)', async () => {
+    const s = slowStore({ [CURRENT]: 'A' }), first = drawing()
+    const a = createAutosave(s.store, first.options)
+    await a.start()
+    first.d.text = 'B'; a.want(); await tick()
+    expect(s.writes.map(w => w.value)).toEqual(['B']) // B in flight, A on disk
+    const second = drawing(), b = createAutosave(s.store, second.options)
+    const started = b.start(); await tick()
+    expect(second.d.applied).toEqual([]) // not read yet
+    s.writes.shift()!.done(); await started; await tick()
+    expect([second.d.applied, s.writes.length, s.data[CURRENT]]).toEqual([['B'], 0, 'B'])
+  })
+
+  it('handover with B being written and C queued: the new instance reads only after C lands, restores C and writes nothing (dot 1791705181)', async () => {
+    const s = slowStore({ [CURRENT]: 'A' }), first = drawing()
+    const a = createAutosave(s.store, first.options)
+    await a.start()
+    first.d.text = 'B'; a.want(); await tick()
+    first.d.text = 'C'; a.want() // queued behind B
+    a.dispose()
+    const second = drawing(), b = createAutosave(s.store, second.options)
+    const started = b.start(); await tick()
+    expect(second.d.applied).toEqual([])
+    s.writes.shift()!.done(); await tick() // B lands; C is written next by the old queue
+    expect(s.writes.map(w => w.value)).toEqual(['C'])
+    expect(second.d.applied).toEqual([])
+    s.writes.shift()!.done(); await started; await tick()
+    expect([second.d.applied, s.writes.length, s.data[CURRENT], b.status().state]).toEqual([['C'], 0, 'C', 'saved'])
+  })
+})
+
+describe('failure and autosave off (dot 1791705120)', () => {
+  it('a write that keeps failing is not retried by asking with the same text; the error stays until a write succeeds; retry or a new text tries again', async () => {
+    let attempts = 0, fail = true
+    const data: Record<string, string> = { [CURRENT]: 'A' }
+    const store: Store = { async get(k) { return data[k] }, async put(k, v) { attempts++; if (fail) throw new Error('quota'); data[k] = v } }
+    const { d, options } = drawing()
+    const a = createAutosave(store, options)
+    await a.start()
+    d.text = 'B'; a.want(); await tick()
+    expect([a.status(), attempts]).toEqual([{ state: 'failed', error: 'quota' }, 1])
+    for (let k = 0; k < 5; k++) a.want() // re-renders
+    await tick()
+    expect([attempts, a.status().state, a.unsaved()]).toEqual([1, 'failed', true])
+    a.retry(); await tick()
+    expect([attempts, a.status().state]).toEqual([2, 'failed'])
+    fail = false
+    d.text = 'C'; a.want(); await tick()
+    expect([attempts, a.status().state, data[CURRENT]]).toEqual([3, 'saved', 'C'])
+  })
+
+  it('autosave off is not saved: after a failed read, anything drawn since asks before leaving', async () => {
+    const s = slowStore({ [CURRENT]: 'A' }); s.failRead('blocked')
+    const { d, options } = drawing('start')
+    const a = createAutosave(s.store, options)
+    await a.start()
+    expect([a.status().state, a.unsaved()]).toEqual(['off', false])
+    d.text = 'drawn'
+    expect(a.unsaved()).toBe(true)
+    expect(s.writes.length).toBe(0)
+  })
+
+  it('while a retry is in flight the error stays shown; it clears only when the write lands', async () => {
+    const s = slowStore({ [CURRENT]: 'A' }), { d, options } = drawing()
+    const a = createAutosave(s.store, options)
+    await a.start()
+    d.text = 'B'; a.want(); await tick()
+    s.writes.shift()!.fail('quota'); await tick()
+    a.retry(); await tick()
+    expect([s.writes.length, a.status()]).toEqual([1, { state: 'failed', error: 'quota' }])
+    s.writes.shift()!.done(); await tick()
+    expect(a.status()).toEqual({ state: 'saved' })
+  })
 })

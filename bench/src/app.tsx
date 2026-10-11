@@ -747,7 +747,7 @@ export function App() {
           if (!st || st.state === 'restoring') return 'autosave: restoring…'
           const head = st.state === 'saved' ? 'autosave: saved' : st.state === 'saving' ? 'autosave: saving…' : st.state === 'failed' ? `✗ autosave: not saved (${st.error})` : `✗ autosave off: ${st.error}`
           return st.notice ? `${head} · ${st.notice}` : head
-        })()}</div>
+        })()}{saver.current?.status().state === 'failed' && <> <button onClick={() => saver.current?.retry()}>Retry</button></>}</div>
         <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
           {B('Save', () => {
             const a = document.createElement('a')
