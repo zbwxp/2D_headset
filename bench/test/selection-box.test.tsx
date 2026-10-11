@@ -83,4 +83,36 @@ describe('the selection box in the bench', () => {
     expect([st.whiteSpace, st.height, st.overflow]).toEqual(['nowrap', '18px', 'hidden'])
     expect((t.host.querySelector('[data-testid="status"]')!.parentElement as HTMLElement).style.minWidth).toBe('0')
   })
+
+  it('one box, one extent: with V the selection box; with Move picture or the pen the same frame without handles (dot 1791737043, 1791737260)', async () => {
+    const t = await setup()
+    const frame = (sel: string) => { const r = t.host.querySelector(sel)!; return ['x', 'y', 'width', 'height'].map(a => Number(r.getAttribute(a))) }
+    expect([!!t.host.querySelector('[data-selection-box]'), !!t.host.querySelector('[data-selection-outline]')]).toEqual([true, false])
+    const box = frame('[data-selection-box] rect')
+    expect(box).toEqual([0, t.Y, 100, 100])
+    await act(async () => { (t.host.querySelector('[data-testid="move-picture"]') as HTMLInputElement).click() })
+    expect([!!t.host.querySelector('[data-selection-box]'), frame('[data-selection-outline]')]).toEqual([false, box])
+    await act(async () => { (t.host.querySelector('[data-testid="move-picture"]') as HTMLInputElement).click() })
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'p', bubbles: true })) })
+    expect([!!t.host.querySelector('[data-selection-box]'), frame('[data-selection-outline]'), t.host.querySelectorAll('[data-box-handle]').length]).toEqual([false, box, 0])
+  })
+
+  it('the cursor follows Shift held over the inside with the pointer still: the press would start a marquee, not a move', async () => {
+    const t = await setup()
+    await act(async () => { t.svg.dispatchEvent(pe('pointermove', 40, t.Y + 60, 0)) })
+    expect(t.svg.style.cursor).toBe('move')
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', shiftKey: true, bubbles: true })) })
+    expect(t.svg.style.cursor).not.toBe('move')
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Shift', bubbles: true })) })
+    expect(t.svg.style.cursor).toBe('move')
+  })
+
+  it('a handle drag draws the moved joins\' arcs too', async () => {
+    const t = await setup()
+    await act(async () => { bench().core.edit(e => e.join(`b${t.k}`, `h${t.k}`, `v${t.k}`, { mode: 'arc', radius: 10 })); bench().refresh() })
+    await act(async () => { t.svg.dispatchEvent(pe('pointerdown', 100, t.Y + 100, 1)); window.dispatchEvent(pe('pointermove', 150, t.Y + 150, 1)) })
+    expect(t.host.querySelectorAll('[data-transform-ghost-arc]').length).toBe(1)
+    await act(async () => { window.dispatchEvent(pe('pointerup', 150, t.Y + 150, 0)) })
+  })
 })
+

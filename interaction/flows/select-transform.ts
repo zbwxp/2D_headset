@@ -15,7 +15,7 @@ export interface SelectTransform extends Flow {
   pointerMove(at: Vec, mods?: Mods): void
   pointerUp(at: Vec, mods?: Mods): void
   /** The pointer moved with no button held: what it is over on the selection box (true if that changed). */
-  hover(at: Vec): boolean
+  hover(at: Vec, mods?: Mods): boolean
   pointerCancel(): void
   /** Start a selection box; `clear`: a click without dragging clears the selection (V / A). */
   startBox(at: Vec, mods: Mods, clear: boolean): void
@@ -121,12 +121,34 @@ export function selectTransform(ctx: Ctx): SelectTransform {
     mover.press(target, press)
   }
 
+  /**
+   * What a press at `at` does — one answer for the press, the hover cursor and the hot handle (plan §2, §6).
+   * The order: A's points and Bézier handles keep their priority (dot 1791735216); then a box handle, which wins
+   * over a line and over grabbing the inside (dot 1791733296); then what the tool picks, as today; then the inside
+   * of the box grabs the whole selection, unless Shift / Option ask for the marquee that adds / removes; else a marquee.
+   */
+  type PressHit = { kind: 'box'; handle: Exclude<ReturnType<typeof hitBox>, 'inside' | null>; b: Bounds } | { kind: 'item'; unit: Unit } | { kind: 'inside' } | { kind: 'marquee' }
+  const pressHit = (at: Vec, m: Mods): PressHit => {
+    const b = boxNow(), onBox = b ? hitBox(b, at, ctx.env.pixel()) : null
+    const direct = ctx.tool() === 'A' ? hitDirect(at) : undefined
+    const pointFirst = direct && (direct.kind === 'point' || direct.kind === 'handle')
+    if (!pointFirst && b && onBox && onBox !== 'inside') return { kind: 'box', handle: onBox, b }
+    const picked: Unit | undefined = ctx.tool() === 'V'
+      ? (() => { const line = ctx.hitLine(at); return line ? { kind: 'line' as const, id: line } : undefined })()
+      : direct
+    if (picked) return { kind: 'item', unit: picked }
+    if (onBox === 'inside' && !m.shift && !m.alt) return { kind: 'inside' }
+    return { kind: 'marquee' }
+  }
+
   /** What the last A / V press picked (a box or nothing: null); read by the app's name labels (docs/name-labels-plan.md). */
   let lastPress: Unit['kind'] | null = null
   return {
-    hover(at) {
+    hover(at, m = {}) {
       if (mover.running || box) return false
-      const b = boxNow(), now = b ? hitBox(b, at, ctx.env.pixel()) : null
+      // what a press here would do, so the cursor never promises another action (dot 1791737043)
+      const hit = boxNow() ? pressHit(at, m) : null
+      const now = hit?.kind === 'box' ? hit.handle : hit?.kind === 'inside' ? 'inside' : null
       if (now === hot) return false
       hot = now
       return true
@@ -144,19 +166,11 @@ export function selectTransform(ctx: Ctx): SelectTransform {
     pointerDown(at, m) {
       lastPress = null
       mods = { ...m }
-      // the order (docs/selection-box-plan.md §2): A's points and Bézier handles keep their priority (dot 1791735216);
-      // then a box handle, which wins over a line and over grabbing the inside (dot 1791733296); then the line
-      const b = boxNow(), onBox = b ? hitBox(b, at, ctx.env.pixel()) : null
-      const direct = ctx.tool() === 'A' ? hitDirect(at) : undefined
-      const pointFirst = direct && (direct.kind === 'point' || direct.kind === 'handle')
-      if (!pointFirst && b && onBox && onBox !== 'inside') { startHandle(onBox, b, at); return true }
-      const picked: Unit | undefined = ctx.tool() === 'V'
-        ? (() => { const line = ctx.hitLine(at); return line ? { kind: 'line' as const, id: line } : undefined })()
-        : direct
-      // then what the tool picks, as today; then the inside of the box grabs the whole selection, unless
-      // Shift / Option ask for the marquee that adds / removes (dot 1791735216)
-      if (!picked && onBox === 'inside' && !m.shift && !m.alt) { startDrag(at); return true }
-      if (!picked) { this.startBox(at, m, true); return true }
+      const hit = pressHit(at, m)
+      if (hit.kind === 'box') { startHandle(hit.handle, hit.b, at); return true }
+      if (hit.kind === 'inside') { startDrag(at); return true }
+      if (hit.kind === 'marquee') { this.startBox(at, m, true); return true }
+      const picked = hit.unit
       const mods_ = m
       lastPress = picked.kind
       const already = ctx.selection().some(v => key(v) === key(picked))
@@ -201,10 +215,17 @@ export function selectTransform(ctx: Ctx): SelectTransform {
           // core's own preview of the very operation the release commits (dot 1791735216 §3)
           const r = ctx.env.core().preview(t.view, run(t.op!, t.units))
           if (r) {
-            const before = new Map(ctx.reader().geometry().lines.map(l => [l.id, JSON.stringify(l.curve)]))
-            p.transform = { lines: r.geometry().lines.filter(l => before.get(l.id) !== JSON.stringify(l.curve)).map(l => ({ id: l.id, curve: l.curve.map(v => ({ x: v.x, y: v.y })) })), box: r.selectionBounds(t.units) }
+            // what the operation changes: the lines and the joins' arcs, new or moved (dot 1791737043)
+            const g0 = ctx.reader().geometry(), g1 = r.geometry()
+            const before = new Map(g0.lines.map(l => [l.id, JSON.stringify(l.curve)])), arcsBefore = new Map(g0.arcs.map(a => [a.key, JSON.stringify(a.curve)]))
+            const copy = (c: readonly Vec[]) => c.map(v => ({ x: v.x, y: v.y }))
+            p.transform = {
+              lines: g1.lines.filter(l => before.get(l.id) !== JSON.stringify(l.curve)).map(l => ({ id: l.id, curve: copy(l.curve) })),
+              arcs: g1.arcs.filter(a => arcsBefore.get(a.key) !== JSON.stringify(a.curve)).map(a => ({ key: a.key, curve: copy(a.curve) })),
+              box: r.selectionBounds(t.units),
+            }
           }
-        } catch (err) { p.transform = { lines: [], box: null, refused: (err as Error)?.message ?? String(err) } }
+        } catch (err) { p.transform = { lines: [], arcs: [], box: null, refused: (err as Error)?.message ?? String(err) } }
       }
       if (box && ctx.mine(box)) p.box = { from: { ...box.from }, to: { ...box.to }, whole: box.to.x >= box.from.x }
       p.handles = handlesShown(ctx.snap())

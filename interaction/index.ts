@@ -31,7 +31,7 @@ export interface Interaction {
   pointerMove(at: Vec, mods?: Mods): void
   pointerUp(at: Vec, mods?: Mods): void
   /** The pointer moved with no button held: updates what it is over on the selection box (the hover cursor). */
-  pointerHover(at: Vec): void
+  pointerHover(at: Vec, mods?: Mods): void
   pointerCancel(): void
   key(name: string, mods?: Mods): boolean
   cancel(): void
@@ -147,7 +147,7 @@ export function createInteraction(env: Env): Interaction {
     pointerDown: (at, mods) => act(() => pointerDown(at, mods)),
     pointerMove: (at, mods) => { if (st.dragging) act(() => st.pointerMove(at, mods)) },
     pointerUp: (at, mods) => act(() => st.pointerUp(at, mods)),
-    pointerHover: at => { if (st.hover(at)) act(() => {}) },
+    pointerHover: (at, mods) => { if (st.hover(at, mods)) act(() => {}) },
     pointerCancel: () => act(() => st.pointerCancel()),
     key: (name, mods) => act(() => key(name, mods)),
     cancel: () => act(cancel),

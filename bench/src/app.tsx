@@ -373,13 +373,16 @@ export function App() {
   // ends the drag in interaction (a pan simply stops) — never only one of the two (dot 1791552803)
   // `right` marks a right-button pan, whose own release (unmoved) is the right click (bowen 1791554290)
   const gesture = useRef<null | { id: number; right: boolean; cancel: (why: string) => void }>(null)
+  // where the pointer rests over the canvas (no button held): Shift / Option pressed there update the hover at once
+  const hoverAt = useRef<Vec | null>(null)
   // a press the tool took is held: the canvas cursor asks cursor/ with it (A / V grab). Set where the
   // gesture starts, cleared in its one `stop` (release, cancel, blur, tool change, playback) (dot 1791708548)
   const [pressed, setPressed] = useState(false)
   // what a press on the canvas does, named for the cursor table in the same order as the canvas routes
   // the press: Zoom (a viewport tool) in every mode; else restoring takes none, playback drags the pose,
   // Move picture moves the picture, otherwise the tool; those three show the arrow (dot 1791710244, 1791727663)
-  const boxHot = !pose && !restoring && !moveRef ? pv.selectionBox?.hot ?? null : null
+  const boxShown = !pose && !restoring && !moveRef && !!pv.selectionBox
+  const boxHot = boxShown ? pv.selectionBox?.hot ?? null : null
   const pressTakenBy = zoomTool ? 'Z' : restoring ? 'restoring' : pose ? 'playback' : moveRef ? 'movePicture' : boxHot ? `box:${boxHot}` : ix.tool
   const note = (what: string) => { log.unshift({ calls: what, result: 'ok (diagnostic)' }); log.length = Math.min(log.length, 50) }
   const BUTTON_BIT = [1, 4, 2] // button 0 → buttons bit 1 (left), 1 → 4 (middle), 2 → 2 (right)
@@ -653,6 +656,7 @@ export function App() {
   }
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
+      if ((e.key === 'Shift' || e.key === 'Alt') && hoverAt.current && !gesture.current) ix.pointerHover(hoverAt.current, mods(e))
       // Esc first: it cancels a gesture even in playback and with a field focused (dot 1791696958)
       if (e.key === 'Escape' && gesture.current) { gesture.current.cancel('Esc'); e.preventDefault(); return }
       // only a field that takes typing keeps its keys (dot 1791544530), an input method its own (dot 1791727663);
@@ -680,7 +684,9 @@ export function App() {
       if (ix.key(e.key, { ...mods(e), ctrl: e.ctrlKey, repeat: e.repeat })) { e.preventDefault(); if (isArrow(e.key)) keyHooks.current.afterArrow?.() }
     }
     // a key release ends a key run wherever focus is: no typing check here (dot 1791733489)
-    const up = (e: KeyboardEvent) => { if (!isArrow(e.key)) return; ix.keyUp(e.key); picMover.keyUp(e.key) }
+    const up = (e: KeyboardEvent) => {
+      if ((e.key === 'Shift' || e.key === 'Alt') && hoverAt.current && !gesture.current) ix.pointerHover(hoverAt.current, mods(e))
+      if (!isArrow(e.key)) return; ix.keyUp(e.key); picMover.keyUp(e.key) }
     // a key run ends on leaving the window, and when focus moves inside the page to a field or a slider
     const blur = () => { if (gesture.current?.id === KEYS) gesture.current.cancel('leaving the window') }
     const focus = (e: FocusEvent) => {
@@ -953,7 +959,7 @@ export function App() {
         <svg ref={svg} style={{ flex: 1, background: '#fafafa', touchAction: 'none', cursor: cursorFor(pressTakenBy, pressed) }} data-testid="canvas" viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
           onPointerDown={e => (viewportPress(e) ? onDown(e) : restoring ? undefined : pose ? onPoseDown(e) : moveRef ? onRefDown(e) : onDown(e))}
           // hovering tells interaction what the pointer is over on the selection box (the cursor follows; selection-box plan §6)
-          onPointerMove={e => { if (!gesture.current && !pose && !restoring && !moveRef && !zoomTool && e.buttons === 0) ix.pointerHover(toDoc(e)) }} onWheel={onWheel}
+          onPointerMove={e => { if (!gesture.current && !pose && !restoring && !moveRef && !zoomTool && e.buttons === 0) { hoverAt.current = toDoc(e); ix.pointerHover(hoverAt.current, mods(e)) } }} onPointerLeave={() => { hoverAt.current = null }} onWheel={onWheel}
           // the right click itself is the unmoved right press (onDown); a right press during a left
           // drag comes only as this event, and cancels that drag (one level)
           onContextMenu={e => { e.preventDefault(); if (gesture.current && !gesture.current.right) gesture.current.cancel('a right click') }}>
@@ -973,13 +979,15 @@ export function App() {
           {!pose && pv.box && <rect x={Math.min(pv.box.from.x, pv.box.to.x)} y={Math.min(pv.box.from.y, pv.box.to.y)} width={Math.abs(pv.box.to.x - pv.box.from.x)} height={Math.abs(pv.box.to.y - pv.box.from.y)}
             fill={pv.box.whole ? 'rgba(42,127,255,0.08)' : 'rgba(40,170,90,0.08)'} stroke={pv.box.whole ? '#2a7fff' : '#28aa5a'} strokeWidth={px}
             strokeDasharray={pv.box.whole ? undefined : `${5 * px} ${3 * px}`} />}
-          {/* the selection reads at a glance (bowen 1791558186): a wide blue halo under each selected line, and a dashed box around it all */}
+          {/* the selection reads at a glance (bowen 1791558186): a wide blue halo under each selected line, and a dashed box around it all —
+              one box, one extent (dot 1791737043, 1791737260): where the selection box is drawn (V / A) it is that box; elsewhere
+              (another tool, Move picture) the same frame — core's bounds of what a transform moves — without handles */}
           {!pose && g.lines.filter(G => selLines.includes(G.id)).map(G => <path key={'halo' + G.id} d={path(G.curve)} fill="none" stroke="#2a7fff" strokeOpacity={0.3}
             strokeWidth={line(G.id).stroke.width + 8 * px} strokeLinecap="round" />)}
-          {!pose && selLines.length > 0 && ps.length > 1 && (() => {
-            const xs = ps.map(p => p.x), ys = ps.map(p => p.y), m = 8 * px
-            return <rect x={Math.min(...xs) - m} y={Math.min(...ys) - m} width={Math.max(...xs) - Math.min(...xs) + 2 * m} height={Math.max(...ys) - Math.min(...ys) + 2 * m}
-              fill="none" stroke="#2a7fff" strokeWidth={px} strokeDasharray={`${4 * px} ${3 * px}`} />
+          {!pose && !boxShown && (() => {
+            const units = sel.filter(u => u.kind === 'line' || u.kind === 'point' || u.kind === 'handle'), b = units.length ? core.in(shown).selectionBounds(units) : null
+            return b && <rect data-selection-outline="" x={b.min.x} y={b.min.y} width={b.max.x - b.min.x} height={b.max.y - b.min.y}
+              fill="none" stroke="#2a7fff" strokeWidth={px} strokeDasharray={`${3 * px} ${2 * px}`} pointerEvents="none" />
           })()}
           {g.lines.map(G => {
             const l = line(G.id), on = selLines.includes(l.id), picked = pv.pick?.kind === 'line' && pv.pick.id === l.id
@@ -1001,7 +1009,8 @@ export function App() {
           {!pose && ghostLines.map((c, i) => <path key={'g' + i} d={path(c)} fill="none" stroke="#06f" strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />)}
           {/* the selection box (docs/selection-box-plan.md): not in playback, while restoring or with Move picture — nor hit there */}
           {!pose && !restoring && !moveRef && pv.transform && pv.transform.lines.map(l => <path key={'t' + l.id} data-transform-ghost={l.id} d={path(l.curve)} fill="none" stroke={pv.transform!.refused ? '#c00' : '#06f'} strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />)}
-          {!pose && !restoring && !moveRef && pv.selectionBox && (() => {
+          {!pose && !restoring && !moveRef && pv.transform && pv.transform.arcs.map(a => <path key={'ta' + a.key} data-transform-ghost-arc={a.key} d={path(a.curve)} fill="none" stroke="#06f" strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />)}
+          {boxShown && pv.selectionBox && (() => {
             const b = pv.transform?.box ?? pv.selectionBox, top = pv.selectionBox.handles.find(h => h.id === 'rotate')
             return <g data-selection-box="" pointerEvents="none">
               <rect x={b.min.x} y={b.min.y} width={b.max.x - b.min.x} height={b.max.y - b.min.y} fill="none" stroke={pv.transform?.refused ? '#c00' : '#2a7fff'} strokeWidth={px} strokeDasharray={`${3 * px} ${2 * px}`} />

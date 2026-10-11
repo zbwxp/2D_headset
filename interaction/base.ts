@@ -76,7 +76,7 @@ export interface Preview {
    */
   selectionBox?: { min: Vec; max: Vec; handles: { id: string; at: Vec }[]; hot: string | null }
   /** A handle drag in progress: the lines as they will be (core's preview of the same operation), the box around them, or why core refuses it. */
-  transform?: { lines: { id: Id; curve: Vec[] }[]; box: { min: Vec; max: Vec } | null; refused?: string }
+  transform?: { lines: { id: Id; curve: Vec[] }[]; arcs: { key: string; curve: Vec[] }[]; box: { min: Vec; max: Vec } | null; refused?: string }
 }
 
 /**

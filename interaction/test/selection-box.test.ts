@@ -173,4 +173,43 @@ describe('the box in interaction', () => {
     expect(Math.atan2(a.y - c.y, a.x - c.x) - Math.atan2(-50, -50)).toBeCloseTo(Math.PI / 12, 9)
     expect(r).toBeCloseTo(Math.hypot(50, 50), 9)
   })
+
+  it('hover and press agree everywhere: on handles, points, a line inside the box, blank inside, outside — with no key, Shift and Option, V and A (dot 1791737043)', () => {
+    for (const tool of ['V', 'A'] as const) {
+      const t = setup()
+      t.d.edit(e => e.line('k', { id: 'k1', layer: 'L', position: P(20, 50) }, { id: 'k2', layer: 'L', position: P(60, 50) })) // a line inside the box, not selected
+      t.ix.setTool(tool)
+      t.press(P(50, 0)); if (tool === 'A') t.press(P(100, 50), { shift: true }) // A: h and v, one by one
+      const spots = [...t.ix.preview().selectionBox!.handles.map(h => h.at), P(0, 0), P(100, 0), P(100, 100), P(40, 50), P(40, 70), P(101, 101), P(-1, 50), P(-30, 50), P(50, -30)]
+      let checked = 0
+      for (const at of spots) for (const mods of [{}, { shift: true }, { alt: true }]) {
+        const state = () => save(t.d) + JSON.stringify(t.d.snapshot().selection) // the file does not hold the selection
+        const before = state()
+        t.ix.pointerHover(at, mods)
+        const hovered = t.ix.preview().selectionBox!.hot
+        t.ix.pointerDown(at, mods)
+        const pv = t.ix.preview()
+        const did = pv.selectionBox?.hot && pv.selectionBox.hot !== 'inside' && t.ix.moving() ? pv.selectionBox.hot // a handle drag
+          : t.ix.moving() && t.ix.lastPress() === null ? 'inside' : null // the whole selection grabbed; else an item or a marquee
+        expect([tool, at, mods, hovered]).toEqual([tool, at, mods, did])
+        t.ix.key('Escape'); t.ix.pointerUp(at, mods)
+        if (state() !== before) t.d.undo() // a press on an item changed the selection: its own history entry
+        expect(state()).toBe(before)
+        checked++
+      }
+      expect(checked).toBe(3 * (9 + 9))
+    }
+  })
+
+  it('the preview draws the joins\' arcs the operation moves, as the release commits them (dot 1791737043)', () => {
+    const t = setup()
+    t.d.edit(e => e.join('b', 'h', 'v', { mode: 'arc', radius: 10 }))
+    t.ix.setTool('V'); t.press(P(50, 0))
+    t.drag(P(100, 100), P(150, 150), {}, false)
+    const shown = t.ix.preview().transform!
+    expect(shown.arcs.length).toBe(1)
+    t.ix.pointerUp(P(150, 150))
+    expect(JSON.stringify(shown.arcs.map(a => a.curve))).toBe(JSON.stringify(t.d.geometry().arcs.map(a => a.curve)))
+  })
 })
+
