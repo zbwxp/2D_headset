@@ -26,17 +26,17 @@
 
 - **The four corners are real drawn views** (stage 2: drafted, then adjusted by hand), not placeholders. Every cell of the 3 × 3 grid has all four of its corners drawn.
 - **Pitch is ±45**, the nine `view:Y,P` keys.
-- **Both sides are drawn**; nothing is derived by mirroring (mirror is an editing tool at 0,0 only). So there is no 0° seam rule to carry over.
+- **Both sides are drawn**; nothing is derived by mirroring (mirror is an editing tool at 0,0 only). So v103's mirror-seam rule does not carry over, but continuity across 0° is still checked (dot 1791683851).
 
 ## Rules
 
 1. **Pose.** `pose = { yaw, pitch }` in degrees, yaw ∈ [−90, 90], pitch ∈ [−45, 45]. Outside is refused (`pose-out-of-range`), never clamped (as v103).
 2. **Scheme: bilinear in each quadrant** (*proposal*, the architecture's candidate). For a pose in the quadrant with corners front F, yaw view Y, pitch view P, corner C, with u = |yaw| / 90 and v = |pitch| / 45:
    `value = (1−u)(1−v)·F + u(1−v)·Y + (1−u)v·P + uv·C`
-   - **Why not v103's triangles:** the four corners are real here. A triangle split ignores one of the four drawn views in each half, and which one depends on the chosen diagonal. Bilinear uses all four, symmetrically, with no diagonal to choose.
+   - **Why bilinear rather than v103's triangles** (wording corrected, dot 1791683851): a triangle using its three vertices is simply its definition; the whole mesh still passes exactly through all nine views, so no drawing is lost. Bilinear's advantages here are two: there is no diagonal to choose, and an unadjusted (drafted) corner gives back exactly yaw change + pitch change.
    - **On the axes** (u = 0 or v = 0) it is the plain linear blend of two views. At a view it is exactly that view.
    - **A corner exactly as drafted** (C = Y + P − F) gives `F + u(Y−F) + v(P−F)`: yaw and pitch changes add independently. A hand-adjusted corner bends the middle of the cell towards it.
-   - **Across quadrant borders** it is continuous (C0), not smooth (C1), as v103.
+   - **Across quadrant borders, including 0°,** numeric values are continuous (C0) but not smooth (C1), as v103: the speed of change can have a kink there (dot 1791683851). Continuous does not mean the turning speed is smooth.
 3. **What is blended, per element:**
    - **point positions:** absolute 2D, by rule 2;
    - **handles:** as vectors from their point (as broadcast and draft treat them), by rule 2; the tip is point + vector;
@@ -86,7 +86,8 @@ Nothing is written; there is no draft and no undo step.
 - **Bilinear:**
   - in a cell, with hand-chosen corners, the value equals the formula;
   - with a corner exactly as drafted, `F + u(Y−F) + v(P−F)`.
-- **Continuity:** values just either side of a quadrant border (yaw ±ε, pitch ±ε) differ by O(ε).
+- **Continuity of numeric values only:** positions, handle vectors, radii, end strokes and width just either side of a quadrant border, 0° included (yaw ±ε, pitch ±ε), differ by O(ε). Discrete values (the profile from the dominant view) are expected to jump and are not part of this test (dot 1791683851).
+- **Speed kink, measured:** the one-sided rates of change at 0° and at the pitch-0 border are reported for the bench demo drawings (not pass / fail).
 - **Links:** two linked points coincide at sampled poses.
 - **Discrete values:** the profile at a pose is the dominant view's; ties resolve as stated.
 - **Refusals:** yaw 91, pitch −46, NaN → `pose-out-of-range`.
