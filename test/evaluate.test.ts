@@ -109,6 +109,17 @@ describe('evaluate: slots and refusals', () => {
     const noPoint = (v: ViewShape) => ({ points: { a: v.points.a!, q: v.points.q! } })
     const noLine = () => ({ lines: {} })
     const noRad = () => ({ radii: {} })
+    // a key named like an inherited property (constructor, toString) is missing where it is not an own key (dot 1791684959)
+    const inherited = (name: string) => model((y, p) => (y === 0 && p === 0
+      ? { radii: { r1: 2, [name]: 5 }, points: { ...view(y, p).points, [name]: V(1, 1) }, lines: { ...view(y, p).lines, [name]: { ha: V(1, 0), hb: V(-1, 0), stroke: { width: 1, profile: 'u' } } } }
+      : {}))
+    for (const name of ['constructor', 'toString']) {
+      expect(() => evaluate(inherited(name), { yaw: 45, pitch: 0 })).toThrow(new RegExp(`model-incomplete: no position of ${name} in view 90,0`))
+      const radiiOnly = model((y, p) => (y === 0 && p === 0 ? { radii: { r1: 2, [name]: 5 } } : {}))
+      expect(() => evaluate(radiiOnly, { yaw: 45, pitch: 0 })).toThrow(new RegExp(`model-incomplete: no radius of ${name} in view 90,0`))
+      const linesOnly = model((y, p) => (y === 0 && p === 0 ? { lines: { ...view(y, p).lines, [name]: { ha: V(1, 0), hb: V(-1, 0), stroke: { width: 1, profile: 'u' } } } } : {}))
+      expect(() => evaluate(linesOnly, { yaw: 45, pitch: 0 })).toThrow(new RegExp(`model-incomplete: no handle a of ${name} in view 90,0`))
+    }
     for (const [cut, what] of [[noPoint, 'position of b'], [noLine, 'handle a of ab'], [noRad, 'radius of r1']] as const) {
       expect(() => evaluate(without(0, 0, cut), { yaw: 45, pitch: 0 })).toThrow(new RegExp(`model-incomplete: no ${what} in view 0,0`))
       expect(() => evaluate(without(90, 0, cut), { yaw: 45, pitch: 0 })).toThrow(new RegExp(`model-incomplete: no ${what} in view 90,0`))

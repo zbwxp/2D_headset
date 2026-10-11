@@ -90,6 +90,8 @@ function blend(ws: readonly Weighted[]): Geometry {
   // the keys of every contributing view, not of the first one: a key missing in any of them is
   // refused below (model-incomplete), never dropped (dot 1791684670)
   const keys = (pick: (v: ViewShape) => object) => [...new Set(ws.flatMap(w => Object.keys(pick(w.view))))]
+  // own properties only: `constructor` and the like on a record that lacks the key are missing, not inherited (dot 1791684959)
+  const own = <T>(rec: Readonly<Record<string, T>>, k: string): T | undefined => (Object.hasOwn(rec, k) ? rec[k] : undefined)
   const num = (get: (v: ViewShape) => number | undefined, what: string) => {
     // summed from the first term, so a single weight 1 gives the view's value exactly (even −0)
     let s: number | undefined
@@ -103,12 +105,12 @@ function blend(ws: readonly Weighted[]): Geometry {
   const vec = (get: (v: ViewShape) => Vec | undefined, what: string): Vec =>
     ({ x: num(v => get(v)?.x, what), y: num(v => get(v)?.y, what) })
   return {
-    points: Object.fromEntries(keys(v => v.points).map(p => [p, vec(v => v.points[p], `position of ${p}`)])),
+    points: Object.fromEntries(keys(v => v.points).map(p => [p, vec(v => own(v.points, p), `position of ${p}`)])),
     lines: Object.fromEntries(keys(v => v.lines).map(l => [l, {
-      ha: vec(v => v.lines[l]?.ha, `handle a of ${l}`),
-      hb: vec(v => v.lines[l]?.hb, `handle b of ${l}`),
+      ha: vec(v => own(v.lines, l)?.ha, `handle a of ${l}`),
+      hb: vec(v => own(v.lines, l)?.hb, `handle b of ${l}`),
     }])),
-    radii: Object.fromEntries(keys(v => v.radii).map(k => [k, num(v => v.radii[k], `radius of ${k}`)])),
+    radii: Object.fromEntries(keys(v => v.radii).map(k => [k, num(v => own(v.radii, k), `radius of ${k}`)])),
   }
 }
 
