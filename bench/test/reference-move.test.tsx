@@ -304,6 +304,23 @@ describe('mirror a picture left-right (§9)', () => {
     } finally { window.addEventListener = add; window.removeEventListener = remove }
   })
 
+  it('two Apps: an old Mirror button in A, after B opened a drawing with a picture of the same id from another source, changes nothing (dot 1791717696)', async () => {
+    const t = await setup()
+    const oldButton = t.button('Mirror ⇆', t.host.querySelector(`[data-ref="${t.id}"]`)!)
+    const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })
+    d.edit(e => e.placeReference({ id: t.id, view: 'view:0,0', src: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD=', width: 400, height: 300, x: 0, y: 0, scale: 1, angle: 20, opacity: 1, visible: true }))
+    const hostB = document.createElement('div'); document.body.appendChild(hostB)
+    const rootB = createRoot(hostB); roots.push(rootB)
+    await act(async () => { rootB.render(<App />) })
+    const open = hostB.querySelector('[data-testid="open"]') as HTMLInputElement
+    Object.defineProperty(open, 'files', { value: [new File([save(d)], 'b.json')], configurable: true })
+    await act(async () => { open.dispatchEvent(new Event('change', { bubbles: true })); await wait(50) })
+    const before = save(bench().core)
+    expect(bench().core.in('view:0,0').references()[0]).toMatchObject({ id: t.id, angle: 20, flipped: false })
+    await act(async () => { oldButton.click() })
+    expect(save(bench().core)).toBe(before)
+  })
+
   it('Mirror is unavailable in playback', async () => {
     const t = await setup()
     await act(async () => { t.button('Playback').click() })

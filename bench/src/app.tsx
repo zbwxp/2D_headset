@@ -288,12 +288,15 @@ export function App() {
    *  negated. A gesture still running (a picture drag) is cancelled by its one cancel path, its window
    *  listeners and its ghost with it (dot 1791717672); a panel preview still open ends by its one ending
    *  (written if unchanged underneath). The values are then read from the document, so a late move, blur
-   *  or pointerup of either finds nothing to draw or write (dot 1791717133). */
-  const mirrorRef = (id: string) => {
+   *  or pointerup of either finds nothing to draw or write (dot 1791717133). The button is bound to the
+   *  drawing, the counter and the picture (id and source) it was drawn for: if they no longer hold (another
+   *  drawing opened, here or by another App), the whole action is dropped (dot 1791717696). */
+  const mirrorRef = (b: RefBind) => {
+    if (!refNow(b)) { note('Mirror dropped: the picture is no longer the one shown'); bump(); return }
     gesture.current?.cancel('Mirror')
     commitPreview()
-    const r = core.in(shown).references().find(x => x.id === id)
-    if (r) run(x => x.setReference(id, { flipped: !r.flipped, angle: 0 - r.angle }))
+    const r = refNow(b)
+    if (r) run(x => x.setReference(r.id, { flipped: !r.flipped, angle: 0 - r.angle }))
   }
   const run = (fn: (e: Editor) => void) => {
     // the outcome goes to interaction, the one owner of feedback (dot 1791551067)
@@ -728,7 +731,7 @@ export function App() {
                   onChange={e => previewRef(r, { [k]: fromSlider(Number(e.target.value)) })} onPointerUp={commitPreview} onKeyUp={commitPreview} onBlur={commitPreview} />
               </label>
             })}
-            {B('Mirror ⇆', () => mirrorRef(r.id))}
+            {B('Mirror ⇆', ((bound: RefBind) => () => mirrorRef(bound))({ core, gen: refGen.current, id: r.id, src: r.src }))}
             {B('Remove', () => run(x => x.removeReference(r.id)))}
             <div data-slots={r.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 2, width: '100%' }}>
               {r.slots.map((sl, k) => <span key={k} data-slot={k} style={{ border: '1px solid #ccc', padding: '0 3px' }}>
