@@ -223,6 +223,21 @@ describe('linked points', () => {
     expect(pos(d, pose, 'm')).toEqual(P(18, 2))
   })
 
+  it('members a hair apart (as open allows, within 1e-9) would get different knots: refused before writing, the members not written compared too (dot 1791693096)', () => {
+    // b and m linked; m is 1e-10 off b in the front view, so each member's own solve differs
+    const file = JSON.parse(save(linked()))
+    const front = file.document.network.shapes.layers.find((l: { key: string }) => l.key === FRONT)
+    front.points.m = { x: 10 + 1e-10, y: 0 }
+    const d = open(JSON.stringify(file)), before = save(d), pose = { yaw: 45, pitch: 0 }
+    expect(pos(d, pose, 'm').x).not.toBe(pos(d, pose, 'b').x)
+    // 18: both members write, with different knots
+    expect(() => d.edit(e => e.correct(pose, { points: [{ id: 'b', position: P(18, 5) }] }))).toThrow(/correction-link-differs: linked points b and m would hold different responses/)
+    // 15 (b's own value there): b is already met and writes nothing, m would get a knot
+    expect(code(() => d.edit(e => e.correct(pose, { points: [{ id: 'm', position: P(15, 5) }] })))).toBe('correction-link-differs')
+    expect(save(d)).toBe(before)
+    expect(save(open(save(d)))).toBe(before)
+  })
+
   it('points not reached and handle vectors not given stay exactly as they were, at the pose and on every edge', () => {
     const d = linked()
     d.editIn(SIDE, e => { e.moveHandle('ab', 'b', P(-3, 3)); e.move([{ id: 'n', target: P(14, 40) }]) })

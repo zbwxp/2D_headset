@@ -62,8 +62,9 @@ A and B are the control's values on that axis in the edge's inner and outer view
 ## 3. Linked points
 
 - A target for one point is a target for its whole link component: every member joins the target set (§1a).
-  - The members coincide in every view and hold identical response sets (package 2's rule), so A, B, r and the solve are the same.
-  - The same knot is written to every member, so the sets stay identical.
+  - The members hold identical response sets (package 2's rule), but they coincide in the views only up to what open allows (1e-9), so each member's own solve may differ by rounding (dot 1791693096).
+  - **Before any write**, the response sets each member would hold after the correction are compared, members that write nothing (already met) included. Any difference refuses the whole step (`correction-link-differs`, naming the two points). No member's knot is copied onto another to hide it, and open's tolerance is not changed.
+  - Members that coincide exactly get the same knots, so the sets stay identical.
 - Two members of one component given different targets refuse (`correction-link-conflict`).
 
 ## 4. Locks
@@ -132,6 +133,7 @@ So the merged commit is today's `keeps`: no settle. Only selections and stroke b
   - the member reached through the link counts as a target in the final check, not as "unchanged";
   - only A given, its linked B ending a locked line → `locked` (naming B's line);
   - conflicting targets → `correction-link-conflict`;
+  - members a hair apart (1e-10, accepted by open): a target that writes both differently, and one that one member already meets while the other writes → `correction-link-differs`, the state unchanged, the file still opens (dot 1791693096);
   - a point not reached and the handle vectors not given stay exactly as they were.
 - **Locks:** a target on a locked line, through a point and through a handle → `locked`.
 - **Final check:**

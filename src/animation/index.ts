@@ -393,6 +393,15 @@ export function correct(a: ResponsesState, n: net.NetworkState, l: links.LinksSt
     if (knots.length > MAX_KNOTS) throw new net.Refusal('correction-too-many-knots', `correction-too-many-knots: ${nameOf(c)}, axis ${axis}, on ${edge.key} would have ${knots.length} knots (at most ${MAX_KNOTS})`, objectsOf(c))
     writes.push({ control: c, axis, knots })
   }
+  // linked points must hold identical response sets (package 2). Open allows linked points up to
+  // 1e-9 apart, so each member's own solve can differ: the sets as they would be after the write are
+  // compared, members that write nothing included; any difference refuses the whole step (dot 1791693096)
+  const proposed: RStore = { points: {}, handles: {} }
+  for (const id of points.keys()) put(proposed.points, id, structuredClone(own(s.points, id) ?? {}))
+  for (const w of writes) if (w.control.kind === 'point') setKnots(proposed, w.control, edge.key, w.axis, w.knots)
+  for (const id of given.keys()) for (const m of component(l, id)) if (canon(own(proposed.points, m)) !== canon(own(proposed.points, id))) {
+    throw new net.Refusal('correction-link-differs', `correction-link-differs: linked points ${id} and ${m} would hold different responses after this correction (their views differ slightly); nothing was written`, [{ kind: 'point', id }, { kind: 'point', id: m }])
+  }
   if (!writes.length) return
   // the protected targets on this edge, as they stand before the write: every knot of every control there
   const controls: Control[] = [
