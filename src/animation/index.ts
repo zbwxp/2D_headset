@@ -385,13 +385,17 @@ export function solveMove(c: number, r: number, k: number, S: number): number | 
   return Number.isFinite(w) && w !== 0 ? w : undefined
 }
 
-/** Every point position and handle vector scalar of every shape layer, keyed `layer|control|axis`. */
-function scalars(n: net.NetworkState): Map<string, number> {
-  const out = new Map<string, number>()
+/** A composite key with no separator to confuse: any legal id, `|` or `:` included (dot 1791696205). */
+const ckey = (...parts: string[]) => JSON.stringify(parts)
+/** Every point position and handle vector scalar of every shape layer, as structured entries. */
+interface Scalar { readonly layer: string; readonly control: Control; readonly axis: 'x' | 'y'; readonly value: number }
+function scalars(n: net.NetworkState): Map<string, Scalar> {
+  const out = new Map<string, Scalar>()
+  const add = (layer: string, control: Control, v: Vec) => { for (const axis of AXES) out.set(ckey(layer, keyOf(control), axis), { layer, control, axis, value: v[axis] }) }
   for (const { key } of net.shapeLayers(n)) {
     const h = net.of(n, key)
-    for (const p of net.points(h)) for (const axis of AXES) out.set(`${key}|${keyOf({ kind: 'point', id: p.id })}|${axis}`, p.position[axis])
-    for (const l of net.lines(h)) for (const end of ['a', 'b'] as const) for (const axis of AXES) out.set(`${key}|${keyOf({ kind: 'handle', line: l.id, end })}|${axis}`, net.handle(l, end)[axis])
+    for (const p of net.points(h)) add(key, { kind: 'point', id: p.id }, p.position)
+    for (const l of net.lines(h)) for (const end of ['a', 'b'] as const) add(key, { kind: 'handle', line: l.id, end }, net.handle(l, end))
   }
   return out
 }
@@ -463,7 +467,7 @@ export function correct(a: ResponsesState, n: net.NetworkState, l: links.LinksSt
   const s = R(a), inner = net.of(n, edge.inner), outer = net.of(n, edge.outer)
   const entry = scalars(n), before = posedAt(world.model(), pose, false)
   /** A control's value in a layer as the draft held it on entry (O is moved later). */
-  const was = (layer: string, c: Control, axis: 'x' | 'y') => entry.get(`${layer}|${keyOf(c)}|${axis}`)!
+  const was = (layer: string, c: Control, axis: 'x' | 'y') => entry.get(ckey(layer, keyOf(c), axis))!.value
   // an edge from the front may move its outer view O; S is read once, before any move, for every control (dot 1791694500)
   const O = edge.inner === views.FRONT ? edge.outer : undefined
   const S = O === undefined ? 1 : Math.max(MOVE_COST.scaleFloor, ...AXES.map(axis => {
@@ -471,7 +475,7 @@ export function correct(a: ResponsesState, n: net.NetworkState, l: links.LinksSt
     return xs.length ? Math.max(...xs) - Math.min(...xs) : 0
   }))
   const lists = new Map<string, { control: Control; edge: string; axis: 'x' | 'y'; knots: Knot[] }>()
-  const listKey = (c: Control, e: string, axis: 'x' | 'y') => `${keyOf(c)}|${e}|${axis}`
+  const listKey = (c: Control, e: string, axis: 'x' | 'y') => ckey(keyOf(c), e, axis)
   const moves: { control: Control; axis: 'x' | 'y'; to: number }[] = []
   for (const { control: c, q } of set) for (const axis of AXES) {
     const A = inView(inner, c)[axis], B = inView(outer, c)[axis], p = atPose(before, c)[axis]
@@ -514,11 +518,11 @@ export function correct(a: ResponsesState, n: net.NetworkState, l: links.LinksSt
     return knots.filter(k => !(written && k[0] === t)).map(k => ({ c, e, axis, t: k[0], v: evaluate.onEdge(knots, k[0], i0, o0) }))
   })))
   // 5. O's moves, through O's own operations so its links and springs settle them; a moved point's other axis keeps its value
-  const mask = new Map(moves.map(m => [`${keyOf(m.control)}|${m.axis}`, m.to]))
+  const mask = new Map(moves.map(m => [ckey(keyOf(m.control), m.axis), m.to]))
   if (O !== undefined && moves.length) {
     const h = net.of(n, O)
     for (const c of new Map(moves.map(m => [keyOf(m.control), m.control])).values()) {
-      const now = inView(h, c), to = { x: mask.get(`${keyOf(c)}|x`) ?? now.x, y: mask.get(`${keyOf(c)}|y`) ?? now.y }
+      const now = inView(h, c), to = { x: mask.get(ckey(keyOf(c), 'x')) ?? now.x, y: mask.get(ckey(keyOf(c), 'y')) ?? now.y }
       if (c.kind === 'point') net.move(h, ch, [{ id: c.id, target: to }])
       else net.moveHandle(h, ch, c.line, c.end, to)
     }
@@ -587,11 +591,9 @@ export function correct(a: ResponsesState, n: net.NetworkState, l: links.LinksSt
   // every point position and handle vector of every shape layer: O's moved (control, axis) near its
   // new value, every other scalar exactly as on entry, a moved point's other axis included (dot 1791694560)
   const now = scalars(trial.network)
-  for (const [k, was] of entry) {
-    const [layer, ctl, axis] = k.split('|') as [string, string, 'x' | 'y']
-    const got = now.get(k)!, moved = layer === O ? mask.get(`${ctl}|${axis}`) : undefined
-    const c: Control = ctl.startsWith('p:') ? { kind: 'point', id: ctl.slice(2) } : { kind: 'handle', end: ctl[2] as net.End, line: ctl.slice(4) }
-    if (moved !== undefined ? !near(got, moved) : got !== was) notReproduced(c, moved !== undefined ? `is ${got} on axis ${axis} in ${layer}, not its move ${moved}` : `changed on axis ${axis} in ${layer} (${was} → ${got}), outside this correction's moves`)
+  for (const [k, { layer, control: c, axis, value: was0 }] of entry) {
+    const got = now.get(k)!.value, moved = layer === O ? mask.get(ckey(keyOf(c), axis)) : undefined
+    if (moved !== undefined ? !near(got, moved) : got !== was0) notReproduced(c, moved !== undefined ? `is ${got} on axis ${axis} in ${layer}, not its move ${moved}` : `changed on axis ${axis} in ${layer} (${was0} → ${got}), outside this correction's moves`)
   }
   // the protected targets at their recorded progress, never through a pose (dot 1791691388): exactly
   // where nothing was re-solved, within the tolerance where a knot was re-solved

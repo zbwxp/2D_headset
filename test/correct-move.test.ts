@@ -238,11 +238,44 @@ describe('the final check, per axis, against the draft on entry', () => {
     expect(save(open(save(d)))).toBe(before)
   })
 
-  it('exactly linked members move together: the same knot, the same new side position', () => {
-    const d = linked(P(0), P(0))
-    d.edit(e => e.correct({ yaw: 45, pitch: 0 }, { points: [{ id: 'c', position: P(20, 3) }] }))
-    // b and m are equal on y in front and side (0 and 10): not a move case for them; c moves
-    expect(at(d, SIDE, 'm')).toEqual(at(d, SIDE, 'b'))
+  it('three exactly linked members selected and moved together, with old knots on front → side and side → corner: the same knots, the same side position, the old targets kept, the file reopens (dot 1791696205)', () => {
+    const d0 = base()
+    d0.edit(e => {
+      e.layer('M', 'M'); e.layer('K', 'K')
+      e.line('pq', { id: 'p', layer: 'L', position: P(50, 5) }, { id: 'q', layer: 'L', position: P(60, 30) })
+      e.line('mn', { id: 'm', layer: 'M', position: P(50, 5) }, { id: 'n', layer: 'M', position: P(40, 30) })
+      e.line('kj', { id: 'k', layer: 'K', position: P(50, 5) }, { id: 'j', layer: 'K', position: P(70, 30) })
+    })
+    d0.edit(e => { e.link('p', 'm'); e.link('m', 'k') })
+    d0.editIn(CORNER, e => e.move([{ id: 'p', target: P(50, 15) }]))
+    const knots = { [E_FS]: { y: [[0.25, 0.4]] as Knots }, [E_SC]: { y: [[0.5, 0.3]] as Knots } }
+    const d = viaFile(d0, doc => { for (const id of ['p', 'm', 'k']) doc.animation.points[id] = structuredClone(knots) })
+    const front = pos(d, { yaw: 22.5, pitch: 0 }, 'p').y, corner = pos(d, { yaw: 90, pitch: 22.5 }, 'p').y
+    expect([at(d, FRONT, 'm'), at(d, SIDE, 'k'), at(d, CORNER, 'k')]).toEqual([P(50, 5), P(50, 5), P(50, 15)])
+    // k is given; p and m join through the links
+    d.edit(e => e.correct({ yaw: 45, pitch: 0 }, { points: [{ id: 'k', position: P(50, 8) }] }))
+    const a = anim(d)
+    expect(a.points.m).toEqual(a.points.p)
+    expect(a.points.k).toEqual(a.points.p)
+    expect(a.points.p![E_FS]!.y!.map(x => x[0])).toEqual([0.25, 0.5])
+    const side = at(d, SIDE, 'p')
+    expect([side.x, side.y > 5]).toEqual([50, true])
+    expect([at(d, SIDE, 'm'), at(d, SIDE, 'k')]).toEqual([side, side])
+    for (const id of ['p', 'm', 'k']) {
+      expect([id, near(pos(d, { yaw: 45, pitch: 0 }, id).y, 8), near(pos(d, { yaw: 22.5, pitch: 0 }, id).y, front), near(pos(d, { yaw: 90, pitch: 22.5 }, id).y, corner)]).toEqual([id, true, true, true])
+    }
+    const reopened = open(save(d))
+    expect(save(reopened)).toBe(save(d))
+  })
+
+  it('ids with | and : are ordinary: a point a|x and a handle of line l|y moved in the side view (dot 1791696205)', () => {
+    const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })
+    d.edit(e => { e.line('l|y', { id: 'a|x', layer: 'L', position: P(0) }, { id: 'p:b', layer: 'L', position: P(10, 5) }) })
+    d.edit(e => e.correct({ yaw: 45, pitch: 0 }, { points: [{ id: 'a|x', position: P(0, 2) }] }))
+    expect([at(d, SIDE, 'a|x').x, at(d, SIDE, 'a|x').y > 0, near(pos(d, { yaw: 45, pitch: 0 }, 'a|x').y, 2)]).toEqual([0, true, true])
+    const hv = handleIn(d, FRONT, 'l|y', 'b')
+    d.edit(e => e.correct({ yaw: 45, pitch: 0 }, { handles: [{ line: 'l|y', end: 'b', vector: { x: hv.x, y: hv.y + 1 } }] }))
+    expect([handleIn(d, SIDE, 'l|y', 'b').x, handleIn(d, SIDE, 'l|y', 'b').y > hv.y]).toEqual([hv.x, true])
   })
 
   it('states a file may hold: unaligned smooth handles and nearly coincident linked points elsewhere stay exactly; the same join at the moved point refuses (I5)', () => {
