@@ -32,6 +32,17 @@ export function checkViews(n: net.NetworkState) {
   }
 }
 
+/**
+ * The 12 edges between neighbouring views (stage 3b package 2), each from the view nearer the
+ * front to the outer one: yaw edges `0,p > ±90,p`, pitch edges `y,0 > y,±45`. Key: `inner>outer`.
+ */
+export interface Edge { readonly key: string; readonly inner: string; readonly outer: string }
+export const EDGES: readonly Edge[] = Object.freeze([
+  ...PITCHES.flatMap(p => ([-90, 90] as const).map(y => ({ inner: key(0, p), outer: key(y, p) }))),
+  ...YAWS.flatMap(y => ([-45, 45] as const).map(p => ({ inner: key(y, 0), outer: key(y, p) }))),
+].map(e => Object.freeze({ key: `${e.inner}>${e.outer}`, ...e })))
+export const isEdge = (k: string) => EDGES.some(e => e.key === k)
+
 /** The yaw and pitch of a view key (stage 3a: the angles evaluate places the views at). */
 export function angle(k: string): { yaw: Yaw; pitch: Pitch } {
   const i = ALL.indexOf(k)

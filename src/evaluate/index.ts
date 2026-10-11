@@ -22,8 +22,17 @@ export interface ViewShape {
   /** End strokes of the points that have one. */
   readonly ends: Readonly<Record<Id, EndStroke>>
 }
-/** The nine views of a drawing (yaw −90 / 0 / 90 × pitch −45 / 0 / 45), each once. */
-export interface Model { readonly views: readonly ViewShape[] }
+/** One response: knots [progress, value], progress strictly increasing inside (0, 1); through (0,0) and (1,1). */
+export type Knots = readonly (readonly [number, number])[]
+/** A control's responses: edge key → axes. An edge key is `yaw,pitch>yaw,pitch`, inner view first (e.g. `0,0>90,0`). */
+export type ControlResponses = Readonly<Record<string, { readonly x?: Knots; readonly y?: Knots }>>
+/** Responses per control (stage 3b package 2): a point's position, or one end's handle vector. */
+export interface Responses {
+  readonly points: Readonly<Record<Id, ControlResponses>>
+  readonly handles: Readonly<Record<Id, { readonly a?: ControlResponses; readonly b?: ControlResponses }>>
+}
+/** The nine views of a drawing (yaw −90 / 0 / 90 × pitch −45 / 0 / 45), each once, and the responses (none: linear). */
+export interface Model { readonly views: readonly ViewShape[]; readonly responses?: Responses }
 export interface Pose { readonly yaw: number; readonly pitch: number }
 /** The shapes at one pose, in the same kinds as a view. */
 export interface Posed {
@@ -70,7 +79,7 @@ export function weights(model: Model, pose: Pose): Weighted[] {
 export function evaluate(model: Model, pose: Pose): Posed {
   const ws = weights(model, pose)
   const look = appearance(ws)
-  const geometry = afterBlend(blend(ws))
+  const geometry = afterBlend(blend(ws, responded(model, pose), model.responses))
   return {
     points: geometry.points,
     lines: Object.fromEntries(Object.entries(geometry.lines).map(([id, l]) => [id, { ...l, stroke: look.strokes[id]! }])),
@@ -86,29 +95,78 @@ export interface Geometry {
   radii: Record<string, number>
 }
 
-function blend(ws: readonly Weighted[]): Geometry {
+/**
+ * Responded weights for one scalar (stage 3b package 2, docs/stage3b-pkg2-responses.md §2): in the
+ * pose's quadrant, `u' = (1 − v)·r_bottom(u) + v·r_top(u)`, `v' = (1 − u)·s_left(v) + u·s_right(v)`,
+ * then the bilinear weights of u', v'. Weights may be negative or above 1 (a response may
+ * extrapolate); only weights exactly 0 are left out, so a view stays exact. Returns undefined for a
+ * control with no response on any of the four edges, which then takes the geometric weights (3a).
+ */
+type ScalarWeights = (control: ControlResponses | undefined, axis: 'x' | 'y', what: string) => Weighted[] | undefined
+function responded(model: Model, pose: Pose): ScalarWeights {
+  const at = (yaw: number, pitch: number) => model.views.find(v => v.yaw === yaw && v.pitch === pitch)!
+  const sy = pose.yaw < 0 ? -1 : 1, sp = pose.pitch < 0 ? -1 : 1
+  const u = Math.abs(pose.yaw) / YAW_LIMIT, v = Math.abs(pose.pitch) / PITCH_LIMIT
+  const Y = sy * YAW_LIMIT, P = sp * PITCH_LIMIT
+  const edge = (a: [number, number], b: [number, number]) => `${a[0]},${a[1]}>${b[0]},${b[1]}`
+  const bottom = edge([0, 0], [Y, 0]), top = edge([0, P], [Y, P]), left = edge([0, 0], [0, P]), right = edge([Y, 0], [Y, P])
+  const views = [at(0, 0), at(Y, 0), at(0, P), at(Y, P)]
+  return (control, axis, what) => {
+    if (!control) return undefined
+    const k = (e: string) => { const kn = own(control, e)?.[axis]; if (kn) check(kn, `${what} on ${e}, axis ${axis}`); return kn }
+    const rb = k(bottom), rt = k(top), sl = k(left), sr = k(right)
+    if (!rb && !rt && !sl && !sr) return undefined
+    // every response is pinned at 0 and 1, so u = 0 gives u' = 0 and u = 1 gives (1 − v)·1 + v·1,
+    // which rounds to exactly 1 (the error of 1 − v is at most half an ulp of 1): views stay exact
+    const u2 = (1 - v) * respond(rb, u) + v * respond(rt, u)
+    const v2 = (1 - u) * respond(sl, v) + u * respond(sr, v)
+    return [(1 - u2) * (1 - v2), u2 * (1 - v2), (1 - u2) * v2, u2 * v2].map((weight, i) => ({ view: views[i]!, weight })).filter(w => w.weight !== 0)
+  }
+}
+const own = <T>(rec: Readonly<Record<string, T>>, k: string): T | undefined => (Object.hasOwn(rec, k) ? rec[k] : undefined)
+/** A malformed response in the model is refused, never read as something else. */
+function check(knots: Knots, what: string) {
+  let last = 0
+  if (!Array.isArray(knots)) throw new Error(`model-incomplete: malformed response of ${what}`)
+  for (const kn of knots) {
+    if (!Array.isArray(kn) || kn.length !== 2 || !Number.isFinite(kn[0]) || !Number.isFinite(kn[1]) || !(kn[0] > last && kn[0] < 1)) throw new Error(`model-incomplete: malformed response of ${what}`)
+    last = kn[0]
+  }
+}
+/** One response at progress t: piecewise linear through (0,0), the knots, (1,1). */
+export function respond(knots: Knots | undefined, t: number): number {
+  if (!knots?.length || t === 0 || t === 1) return t
+  let p0 = 0, v0 = 0
+  for (const [p, v] of knots) {
+    if (t <= p) return t === p ? v : v0 + ((t - p0) * (v - v0)) / (p - p0)
+    p0 = p; v0 = v
+  }
+  return v0 + ((t - p0) * (1 - v0)) / (1 - p0)
+}
+
+function blend(ws: readonly Weighted[], scalar: ScalarWeights, responses?: Responses): Geometry {
   // the keys of every contributing view, not of the first one: a key missing in any of them is
   // refused below (model-incomplete), never dropped (dot 1791684670)
   const keys = (pick: (v: ViewShape) => object) => [...new Set(ws.flatMap(w => Object.keys(pick(w.view))))]
   // own properties only: `constructor` and the like on a record that lacks the key are missing, not inherited (dot 1791684959)
-  const own = <T>(rec: Readonly<Record<string, T>>, k: string): T | undefined => (Object.hasOwn(rec, k) ? rec[k] : undefined)
-  const num = (get: (v: ViewShape) => number | undefined, what: string) => {
+  const num = (get: (v: ViewShape) => number | undefined, what: string, list: readonly Weighted[] = ws) => {
     // summed from the first term, so a single weight 1 gives the view's value exactly (even −0)
     let s: number | undefined
-    for (const w of ws) {
+    for (const w of list) {
       const x = get(w.view)
       if (x === undefined) throw new Error(`model-incomplete: no ${what} in view ${w.view.yaw},${w.view.pitch}`)
       s = s === undefined ? w.weight * x : s + w.weight * x
     }
     return s!
   }
-  const vec = (get: (v: ViewShape) => Vec | undefined, what: string): Vec =>
-    ({ x: num(v => get(v)?.x, what), y: num(v => get(v)?.y, what) })
+  // a control with a response on one of the quadrant's edges blends that axis with its own weights
+  const vec = (get: (v: ViewShape) => Vec | undefined, what: string, control?: ControlResponses): Vec =>
+    ({ x: num(v => get(v)?.x, what, scalar(control, 'x', what) ?? ws), y: num(v => get(v)?.y, what, scalar(control, 'y', what) ?? ws) })
   return {
-    points: Object.fromEntries(keys(v => v.points).map(p => [p, vec(v => own(v.points, p), `position of ${p}`)])),
+    points: Object.fromEntries(keys(v => v.points).map(p => [p, vec(v => own(v.points, p), `position of ${p}`, responses && own(responses.points, p))])),
     lines: Object.fromEntries(keys(v => v.lines).map(l => [l, {
-      ha: vec(v => own(v.lines, l)?.ha, `handle a of ${l}`),
-      hb: vec(v => own(v.lines, l)?.hb, `handle b of ${l}`),
+      ha: vec(v => own(v.lines, l)?.ha, `handle a of ${l}`, responses && own(responses.handles, l)?.a),
+      hb: vec(v => own(v.lines, l)?.hb, `handle b of ${l}`, responses && own(responses.handles, l)?.b),
     }])),
     radii: Object.fromEntries(keys(v => v.radii).map(k => [k, num(v => own(v.radii, k), `radius of ${k}`)])),
   }

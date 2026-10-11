@@ -36,6 +36,8 @@ export interface State {
   names: names.NamesState
   /** The 元组件 types of the layers (step 5): part of the one state, no store of its own. */
   meta: meta.MetaState
+  /** In-between responses per control and edge (stage 3b package 2), owned by animation. */
+  animation: animation.ResponsesState
 }
 
 /** A drawing has its nine view layers from the start (graph "Views"; step 3, Claude 1791653309). */
@@ -47,7 +49,7 @@ function viewedNetwork(): net.NetworkState {
 }
 const createState = (axis = 0): State => ({
   network: viewedNetwork(), groups: groups.create(), joins: joins.create(), links: links.create(), fills: fills.create(), selection: editing.create(),
-  apply: apply.create(axis), names: names.create(), meta: meta.create(),
+  apply: apply.create(axis), names: names.create(), meta: meta.create(), animation: animation.createResponses(),
 })
 
 export interface Snapshot {
@@ -225,7 +227,12 @@ export class Editor {
   moveHandle(line: Id, end: net.End, offset: Vec) { net.moveHandle(this.s.network, this.tx.changes, line, end, offset) }
   // Each operation below runs on every item apply's paired plan lists (graph "Mirror link").
   split(line: Id, t: number, mid: Id, first: Id, second: Id) {
-    const ops = this.paired(apply.pairedSplits(this.s.apply, line, t, mid, first, second)), read = this.view().network
+    const ops = this.paired(apply.pairedSplits(this.s.apply, line, t, mid, first, second))
+    // a split cannot carry responses exactly: refused, never a copied curve posing as shape-preserving (dot 1791687532)
+    for (const o of ops) if (animation.splitBlocked(this.s.animation, this.s.network, o.line)) {
+      throw new net.Refusal('split-has-responses', `split-has-responses: line ${o.line} or its end points have in-between responses; a split cannot keep them exactly`, net.lineObjects([o.line]))
+    }
+    const read = this.view().network
     this.topology(ch => { for (const o of ops) net.splitLine(this.s.network, ch, o.line, o.t, o.mid, o.first, o.second, read) })
   }
   deleteLine(id: Id) {
@@ -270,6 +277,8 @@ export class Editor {
   link(a: Id, b: Id) {
     const read = this.view().network
     for (const [x, y] of this.paired(apply.pairedPointPairs(this.s.apply, this.s.network, a, b))) {
+      // the two link components' responses merge first: exactly equal at the union of knots, which is kept (dot 1791689586)
+      animation.mergeForLink(this.s.animation, this.s.links, x, y)
       this.move([links.link(this.s.links, this.s.network, x, y, read)])
       // the second point is moved onto the first in every view (a default, Claude 1791653309),
       // read from the edit's settled trial in that view (dot 1791653958)
@@ -700,7 +709,7 @@ export class LayerReader {
 
 // ---- for the archive module only (not exported from the package root) -----------
 
-const PARTS = ['network', 'groups', 'joins', 'links', 'fills', 'apply', 'names', 'meta'] as const
+const PARTS = ['network', 'groups', 'joins', 'links', 'fills', 'apply', 'names', 'meta', 'animation'] as const
 
 /** The document as plain data, without the selection (docs/archive-plan.md). */
 export function exportState(core: Core): Record<string, unknown> {
@@ -725,12 +734,13 @@ export function importState(data: unknown): Core {
     const network = net.restore(d.network, views.FRONT)
     views.checkViews(network)
     animation.checkRecords(network)
-    const g = groups.restore(d.groups, network)
+    const g = groups.restore(d.groups, network), l = links.restore(d.links, network)
     state = {
-      network, groups: g, joins: joins.restore(d.joins, network), links: links.restore(d.links, network),
+      network, groups: g, joins: joins.restore(d.joins, network), links: l,
       fills: fills.restore(d.fills, network), apply: apply.restore(d.apply, network), names: names.restore(d.names, network, g),
       meta: meta.restore(d.meta, network),
       selection: editing.create(),
+      animation: animation.restoreResponses(d.animation, network, l),
     }
   } catch (err) {
     const m = (err as Error).message
@@ -766,7 +776,16 @@ export function importState(data: unknown): Core {
 
 /** The views of a state as `evaluate` input: per view its angle, positions, handle vectors, strokes, arc radii and end strokes. */
 function modelOf(s: State): evaluate.Model {
+  // responses with edge keys as evaluate names them (`yaw,pitch>yaw,pitch`), copied
+  const edgeKey = (k: string) => { const e = views.EDGES.find(x => x.key === k)!; const a = views.angle(e.inner), b = views.angle(e.outer); return `${a.yaw},${a.pitch}>${b.yaw},${b.pitch}` }
+  const rekey = (c: animation.ControlResponses): evaluate.ControlResponses => Object.fromEntries(Object.entries(c).map(([k, v]) => [edgeKey(k), v]))
+  const r = animation.responsesData(s.animation)
+  const responses: evaluate.Responses = {
+    points: Object.fromEntries(Object.entries(r.points).map(([id, c]) => [id, rekey(c)])),
+    handles: Object.fromEntries(Object.entries(r.handles).map(([id, h]) => [id, { ...(h.a ? { a: rekey(h.a) } : {}), ...(h.b ? { b: rekey(h.b) } : {}) }])),
+  }
   return structuredClone({
+    responses,
     views: viewKeys(s).map(k => {
       const n = net.of(s.network, k)
       return {
@@ -821,6 +840,8 @@ function applyTopology(state: State, changes: net.Changes, op: (ch: net.Changes)
   names.follow(state.names, ch)
   // names keep up within the edit: what is gone frees its name at once, anything new is named at once (dot 1791479554)
   names.update(state.names, state.network, state.groups)
+  // responses follow the same record: deletions, then unbind copies (stage 3b package 2)
+  animation.follow(state.animation, ch)
   net.followReplacements(changes, ch)
   for (const k of Object.keys(ch) as (keyof net.Changes)[]) (changes[k] as unknown[]).push(...(ch[k] as unknown[]))
 }

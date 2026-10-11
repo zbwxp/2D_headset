@@ -8,7 +8,7 @@ import * as views from '../views'
 /** A range of shape layers, resolved to concrete layer keys from the edited view. */
 export type Range = 'none' | 'edited' | 'all-views' | 'non-front' | 'others' | 'corners'
 /** The shared parts of the state an operation may write directly (structure = layers, points, lines, ids). */
-export type Shared = 'structure' | 'groups' | 'joins' | 'links' | 'fills' | 'selection' | 'apply' | 'names' | 'meta'
+export type Shared = 'structure' | 'groups' | 'joins' | 'links' | 'fills' | 'selection' | 'apply' | 'names' | 'meta' | 'animation'
 export type Reads = 'draft' | 'settled-trial'
 
 export interface Effect {
@@ -44,6 +44,8 @@ export function resolve(range: Range, edited: string, all: readonly string[]): s
 
 /** A structural change runs through `applyTopology`, which lets every attribute module follow it, so any of these may change. */
 const STRUCTURAL: readonly Shared[] = ['structure', 'groups', 'joins', 'links', 'fills', 'apply', 'names']
+/** Structural operations whose record can delete, merge or unbind, or that insert: responses follow (stage 3b package 2). */
+const STRUCTURAL_RESPONSES: readonly Shared[] = [...STRUCTURAL, 'animation']
 /** An ordinary edit: full settle (auto-bind in the edited view), not alone. */
 const full = (e: Partial<Effect> & Pick<Effect, 'reads'>): Effect =>
   ({ intents: 'none', shapes: 'none', records: false, shared: [], autoStructure: true, settle: 'full', alone: false, ...e })
@@ -58,10 +60,10 @@ export const EFFECTS: Record<string, Effect> = {
   renameGroup: full({ reads: 'draft', shared: ['names'] }),
   layerType: full({ reads: 'draft', shared: ['meta'] }),
   reorderLayer: full({ reads: 'draft', shared: ['structure'] }),
-  copyLayer: full({ reads: 'settled-trial', shapes: 'all-views', records: true, shared: [...STRUCTURAL, 'meta'] }),
+  copyLayer: full({ reads: 'settled-trial', shapes: 'all-views', records: true, shared: [...STRUCTURAL_RESPONSES, 'meta'] }),
   // paste selects what it pasted (its nested select)
-  paste: full({ reads: 'draft', shapes: 'all-views', records: true, shared: [...STRUCTURAL, 'selection'] }),
-  deleteLayer: full({ reads: 'draft', shapes: 'all-views', records: true, shared: [...STRUCTURAL, 'meta'] }),
+  paste: full({ reads: 'draft', shapes: 'all-views', records: true, shared: [...STRUCTURAL_RESPONSES, 'selection'] }),
+  deleteLayer: full({ reads: 'draft', shapes: 'all-views', records: true, shared: [...STRUCTURAL_RESPONSES, 'meta'] }),
   // states
   lineState: full({ reads: 'draft', shared: ['structure'] }),
   fillState: full({ reads: 'draft', shared: ['fills'] }),
@@ -74,15 +76,16 @@ export const EFFECTS: Record<string, Effect> = {
   mergePosition: full({ reads: 'settled-trial', intents: 'edited', shapes: 'edited' }),
   moveHandle: full({ reads: 'draft', intents: 'edited', shapes: 'edited' }),
   split: full({ reads: 'settled-trial', shapes: 'all-views', records: true, shared: STRUCTURAL }),
-  deleteLine: full({ reads: 'draft', shapes: 'all-views', records: true, shared: STRUCTURAL }),
-  bind: full({ reads: 'draft', intents: 'edited', shapes: 'all-views', records: true, shared: STRUCTURAL }),
-  unbind: full({ reads: 'settled-trial', intents: 'edited', shapes: 'all-views', records: true, shared: STRUCTURAL }),
+  deleteLine: full({ reads: 'draft', shapes: 'all-views', records: true, shared: STRUCTURAL_RESPONSES }),
+  bind: full({ reads: 'draft', intents: 'edited', shapes: 'all-views', records: true, shared: STRUCTURAL_RESPONSES }),
+  unbind: full({ reads: 'settled-trial', intents: 'edited', shapes: 'all-views', records: true, shared: STRUCTURAL_RESPONSES }),
   // joins: a smooth join holds its first-clicked handle in every view; an arc gives views without a radius one
   join: full({ reads: 'draft', intents: 'all-views', shapes: 'all-views', records: true, shared: ['joins'] }),
   removeJoin: full({ reads: 'draft', shapes: 'all-views', records: true, shared: ['joins'] }),
   endStroke: full({ reads: 'draft', shapes: 'edited', shared: [] }),
   // links: a link moves the second point onto the first in every view
-  link: full({ reads: 'settled-trial', intents: 'all-views', shapes: 'all-views', shared: ['links'] }),
+  // a link merges the two components' responses (stage 3b package 2)
+  link: full({ reads: 'settled-trial', intents: 'all-views', shapes: 'all-views', shared: ['links', 'animation'] }),
   unlink: full({ reads: 'draft', shared: ['links'] }),
   linkJoin: full({ reads: 'draft', intents: 'all-views', shared: ['links'] }),
   removeLinkJoin: full({ reads: 'draft', shared: ['links'] }),
@@ -103,7 +106,7 @@ export const EFFECTS: Record<string, Effect> = {
   rotate: full({ reads: 'settled-trial', intents: 'edited', shapes: 'edited' }),
   scale: full({ reads: 'settled-trial', intents: 'edited', shapes: 'edited' }),
   flip: full({ reads: 'settled-trial', intents: 'edited', shapes: 'edited' }),
-  deleteSelection: full({ reads: 'settled-trial', shapes: 'all-views', records: true, shared: STRUCTURAL }),
+  deleteSelection: full({ reads: 'settled-trial', shapes: 'all-views', records: true, shared: STRUCTURAL_RESPONSES }),
   // stage 2: read the draft's geometry, which their settle-free companions leave unchanged
   broadcastShape: { reads: 'draft', intents: 'non-front', shapes: 'non-front', records: true, shared: [], autoStructure: false, settle: 'non-front-positions', alone: true },
   draftCorners: { reads: 'draft', intents: 'corners', shapes: 'corners', records: false, shared: [], autoStructure: false, settle: 'non-front-positions', alone: true },

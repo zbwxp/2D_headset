@@ -4,7 +4,7 @@
 // intents before the settle. Direct writes without intents are checked here, one operation at a
 // time, against the state just before the commit's settle (a limited guarantee, dot 1791687901).
 import { describe, it, expect } from 'vitest'
-import { Core, save, Refusal, type Vec } from '../src'
+import { Core, save, open, Refusal, type Vec } from '../src'
 import { Editor, observeBeforeSettle, UNWRAPPED, type BeforeSettle } from '../src/document'
 import { EFFECTS, resolve, type Effect, type Shared } from '../src/document/effects'
 
@@ -32,7 +32,14 @@ function fixture() {
   d.edit(e => e.link('r', 's'))
   d.edit(e => e.move([{ id: 'b', target: P(11, 1) }])) // a pending change for the shape broadcast
   d.editIn('view:90,0', e => e.lineStroke('ab', { width: 5, profile: 'uniform' })) // strokes differ for the stroke broadcast
-  return d
+  // responses (stage 3b package 2), from a file: a on the linear line (so a link to q merges), b, y,
+  // the linked r and s alike, and handles of ab and xy, so the structural operations write animation
+  const file = JSON.parse(save(d)), E = 'view:0,0>view:90,0'
+  file.document.animation = {
+    points: { a: { [E]: { x: [[0.5, 0.5]] } }, b: { [E]: { x: [[0.5, 0.8]] } }, y: { [E]: { y: [[0.4, 0.1]] } }, r: { [E]: { x: [[0.3, 0.6]] } }, s: { [E]: { x: [[0.3, 0.6]] } } },
+    handles: { ab: { a: { [E]: { x: [[0.5, 0.7]] } } }, xy: { b: { [E]: { y: [[0.5, 0.2]] } } } },
+  }
+  return open(JSON.stringify(file))
 }
 /**
  * Mirror cases that reach every branch of apply (dot 1791688672): a source triangle with an arc
@@ -135,7 +142,7 @@ function written(x: BeforeSettle) {
   const shapes = ds.shapes.layers.filter(l => json(l) !== json(ps.shapes.layers.find(q => q.key === l.key))).map(l => l.key)
   const shared: Shared[] = []
   if ((['layers', 'points', 'lines', 'usedPoints', 'usedLines'] as const).some(k => json(ds[k]) !== json(ps[k]))) shared.push('structure')
-  for (const k of ['groups', 'joins', 'links', 'fills', 'selection', 'apply', 'names', 'meta'] as const) {
+  for (const k of ['groups', 'joins', 'links', 'fills', 'selection', 'apply', 'names', 'meta', 'animation'] as const) {
     if (json((x.draft as unknown as Record<string, unknown>)[k]) !== json((x.published as unknown as Record<string, unknown>)[k])) shared.push(k)
   }
   const intents = [...new Set([...x.changes.targets, ...x.changes.held, ...x.changes.handleTips].map(i => i.layer))]
@@ -229,6 +236,17 @@ describe('the declarations against what each operation really does (front and a 
       expect(w.shapes.length + w.shared.length + w.intents.length).toBeGreaterThan(0)
     })
   }
+})
+
+describe('responses: the operations that declare animation write it (stage 3b package 2)', () => {
+  it('each operation declaring animation writes it in its case, and no other operation does', () => {
+    const declaring = Object.entries(EFFECTS).filter(([, e]) => e.shared.includes('animation')).map(([op]) => op).sort()
+    expect(declaring).toEqual(['bind', 'copyLayer', 'deleteLayer', 'deleteLine', 'deleteSelection', 'link', 'paste', 'unbind'])
+    for (const op of declaring) {
+      const c = CASES.find(x => x.op === op)!
+      expect([op, written(run(c, FRONT).seen).shared.includes('animation')]).toEqual([op, true])
+    }
+  })
 })
 
 describe('the merged commit is today\'s, operation by operation (no behaviour change)', () => {

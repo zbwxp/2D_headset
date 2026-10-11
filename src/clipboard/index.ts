@@ -1,7 +1,8 @@
 // clipboard — copy and paste (graph rows "Copy (layer, lines, groups)" and "Cut, paste /
 // copy"; docs/clipboard-plan.md). A clip is plain data, outside the document and its
 // history: lines with their end points, the joins, end strokes and fills inside the range,
-// and the names. Endpoint links and mirror pairs are never part of it. Pasting writes the
+// the names, and the responses of exactly its points and lines (stage 3b package 2). Endpoint
+// links and mirror pairs are never part of it. Pasting writes the
 // clip through each module's own insert, with new ids.
 import * as net from '../network'
 import * as groups from '../groups'
@@ -9,6 +10,8 @@ import * as joins from '../joins'
 import * as fills from '../fills'
 import * as names from '../names'
 import * as views from '../views'
+import * as shapes from '../shapes'
+import * as animation from '../animation'
 
 type Id = net.Id
 
@@ -18,9 +21,11 @@ export interface Clip {
   joins: joins.RangeData
   fills: fills.FillData[]
   names: { lines: [Id, string][]; groups: { name: string; lines: Id[] }[] }
+  /** The responses of the clip's points and lines; absent in a clip made before stage 3b (inserts none). */
+  animation?: animation.ResponsesData
 }
 
-export interface Parts { network: net.NetworkState; groups: groups.GroupsState; joins: joins.JoinsState; fills: fills.FillsState; names: names.NamesState }
+export interface Parts { network: net.NetworkState; groups: groups.GroupsState; joins: joins.JoinsState; fills: fills.FillsState; names: names.NamesState; animation: animation.ResponsesState }
 
 /** The range as a clip: these lines (read from `d`) and everything inside them. */
 export function extract(d: Parts, lines: readonly Id[]): Clip {
@@ -33,6 +38,7 @@ export function extract(d: Parts, lines: readonly Id[]): Clip {
     joins: joins.rangeData(d.joins, d.network, lineSet, pointSet),
     fills: fills.rangeData(d.fills, lineSet),
     names: names.rangeData(d.names, d.groups, d.network, ids),
+    animation: animation.extract(d.animation, pointSet, lineSet),
   })
 }
 
@@ -60,8 +66,9 @@ export function check(v: unknown): Clip {
   const source = d.str(nw.source, 'clip source layer')
   const layers = d.arr(nw.layers, 'clip shape layers').map((x, i) => {
     const L = d.obj(x, `clip shape layer ${i}`), key = d.str(L.key, `clip shape layer ${i} key`)
-    const kind = d.str(L.kind, `clip shape layer ${key} kind`) as 'view' | 'expression' | 'record'
-    if (!['view', 'expression', 'record'].includes(kind)) d.fail(`clip shape layer ${key} has an unknown kind`)
+    // one list of kinds, the shapes module's (ledger row 5)
+    const kind = d.str(L.kind, `clip shape layer ${key} kind`) as shapes.LayerKind
+    if (!shapes.KINDS.includes(kind)) d.fail(`clip shape layer ${key} has an unknown kind`)
     const lp = d.arr(L.points, `clip shape layer ${key} points`).map((y, k) => { const P = d.obj(y, `clip shape layer ${key} point ${k}`); return { id: d.str(P.id, `clip shape layer ${key} point ${k} id`), position: d.vec(P.position, `clip shape layer ${key} point ${k} position`) } })
     const ll = d.arr(L.lines, `clip shape layer ${key} lines`).map((y, k) => {
       const S = d.obj(y, `clip shape layer ${key} line ${k}`), id = d.str(S.id, `clip shape layer ${key} line ${k} id`), sk = d.obj(S.stroke, `clip shape layer ${key} line ${id} stroke`)
@@ -116,7 +123,14 @@ export function check(v: unknown): Clip {
     if (!ls.length || ls.some(l => !lineIds.has(l))) d.fail(`clip group name ${i} points outside the clip`)
     return { name: d.str(G.name, `clip group name ${i}`), lines: ls }
   })
-  return { network: { points, lines, source, layers }, joins: { rows, layers: joinLayers }, fills: fillsData, names: { lines: lineNames, groups: groupNames } }
+  // the responses part, when present, is checked in full and returned; a bad one refuses the
+  // paste, never read as "no responses" (dot 1791689360)
+  let responses: animation.ResponsesData | undefined
+  if (Object.hasOwn(o, 'animation')) {
+    try { responses = animation.checkResponses(o.animation, pointIds, lineIds, 'clip responses') }
+    catch (err) { throw new net.Refusal('clip-invalid', `clip-invalid: ${(err as Error).message}`) }
+  }
+  return { network: { points, lines, source, layers }, joins: { rows, layers: joinLayers }, fills: fillsData, names: { lines: lineNames, groups: groupNames }, ...(responses ? { animation: responses } : {}) }
 }
 
 /**
@@ -160,4 +174,5 @@ export function attach(d: Parts, clip: Clip, map: net.CopyMap, idOf: (old: Id) =
   joins.insert(d.joins, d.network, clip.joins, map, layers)
   fills.insert(d.fills, d.network, clip.fills, map, idOf)
   names.copyFrom(d.names, d.network, d.groups, map.lines, clip.names)
+  if (clip.animation) animation.insert(d.animation, clip.animation, map)
 }
