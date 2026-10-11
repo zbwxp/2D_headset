@@ -152,7 +152,8 @@ export function App() {
   const refGen = useRef(0)
   useEffect(() => () => { refGen.current++ }, [])
   // pictures that failed to draw (a stored picture that does not decode): shown in the status, nothing else changes
-  const [refBroken, setRefBroken] = useState<string[]>([])
+  // bound to the drawing and the picture's source, not the id alone: a good picture with the same id in another drawing is not marked (dot 1791703225)
+  const [refBroken, setRefBroken] = useState<{ core: Core; id: string; src: string }[]>([])
   // this App's read-only flag and its own logged wrapper: another App mounting, posing or
   // unmounting never touches them (dot 1791686247)
   const posing = useRef(false) // set only by startPose / stopPose, with the pose state
@@ -456,10 +457,11 @@ export function App() {
   // where the pose lies for a correction, by core's own rule (correctionEdge; dot 1791696958)
   const where = pose ? correctionEdge(pose) : null
   const onLine = !!where && 'edge' in where
+  const brokenHere = core.in(shown).references().filter(r => refBroken.some(x => x.core === core && x.id === r.id && x.src === r.src)).map(r => r.id)
   const status = pose ? (corrRefusal ? '✗ ' + withNames(corrRefusal.message)
     : `playback yaw ${pose.yaw}, pitch ${pose.pitch} · ${!where ? '' : 'edge' in where ? `on the line ${where.inner} → ${where.outer} at t = ${+where.t.toFixed(3)} · drag a point to correct` : where.code === 'correction-at-view' ? 'at a view · read only (edit the view itself)' : where.code === 'correction-off-edge' ? 'inside a cell · read only (this round corrects on lines only)' : '✗ ' + where.message}${posed instanceof Error ? ' · ✗ ' + posed.message : ''}`)
     : pv.refusal ? '✗ ' + withNames(pv.refusal.message)
-    : refBroken.some(id => core.in(shown).references().some(r => r.id === id)) ? `✗ reference picture ${refBroken.join(', ')} could not be drawn (the drawing is unaffected)`
+    : brokenHere.length ? `✗ reference picture ${brokenHere.join(', ')} could not be drawn (the drawing is unaffected)`
     : `view ${shown} · tool ${ix.tool} · layer ${drawLayer} · selection ${sel.map(u => u.kind[0] + ':' + ('id' in u ? u.id : u.line + '.' + u.end)).join(' ') || '—'}${pv.pick ? ' · first pick ' + pv.pick.id : ''}${pv.cut.length ? ' · cut pending (paste moves, Esc cancels)' : ''}${pv.mirrorSource.length ? ' · mirror source ' + pv.mirrorSource.length : ''}`
 
   return (
@@ -618,7 +620,7 @@ export function App() {
           {!pose && core.in(shown).references().filter(r => r.visible).map(r => {
             const w = r.width * r.scale, h = r.height * r.scale
             return <image key={r.id} data-reference={r.id} href={r.src} x={r.x - w / 2} y={r.y - h / 2} width={w} height={h} opacity={r.opacity} preserveAspectRatio="none"
-              transform={`rotate(${r.angle} ${r.x} ${r.y})`} onError={() => setRefBroken(b => (b.includes(r.id) ? b : [...b, r.id]))} />
+              transform={`rotate(${r.angle} ${r.x} ${r.y})`} onError={() => { const at = core; setRefBroken(b => (b.some(x => x.core === at && x.id === r.id && x.src === r.src) ? b : [...b, { core: at, id: r.id, src: r.src }])) }} />
           })}
           <line x1={s.axis} x2={s.axis} y1={box.y - 1e4} y2={box.y + 1e4} stroke="#9cf" strokeDasharray={`${6 * px} ${4 * px}`} strokeWidth={px} />
           {g.fills.filter(f => f.visible).map(f => <path key={f.id} d={f.parts.map((p, i) => (i ? path(p.curve).replace(/^M[^C]*/, '') : path(p.curve))).join(' ') + ' Z'}

@@ -108,4 +108,20 @@ describe('reference pictures in the bench', () => {
     await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); await wait(50) })
     expect(field('x').value).toBe('7')
   })
+
+  it('a picture that fails to draw shows an error, bound to its drawing and source: opening a file with a good picture of the same id clears it (dot 1791703225)', async () => {
+    const t = await setup()
+    await t.choose(); await t.decode()
+    const id = bench().core.in('view:0,0').references().at(-1)!.id
+    const status = () => t.host.querySelector('svg')!.previousElementSibling!.textContent!
+    await act(async () => { t.host.querySelector(`[data-reference="${id}"]`)!.dispatchEvent(new Event('error')) })
+    expect(status()).toContain(`reference picture ${id} could not be drawn`)
+    // another drawing with the same id and a different (good) picture
+    const file = JSON.parse(save(bench().core))
+    file.document.reference.images.find((i: { id: string }) => i.id === id).src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggh=='
+    const input = t.host.querySelector('[data-testid="open"]') as HTMLInputElement
+    Object.defineProperty(input, 'files', { value: [new File([JSON.stringify(file)], 'd.json', { type: 'application/json' })], configurable: true })
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); await wait(50) })
+    expect(status()).not.toContain('could not be drawn')
+  })
 })
