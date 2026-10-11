@@ -83,6 +83,8 @@ interface Transaction {
   readonly layer: string
   /** The Editor operations this edit ran (for the stroke-broadcast-only commit). */
   readonly ops: Set<string>
+  /** Every Editor call, in order, repeats included (stage 2 counts calls, dot 1791680403). */
+  readonly calls: string[]
   /** For each line an apply locked in this edit: a copy of the state right after that apply (for the lock check). */
   readonly appliedFrom: Map<Id, locks.View>
 }
@@ -92,7 +94,7 @@ export class Editor {
   private constructor() {}
   /** @internal */ static open(state: State, layer: string): Editor {
     const e = new Editor()
-    transactions.set(e, { open: true, cancelled: false, failed: false, state, changes: net.emptyChanges(), appliedFrom: new Map(), layer, ops: new Set() })
+    transactions.set(e, { open: true, cancelled: false, failed: false, state, changes: net.emptyChanges(), appliedFrom: new Map(), layer, ops: new Set(), calls: [] })
     return e
   }
   /**
@@ -373,6 +375,23 @@ export class Editor {
     return scratch
   }
   /**
+   * Shape broadcast (stage 2 rule 3; docs/stage2-plan.md): the chosen lines' pending change
+   * "front − baseline" added in every other view, then the baseline takes the front. Only
+   * in a front edit; it stands alone in its edit (rule 0, checked at commit).
+   */
+  broadcastShape(units?: readonly editing.Unit[]) {
+    if (this.tx.layer !== views.FRONT) throw new net.Refusal('broadcast-from-front', 'broadcast-from-front: a shape broadcast runs in the front view, its source')
+    const lines = editing.units(this.targets(units, this.s.network)).flatMap(u => (u.kind === 'line' ? [u.id] : []))
+    if (!lines.length) throw new net.Refusal('select-lines-to-broadcast', 'select-lines-to-broadcast: the broadcast takes lines; select lines')
+    animation.broadcast(this.s.network, this.s.links, this.tx.changes, lines)
+  }
+  /** Fit (stage 2 rule 4): the chosen lines' baseline takes the front; no view changes; it stands alone in its edit. */
+  fit(units?: readonly editing.Unit[]) {
+    const lines = editing.units(this.targets(units, this.s.network)).flatMap(u => (u.kind === 'line' ? [u.id] : []))
+    if (!lines.length) throw new net.Refusal('select-lines-to-fit', 'select-lines-to-fit: fit takes lines; select lines')
+    animation.fit(this.s.network, this.s.links, lines)
+  }
+  /**
    * Stroke broadcast: the selected lines' (or `units`') own strokes and their end points'
    * end strokes, as in this view, assigned to every other view (views.broadcastStroke).
    * Without a line it is refused, as delete is.
@@ -470,7 +489,7 @@ for (const name of Object.getOwnPropertyNames(Editor.prototype)) {
     ...d,
     value(this: Editor, ...args: unknown[]) {
       const open = transactions.get(this)
-      if (open?.open) open.ops.add(name)
+      if (open?.open) { open.ops.add(name); open.calls.push(name) }
       try { return original.apply(this, args) }
       catch (err) {
         const tx = transactions.get(this)
@@ -538,8 +557,14 @@ export class Core {
       // an edit that only selects or broadcasts strokes changes no position or topology: it skips
       // the settling that does, and keeps every other check (dot 1791655898, 1791656400). Any
       // other operation in the same edit gets the full flow; the auto-bind rule is unchanged.
-      const strokesOnly = tx.ops.size > 0 && [...tx.ops].every(o => KEEPS_GEOMETRY.has(o))
-      commit(draft, tx.changes, this.state, tx.appliedFrom, layer, strokesOnly)
+      // stage 2 rule 0 (dot 1791680149, 1791680403): broadcast, fit and the diagonal draft stand
+      // alone: one call, with only selections and stroke broadcasts beside it, counted by calls
+      const stage2 = tx.calls.filter(c => STAGE2.has(c))
+      if (stage2.length > 1 || (stage2.length && tx.calls.some(c => !STAGE2.has(c) && !KEEPS_GEOMETRY.has(c)))) {
+        throw new net.Refusal('stage2-alone', `stage2-alone: ${stage2.join(', ')} stands alone in its edit (only selections and stroke broadcasts beside it); nothing was published`)
+      }
+      const mode: CommitMode = tx.calls.length && tx.calls.every(c => KEEPS_GEOMETRY.has(c)) ? 'keeps' : stage2.length ? 'views' : 'full'
+      commit(draft, tx.changes, this.state, tx.appliedFrom, layer, mode)
       draft.network = net.of(draft.network, views.FRONT) // the stored handle stays the front compatibility entry
     } catch (err) {
       if (err instanceof Cancelled) return
@@ -575,6 +600,8 @@ export class Core {
   pickLoop(at: Vec): Id | undefined { return this.in(views.FRONT).pickLoop(at) }
   linesInRect(a: Vec, b: Vec, whole: boolean): Id[] { return this.in(views.FRONT).linesInRect(a, b, whole) }
   loopsAt(at: Vec): Id[] { return this.in(views.FRONT).loopsAt(at) }
+  /** Lines with an unbroadcast change: their front differs from the angle baseline (stage 2 rule 5). */
+  pendingLines(): Id[] { return animation.pending(this.state.network) }
   /** The 元线条 named `name` in layer `layer`: its line id, or undefined. */
   lineByName(layer: Id, name: string): Id | undefined { return meta.lineByName(this.state.network, this.state.names, layer, name) }
 }
@@ -713,7 +740,15 @@ function applyTopology(state: State, changes: net.Changes, op: (ch: net.Changes)
 }
 
 /** Editor operations that change no position or topology (an edit of only these skips that settling). */
-const KEEPS_GEOMETRY: ReadonlySet<string> = new Set(['select', 'selectGroup', 'broadcastStroke'])
+const KEEPS_GEOMETRY: ReadonlySet<string> = new Set(['select', 'selectGroup', 'broadcastStroke', 'fit'])
+/** Stage 2 operations that stand alone in their edit (docs/stage2-plan.md rule 0). */
+const STAGE2: ReadonlySet<string> = new Set(['broadcastShape', 'fit', 'draftCorners'])
+/**
+ * How a commit settles: 'full' as ever; 'keeps' (only selections, stroke broadcasts, fit):
+ * no position or topology settling; 'views' (a shape broadcast or a draft): the front is not
+ * settled, every other view by positions only (stage 2 rule 0).
+ */
+type CommitMode = 'full' | 'keeps' | 'views'
 const viewKeys = (s: State): string[] => net.shapeLayers(s.network).filter(l => l.kind === 'view').map(l => l.key)
 
 /**
@@ -725,9 +760,12 @@ const viewKeys = (s: State): string[] => net.shapeLayers(s.network).filter(l => 
  * then fills → groups → names → selection; then the mirror check off the front, names,
  * locks (every view).
  */
-function commit(s: State, ch: net.Changes, published: State, appliedFrom: ReadonlyMap<Id, locks.View>, layer: string, strokesOnly = false) {
-  if (strokesOnly) settleShared(s)
-  else settle(s, ch, layer)
+function commit(s: State, ch: net.Changes, published: State, appliedFrom: ReadonlyMap<Id, locks.View>, layer: string, mode: CommitMode = 'full') {
+  if (mode === 'full') settle(s, ch, layer)
+  else {
+    if (mode === 'views') for (const k of viewKeys(s)) if (k !== views.FRONT) settleLayerPositions(s, ch, k)
+    settleShared(s)
+  }
   // mirror links are front-only: off the front, any change to a mirror pair's lines,
   // however it came (an explicit operation or an auto-bind), is not defined yet (dot 1791653374)
   if (layer !== views.FRONT && mirrorStructure(published) !== mirrorStructure(s)) {

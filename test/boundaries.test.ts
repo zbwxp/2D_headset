@@ -19,7 +19,7 @@ const ALLOWED: Record<string, string[]> = {
   apply: ['geometry', 'network', 'groups', 'joins', 'links', 'fills'],
   names: ['network', 'groups'],
   meta: ['network', 'names'],
-  animation: ['network', 'views'],
+  animation: ['geometry', 'network', 'views', 'links'],
   clipboard: ['network', 'groups', 'joins', 'fills', 'names', 'views'],
   document: ['geometry', 'network', 'groups', 'joins', 'links', 'fills', 'derived', 'locks', 'editing', 'apply', 'names', 'clipboard', 'views', 'meta', 'animation'],
   archive: ['document'],
