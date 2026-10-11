@@ -329,8 +329,13 @@ export function restore(v: unknown, layer: string): NetworkState {
 
 // ---- copies in and out ---------------------------------------------------
 
+/**
+ * Every coordinate written into a network, given or computed (a settle step can overflow on finite
+ * input: link alignment sums before averaging, springs take a handle's length), passes this one
+ * check: a typed refusal, so the edit rolls back with a code (dot 1791694458, 1791694791).
+ */
 function vecIn(v: Vec): Vec {
-  if (!Number.isFinite(v.x) || !Number.isFinite(v.y)) throw new Error('Coordinates must be finite numbers')
+  if (!Number.isFinite(v.x) || !Number.isFinite(v.y)) throw new Refusal('coordinates-not-finite', 'coordinates-not-finite: Coordinates must be finite numbers')
   return { x: v.x, y: v.y }
 }
 const vecOut = (v: Vec): Vec => Object.freeze({ x: v.x, y: v.y })
