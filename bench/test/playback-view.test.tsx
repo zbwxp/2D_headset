@@ -134,6 +134,20 @@ describe('the viewport tools in every mode (bowen 1791727452; dot 1791727663)', 
     expect(on()).toBe(false)
     await act(async () => { keydown(t.input('yaw-text'), 'z') })
     expect(on()).toBe(false)
+    // Z held down: the repeats toggle nothing (dot 1791731833)
+    await act(async () => { keydown(window, 'z'); for (let k = 0; k < 5; k++) keydown(window, 'z', { repeat: true }) })
+    expect(on()).toBe(true)
+  })
+
+  it('a second pointer pressing the pad while a correction drag runs is ignored: the correction goes on and commits (dot 1791731833)', async () => {
+    const t = await setup(), q = `q${t.k}`
+    await t.play(45, 0)
+    const start = t.posed(q), at = t.padAt(-90, 45)
+    await act(async () => { t.svg.dispatchEvent(pe('pointerdown', start.x, start.y, 1)); window.dispatchEvent(pe('pointermove', start.x + 20, start.y, 1)) })
+    await act(async () => { t.pad().dispatchEvent(pe('pointerdown', at.x, at.y, 1, { id: 2 })) })
+    expect(bench().pose()).toEqual({ yaw: 45, pitch: 0 })
+    await act(async () => { window.dispatchEvent(pe('pointerup', start.x + 20, start.y, 0)) })
+    expect(bench().log[0]!.calls).toMatch(/^correct\(/)
   })
 
   it('in playback: a Z click zooms, a right-button drag pans, the wheel zooms — the drawing, the undo history and autosave untouched; Z off, a press on the line corrects again', async () => {

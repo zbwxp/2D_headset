@@ -23,7 +23,7 @@ function track() {
   return { count: () => live.size, restore: () => { window.addEventListener = add; window.removeEventListener = remove } }
 }
 
-async function mount(limits: Pose = { yaw: 90, pitch: 45 }) {
+async function mount(limits: Pose = { yaw: 90, pitch: 45 }, refuse = false) {
   const host = document.createElement('div'); document.body.appendChild(host)
   const root = createRoot(host); roots.push(root)
   const seen: Pose[] = [], events: string[] = []
@@ -32,7 +32,7 @@ async function mount(limits: Pose = { yaw: 90, pitch: 45 }) {
     const [p, setP] = useState<Pose>({ yaw: 0, pitch: 0 }), [on, setOn] = useState(true)
     setShown = setP; show = setOn
     return on ? <PosePad yaw={p.yaw} pitch={p.pitch} limits={limits}
-      onStart={d => { cancel = d.cancel; events.push(`start ${d.pointerId}`) }}
+      onStart={d => { cancel = d.cancel; events.push(`start ${d.pointerId}`); return refuse ? false : true }}
       onChange={x => { seen.push(x) }} onEnd={c => { events.push(c === cancel ? 'end' : 'end?') }} /> : null
   }
   await act(async () => { root.render(<Host />) })
@@ -93,6 +93,24 @@ describe('the pose pad', () => {
     expect([t.seen, t.events]).toEqual([[{ yaw: 0, pitch: 0 }], ['start 1']])
     await act(async () => { window.dispatchEvent(pe('pointermove', 200, 50, 1)) })
     expect(t.seen.at(-1)).toEqual({ yaw: 90, pitch: 0 })
+  })
+
+  it('the app refusing the press (another pointer\'s gesture runs): nothing reported, no listeners', async () => {
+    const tr = track()
+    try {
+      const t = await mount(undefined, true)
+      await act(async () => { t.pad().dispatchEvent(pe('pointerdown', 100, 50, 1)) })
+      expect([t.seen, tr.count()]).toEqual([[], 0])
+    } finally { tr.restore() }
+  })
+
+  it('the grid is the svg\'s own box: the frame is outside it, so a corner mark gives exactly its pose (dot 1791731833)', async () => {
+    const t = await mount()
+    expect(getComputedStyle(t.pad()).borderTopWidth || '0px').toMatch(/^(0px|)$/)
+    const mark = t.host.querySelector('[data-view="90,-45"]')!
+    expect([mark.getAttribute('cx'), mark.getAttribute('cy')]).toEqual(['200', '100'])
+    await act(async () => { t.pad().dispatchEvent(pe('pointerdown', 200, 100, 1)) })
+    expect(t.seen.at(-1)).toEqual({ yaw: 90, pitch: -45 })
   })
 
   it('a press at the pose already shown still starts a drag and reports it (the app takes its slot)', async () => {

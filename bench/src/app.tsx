@@ -611,7 +611,8 @@ export function App() {
         || (t.tagName === 'INPUT' && !['button', 'checkbox', 'radio', 'file', 'range', 'color', 'submit', 'reset'].includes((t as HTMLInputElement).type))
       if (typing) return
       // a plain Z is the viewport's zoom, in every mode (bowen 1791727452); ⌘Z / Ctrl-Z stays undo
-      if (e.key.toLowerCase() === 'z' && !e.metaKey && !e.ctrlKey && !e.altKey) { toggleZoom(); e.preventDefault(); return }
+      // a key held down repeats: only its first press toggles (dot 1791731833)
+      if (e.key.toLowerCase() === 'z' && !e.metaKey && !e.ctrlKey && !e.altKey) { if (!e.repeat) toggleZoom(); e.preventDefault(); return }
       // then the write gates: restoring and playback take no other shortcut (dot 1791704242, 1791683911)
       if (restoringNow.current) return
       if (posing.current) return
@@ -690,7 +691,11 @@ export function App() {
             </label>)}
             {/* yaw and pitch on one grid (bowen 1791727397): its drag takes the one gesture slot, ending the old gesture first */}
             <PosePad yaw={pose.yaw} pitch={pose.pitch} limits={LIMITS}
-              onStart={d => { gesture.current?.cancel('a pose pad press'); gesture.current = { id: d.pointerId, right: false, cancel: d.cancel } }}
+              onStart={d => {
+                // as on the canvas: another pointer's running gesture keeps the slot, the press is ignored (dot 1791731833)
+                if (gesture.current && gesture.current.id !== d.pointerId) return false
+                gesture.current?.cancel('a pose pad press'); gesture.current = { id: d.pointerId, right: false, cancel: d.cancel }; return true
+              }}
               onChange={p => changePose(p, 'pad')}
               onEnd={cancel => { if (gesture.current?.cancel === cancel) gesture.current = null }} />
           </> : <button onClick={startPose}>Playback</button>}

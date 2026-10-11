@@ -11,8 +11,11 @@ export interface PosePadProps {
   readonly pitch: number
   /** The largest |yaw| and |pitch|: the grid spans −yaw … +yaw left to right, +pitch … −pitch top to bottom. */
   readonly limits: Pose
-  /** A press takes the app's gesture slot: `cancel` ends this drag (listeners removed), from the app's side. */
-  onStart(drag: { readonly pointerId: number; readonly cancel: () => void }): void
+  /**
+   * A press asks the app for its gesture slot: `cancel` ends this drag (listeners removed), from the app's side.
+   * The app returns false to refuse it (another pointer's gesture is running there): the press then does nothing.
+   */
+  onStart(drag: { readonly pointerId: number; readonly cancel: () => void }): boolean
   /** A pose from the press or the drag, whole degrees, within the limits; called on the press even if unchanged. */
   onChange(pose: Pose): void
   /** The drag ended, by any path (its `cancel` named, so the app clears its slot only if it is still this drag). */
@@ -55,8 +58,8 @@ export function PosePad({ yaw, pitch, limits, onStart, onChange, onEnd }: PosePa
       if (running.current?.stop === stop) running.current = null
       props.current.onEnd(stop)
     }
+    if (!onStart({ pointerId: id, cancel: stop })) return // the app keeps another pointer's gesture (dot 1791731833)
     running.current = { id, stop }
-    onStart({ pointerId: id, cancel: stop })
     for (const [t, f] of listeners) window.addEventListener(t, f)
     // capture: a later press of the same pointer anywhere ends the drag (this press has already passed the window)
     window.addEventListener('pointerdown', otherDown as EventListener, true)
@@ -65,11 +68,12 @@ export function PosePad({ yaw, pitch, limits, onStart, onChange, onEnd }: PosePa
 
   const L = limits, sx = (v: number) => ((v + L.yaw) / (2 * L.yaw)) * W, sy = (v: number) => ((L.pitch - v) / (2 * L.pitch)) * H
   const yaws = [-L.yaw, -L.yaw / 2, 0, L.yaw / 2, L.yaw], pitches = [L.pitch, 0, -L.pitch]
-  return <svg ref={box} data-testid="pose-pad" width={W} height={H} viewBox={`0 0 ${W} ${H}`} onPointerDown={down}
-    style={{ background: '#f4f4f4', border: '1px solid #bbb', touchAction: 'none', cursor: 'crosshair', flex: 'none' }}>
+  // the frame is drawn by a wrapper, so the svg's own box is exactly the grid: no border in the coordinates (dot 1791731833)
+  return <div style={{ border: '1px solid #bbb', width: W, height: H, flex: 'none', lineHeight: 0 }}><svg ref={box} data-testid="pose-pad" width={W} height={H} viewBox={`0 0 ${W} ${H}`} onPointerDown={down}
+    style={{ display: 'block', background: '#f4f4f4', touchAction: 'none', cursor: 'crosshair' }}>
     {yaws.map(v => <line key={`y${v}`} x1={sx(v)} x2={sx(v)} y1={0} y2={H} stroke={v === 0 ? '#999' : '#ddd'} />)}
     {pitches.map(v => <line key={`p${v}`} x1={0} x2={W} y1={sy(v)} y2={sy(v)} stroke={v === 0 ? '#999' : '#ddd'} />)}
     {[-L.yaw, 0, L.yaw].flatMap(a => pitches.map(b => <circle key={`${a},${b}`} data-view={`${a},${b}`} cx={sx(a)} cy={sy(b)} r={3} fill="#888" />))}
     <circle data-handle="" cx={sx(yaw)} cy={sy(pitch)} r={5} fill="#2a7fff" stroke="#fff" strokeWidth={1.5} />
-  </svg>
+  </svg></div>
 }
