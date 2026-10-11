@@ -567,6 +567,9 @@ export class Core {
       }
       if (tx.cancelled) return
       if (tx.failed) throw new Error('An operation in this edit failed; nothing was published')
+      // the callback has returned: the Editor closes before anything else runs, the test observer
+      // included, so an Editor kept from the callback can no longer write (dot 1791688692)
+      tx.open = false
       // the calls' declarations decide the commit (ledger row 1; src/document/effects.ts): only
       // selections and stroke broadcasts beside them skip settling (dot 1791655898, 1791656400);
       // broadcast, fit and the draft stand alone, counted by calls (dot 1791680149, 1791680403)

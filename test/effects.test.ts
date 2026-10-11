@@ -195,6 +195,22 @@ describe('every Editor operation declares its effects', () => {
   })
 })
 
+describe('the observer seam cannot re-enter an edit (dot 1791688692)', () => {
+  it('an Editor kept from the callback is closed when the observer runs: it writes nothing, and the edit publishes only its own result', () => {
+    const d = fixture()
+    let kept: Editor | undefined
+    const errors: string[] = []
+    const off = observeBeforeSettle(() => {
+      try { kept!.move([{ id: 'a', target: P(-50, -50) }]) } catch (x) { errors.push((x as Error).message) }
+      try { kept!.move([{ id: 'nope', target: P(1, 1) }]) } catch (x) { errors.push((x as Error).message) }
+    })
+    try { d.edit(e => { kept = e; e.select(sel('ab')) }) } finally { off() }
+    expect(errors).toEqual(['This editor belongs to a finished edit', 'This editor belongs to a finished edit'])
+    expect(d.in(FRONT).snapshot().points.find(p => p.id === 'a')!.position).toEqual(P(0))
+    expect(d.snapshot().selection).toEqual(sel('ab'))
+  })
+})
+
 describe('the declarations against what each operation really does (front and a corner view)', () => {
   for (const c of CASES) for (const layer of c.views ?? [FRONT, 'view:90,45']) {
     it(`${c.op}${c.note ? ` (${c.note})` : ''} in ${layer}`, () => {
