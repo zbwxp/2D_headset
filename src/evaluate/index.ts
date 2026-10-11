@@ -87,7 +87,9 @@ export interface Geometry {
 }
 
 function blend(ws: readonly Weighted[]): Geometry {
-  const first = ws[0]!.view
+  // the keys of every contributing view, not of the first one: a key missing in any of them is
+  // refused below (model-incomplete), never dropped (dot 1791684670)
+  const keys = (pick: (v: ViewShape) => object) => [...new Set(ws.flatMap(w => Object.keys(pick(w.view))))]
   const num = (get: (v: ViewShape) => number | undefined, what: string) => {
     // summed from the first term, so a single weight 1 gives the view's value exactly (even −0)
     let s: number | undefined
@@ -101,12 +103,12 @@ function blend(ws: readonly Weighted[]): Geometry {
   const vec = (get: (v: ViewShape) => Vec | undefined, what: string): Vec =>
     ({ x: num(v => get(v)?.x, what), y: num(v => get(v)?.y, what) })
   return {
-    points: Object.fromEntries(Object.keys(first.points).map(p => [p, vec(v => v.points[p], `position of ${p}`)])),
-    lines: Object.fromEntries(Object.keys(first.lines).map(l => [l, {
+    points: Object.fromEntries(keys(v => v.points).map(p => [p, vec(v => v.points[p], `position of ${p}`)])),
+    lines: Object.fromEntries(keys(v => v.lines).map(l => [l, {
       ha: vec(v => v.lines[l]?.ha, `handle a of ${l}`),
       hb: vec(v => v.lines[l]?.hb, `handle b of ${l}`),
     }])),
-    radii: Object.fromEntries(Object.keys(first.radii).map(k => [k, num(v => v.radii[k], `radius of ${k}`)])),
+    radii: Object.fromEntries(keys(v => v.radii).map(k => [k, num(v => v.radii[k], `radius of ${k}`)])),
   }
 }
 

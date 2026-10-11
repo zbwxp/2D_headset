@@ -104,6 +104,15 @@ describe('evaluate: slots and refusals', () => {
     const noRadius = model((yaw, pitch) => (yaw === 90 && pitch === 0 ? { radii: {} } : {}))
     expect(() => evaluate(noRadius, { yaw: 10, pitch: 0 })).toThrow(/model-incomplete: no radius of r1 in view 90,0/)
     expect(() => evaluate(noRadius, { yaw: 0, pitch: 10 })).not.toThrow() // that view does not contribute there
+    // a key missing in the first contributing view, or in a later one, is refused either way (dot 1791684670)
+    const without = (yaw: number, pitch: number, cut: (v: ViewShape) => Partial<ViewShape>) => model((y, p) => (y === yaw && p === pitch ? cut(view(y, p)) : {}))
+    const noPoint = (v: ViewShape) => ({ points: { a: v.points.a!, q: v.points.q! } })
+    const noLine = () => ({ lines: {} })
+    const noRad = () => ({ radii: {} })
+    for (const [cut, what] of [[noPoint, 'position of b'], [noLine, 'handle a of ab'], [noRad, 'radius of r1']] as const) {
+      expect(() => evaluate(without(0, 0, cut), { yaw: 45, pitch: 0 })).toThrow(new RegExp(`model-incomplete: no ${what} in view 0,0`))
+      expect(() => evaluate(without(90, 0, cut), { yaw: 45, pitch: 0 })).toThrow(new RegExp(`model-incomplete: no ${what} in view 90,0`))
+    }
   })
 
   it('pure: the model is not changed, the same input gives the same result, and the result shares nothing with the model', () => {
