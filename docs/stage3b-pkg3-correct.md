@@ -26,6 +26,20 @@
 - **`targets`:** `{ points?: { id, position }[], handles?: { line, end, vector }[] }`: the positions and handle vectors as dragged at the pose. Controls not given are unchanged.
   - Refused: an unknown id, a duplicate, an end other than a / b, a non-finite number (`correction-bad-target`).
 
+## 1a. The order of the steps (dot 1791691213)
+
+1. **Explicit targets:** the points and handle vectors given, checked as in §1.
+2. **Link expansion:** each given point stands for its whole link component (§3). The **target set** is every member of every component touched. Two members of one component given different targets are refused (`correction-link-conflict`).
+3. **Checks on the full target set:**
+   - locks (§4) are checked for every point and handle in the target set, members reached only through a link included;
+   - the axis cases of §2 run for every control in the target set.
+4. **One solve:** the knots of the whole target set are computed from the draft as read before any write, then written in one step.
+5. **The final check** (§5) uses the same target set:
+   - its members must equal their targets;
+   - everything outside it must be unchanged, including points not reached by the expansion and the handle vectors of every line not given.
+
+Every later section uses "the target set" in this sense.
+
 ## 2. Per control and axis
 
 A and B are the control's values on that axis in the edge's inner and outer views. r is its current response there, and p = (1 − r(t))·A + r(t)·B is its current value at the pose (what `evaluate` gives on an edge). q is the target.
@@ -40,14 +54,14 @@ A and B are the control's values on that axis in the edge's inner and outer view
 
 ## 3. Linked points
 
-- A target for one point is a target for its whole link component.
+- A target for one point is a target for its whole link component: every member joins the target set (§1a).
   - The members coincide in every view and hold identical response sets (package 2's rule), so A, B, r and the solve are the same.
   - The same knot is written to every member, so the sets stay identical.
 - Two members of one component given different targets refuse (`correction-link-conflict`).
 
 ## 4. Locks
 
-A target on a locked line is refused (`locked`, naming the line): for a point, any line ending there; for a handle, its line. A correction changes that line's in-between shape.
+A target in the **target set** (§1a) on a locked line is refused (`locked`, naming the line): for a point, any line ending there; for a handle, its line. This covers a member reached only through a link: dragging A refuses when its linked B ends a locked line. A correction changes that line's in-between shape.
 
 *This is one small rule, not a new lock design (bowen 1791651929: locks "代码写到哪就到哪"). If bowen or dot prefers no lock check here, it is dropped.*
 
@@ -57,8 +71,8 @@ The correction is solved, the knots are written to the draft's `animation`, and 
 
 | Control | Must hold |
 |---|---|
-| a dragged control, each axis | equals its target within 1e-9 · max(1, \|A\|, \|B\|, \|q\|) |
-| any other control | equals its value before the edit, exactly |
+| a control in the target set (given, or reached through a link), each axis | equals its target within 1e-9 · max(1, \|A\|, \|B\|, \|q\|) |
+| any control outside the target set (points not reached; every handle vector not given) | equals its value before the edit, exactly |
 | every protected target on the edge (every knot of every control there) | its coordinate unchanged, exactly, except the knots written now |
 
 Anything else refuses the whole edit (`correction-not-reproduced`, naming the control). This is the check package 4 will need when a view moves. Here it guards the solve and the write.
@@ -102,7 +116,10 @@ So the merged commit is today's `keeps`: no settle. Only selections and stroke b
 - **Handles:** a handle vector target, both ends.
 - **Links:**
   - a target on one member writes all members, which stay identical and evaluate bit-identically;
-  - conflicting targets → `correction-link-conflict`.
+  - the member reached through the link counts as a target in the final check, not as "unchanged";
+  - only A given, its linked B ending a locked line → `locked` (naming B's line);
+  - conflicting targets → `correction-link-conflict`;
+  - a point not reached and the handle vectors not given stay exactly as they were.
 - **Locks:** a target on a locked line, through a point and through a handle → `locked`.
 - **Final check:** other controls unchanged at the pose; every protected target on the edge unchanged.
 - **Transaction:**
