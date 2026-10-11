@@ -1,5 +1,7 @@
 # Playback: pose pad, and the viewport tools — rules before code
 
+**Coded** (for dot's check; plan accepted dot 1791727754, coding cleared by bowen 1791730959): `pose-pad/index.tsx` (the pad: its own drag and window listeners, handed to the app at the press with its one cancel); the bench — `changePose(next, source)` (one update for pose and both fields; the pad's own updates never cancel its drag), the pad under the sliders taking the one gesture slot, the **View** group with the **Zoom Z** toggle (always enabled), a plain Z handled after the typing check and before the write gates, and every canvas press that belongs to a viewport tool (Zoom on, middle or right button) routed to the canvas's viewport path in every mode (Move picture too); the cursor table asked with Z first. Tests: `bench/test/pose-pad.test.tsx` (12), `bench/test/playback-view.test.tsx` (7), `pose-pad/test/boundary.test.ts`; the existing tests now find the canvas by its test id (the pad is an earlier svg). Checked in Chrome: a drag on the pad moved the pose to yaw 63, pitch −31, sliders and fields and handle in agreement. Note: with a mouse, a press of the same pointer also ends the other drag on each side; the shared slot is what lets Esc, leaving playback and a tool change end a pad drag.
+
 Asked by bowen 1791727397: playback keeps its yaw and pitch sliders, and gains a coordinate grid where the mouse slides freely through any combination of yaw and pitch.
 
 ## What it is

@@ -40,7 +40,7 @@ async function mount(store: Store) {
   const host = document.createElement('div'); document.body.appendChild(host)
   const root = createRoot(host); roots.push(root)
   await act(async () => { root.render(<App />) })
-  const svg = host.querySelector('svg')!
+  const svg = host.querySelector('[data-testid="canvas"]')!
   ;(svg as unknown as { getScreenCTM: () => unknown }).getScreenCTM = () => ({ inverse: () => ({}) })
   Object.defineProperty(svg, 'clientWidth', { value: 800 }); Object.defineProperty(svg, 'clientHeight', { value: 600 })
   const status = () => host.querySelector('[data-testid="autosave"]')!.textContent!

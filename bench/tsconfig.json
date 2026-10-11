@@ -29,6 +29,7 @@
     "../interaction",
     "../visual",
     "../rename",
-    "../cursor"
+    "../cursor",
+    "../pose-pad"
   ]
 }

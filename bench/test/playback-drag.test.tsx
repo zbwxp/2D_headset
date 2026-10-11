@@ -29,7 +29,7 @@ async function setup(opts: { seed?: boolean } = {}) {
   const host = document.createElement('div'); document.body.appendChild(host)
   const root = createRoot(host); roots.push(root)
   await act(async () => { root.render(<App />) })
-  const svg = host.querySelector('svg')!
+  const svg = host.querySelector('[data-testid="canvas"]')!
   ;(svg as unknown as { getScreenCTM: () => unknown }).getScreenCTM = () => ({ inverse: () => ({}) })
   Object.defineProperty(svg, 'clientWidth', { value: 800 }); Object.defineProperty(svg, 'clientHeight', { value: 600 })
   if (opts.seed !== false) await act(async () => {
@@ -44,7 +44,7 @@ async function setup(opts: { seed?: boolean } = {}) {
     const el = input(id)
     await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(el, v); el.dispatchEvent(new Event('input', { bubbles: true })) })
   }
-  const status = () => host.querySelector('svg')!.previousElementSibling!.textContent!
+  const status = () => host.querySelector('[data-testid="canvas"]')!.previousElementSibling!.textContent!
   const play = async (yaw: number, pitch: number) => { await act(async () => { button('Playback').click() }); await type('yaw-text', String(yaw)); await type('pitch-text', String(pitch)) }
   const posed = (id: string) => { const p = bench().pose()!; return bench().core.atPose(p).snapshot().points.find(x => x.id === id)!.position }
   /** Press at `from`, move by `by` in steps, and optionally release. */

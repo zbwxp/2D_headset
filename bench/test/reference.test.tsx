@@ -113,7 +113,7 @@ describe('reference pictures in the bench', () => {
     const t = await setup()
     await t.choose(); await t.decode()
     const id = bench().core.in('view:0,0').references().at(-1)!.id
-    const status = () => t.host.querySelector('svg')!.previousElementSibling!.textContent!
+    const status = () => t.host.querySelector('[data-testid="canvas"]')!.previousElementSibling!.textContent!
     await act(async () => { t.host.querySelector(`[data-reference="${id}"]`)!.dispatchEvent(new Event('error')) })
     expect(status()).toContain(`reference picture ${id} could not be drawn`)
     // another drawing with the same id and a different (good) picture
@@ -138,7 +138,7 @@ describe('reference pictures in the bench', () => {
       field.dispatchEvent(new Event('input', { bubbles: true }))
       field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
     })
-    const svg = t.host.querySelector('svg')!
+    const svg = t.host.querySelector('[data-testid="canvas"]')!
     ;(svg as unknown as { getScreenCTM: () => unknown }).getScreenCTM = () => ({ inverse: () => ({}) })
     Object.defineProperty(svg, 'clientWidth', { value: 800 }); Object.defineProperty(svg, 'clientHeight', { value: 600 })
     await act(async () => { t.button('Pen P').click() })

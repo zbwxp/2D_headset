@@ -10,6 +10,7 @@ import eyeFixture from '../../test/fixtures/v2-right-eye.json'
 import { LayersPanel } from '../../visual'
 import { Rename } from '../../rename'
 import { cursorFor } from '../../cursor'
+import { PosePad } from '../../pose-pad'
 
 type Id = string
 type Unit = Snapshot['selection'][number]
@@ -356,9 +357,9 @@ export function App() {
   // gesture starts, cleared in its one `stop` (release, cancel, blur, tool change, playback) (dot 1791708548)
   const [pressed, setPressed] = useState(false)
   // what a press on the canvas does, named for the cursor table in the same order as the canvas routes
-  // the press: restoring takes none, playback drags the pose, Move picture moves the picture, otherwise
-  // the tool; the first three have no row in cursor/ and show the arrow (dot 1791710244)
-  const pressTakenBy = restoring ? 'restoring' : pose ? 'playback' : moveRef ? 'movePicture' : zoomTool ? 'Z' : ix.tool
+  // the press: Zoom (a viewport tool) in every mode; else restoring takes none, playback drags the pose,
+  // Move picture moves the picture, otherwise the tool; those three show the arrow (dot 1791710244, 1791727663)
+  const pressTakenBy = zoomTool ? 'Z' : restoring ? 'restoring' : pose ? 'playback' : moveRef ? 'movePicture' : ix.tool
   const note = (what: string) => { log.unshift({ calls: what, result: 'ok (diagnostic)' }); log.length = Math.min(log.length, 50) }
   const BUTTON_BIT = [1, 4, 2] // button 0 → buttons bit 1 (left), 1 → 4 (middle), 2 → 2 (right)
   const CLICK = 2 // screen px a press may move and still be a click (v1: 7205381 DrawingRoom zoom)
@@ -566,13 +567,23 @@ export function App() {
   }
   const stopPose = () => { gesture.current?.cancel('leaving playback'); refGen.current++; posing.current = false; setPose(null); setCorrRefusal(null) }
   /** A valid pose change ends a playback drag first: a target belongs to one pose (dot 1791696847). */
-  const changePose = (next: { yaw: number; pitch: number }) => { gesture.current?.cancel('a pose change'); setCorrRefusal(null); setPose(next) }
+  /**
+   * The one update of a pose that takes effect (dot 1791727663, 1791727680): the pose and both number fields
+   * together, so the pad, the sliders and the fields agree. Its source decides what it cancels: the pad's own
+   * updates during its drag never cancel that drag; any other source (a slider, a field) ends a running
+   * gesture first — a correction drag (dot 1791696847) or a pad drag. A field being typed into keeps its text.
+   */
+  const changePose = (next: { yaw: number; pitch: number }, source: 'pad' | 'slider' | 'yaw-field' | 'pitch-field') => {
+    if (source !== 'pad') gesture.current?.cancel('a pose change')
+    setCorrRefusal(null); setPose(next)
+    setPoseText(t => ({ yaw: source === 'yaw-field' ? t.yaw : String(next.yaw), pitch: source === 'pitch-field' ? t.pitch : String(next.pitch) }))
+  }
   const LIMITS = { yaw: 90, pitch: 45 } as const
   /** A number field's text, and the pose only when it parses to a finite angle in range; "", "-" and the like change nothing. */
   const typePose = (axis: 'yaw' | 'pitch', text: string) => {
     setPoseText(t => ({ ...t, [axis]: text }))
     const v = Number(text)
-    if (pose && text.trim() !== '' && Number.isFinite(v) && Math.abs(v) <= LIMITS[axis] && v !== pose[axis]) changePose({ ...pose, [axis]: v })
+    if (pose && text.trim() !== '' && Number.isFinite(v) && Math.abs(v) <= LIMITS[axis] && v !== pose[axis]) changePose({ ...pose, [axis]: v }, `${axis}-field`)
   }
   const poseTextValid = (axis: 'yaw' | 'pitch') => { const v = Number(poseText[axis]); return poseText[axis].trim() !== '' && Number.isFinite(v) && Math.abs(v) <= LIMITS[axis] }
   /** A tool change (key or button, Z included) ends any gesture through its one cancel path (dot 1791554909). */
@@ -581,6 +592,10 @@ export function App() {
     setZoomTool(t === 'Z')
     if (t !== 'Z') ix.setTool(t)
   }
+  /** Zoom is a viewport tool (bowen 1791727452): Z or its button turns it on and, pressed again, off — in every mode. */
+  const toggleZoom = () => { gesture.current?.cancel('a tool change'); setZoomTool(z => !z) }
+  /** In playback, Move picture and restoring, a press that belongs to a viewport tool (Zoom on, the middle or right button) goes to the canvas's viewport path; none of these reaches a tool that writes. */
+  const viewportPress = (e: React.PointerEvent) => zoomTool || e.button === 1 || e.button === 2
   const onWheel = (e: React.WheelEvent) => {
     const at = toDoc(e), k = Math.exp(e.deltaY * 0.001)
     setBox(b => ({ x: at.x - (at.x - b.x) * k, y: at.y - (at.y - b.y) * k, w: b.w * k, h: b.h * k }))
@@ -589,18 +604,19 @@ export function App() {
     const key = (e: KeyboardEvent) => {
       // Esc first: it cancels a gesture even in playback and with a field focused (dot 1791696958)
       if (e.key === 'Escape' && gesture.current) { gesture.current.cancel('Esc'); e.preventDefault(); return }
-      // playback next, before the typing check: a focused slider must not pass keys on (dot 1791683911)
-      if (restoringNow.current) return // restoring: no shortcut writes (dot 1791704242)
-      if (posing.current) return
-      // only a field that takes typing keeps its keys (dot 1791544530); a focused button never blocks a
-      // shortcut (bowen 1791556992: after clicking Flip or Zoom, V / A / ⌘Z still work)
+      // only a field that takes typing keeps its keys (dot 1791544530), an input method its own (dot 1791727663);
+      // a focused button never blocks a shortcut (bowen 1791556992: after clicking Flip or Zoom, V / A / ⌘Z still work)
       const t = e.target as HTMLElement
-      const typing = t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable
+      const typing = e.isComposing || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable
         || (t.tagName === 'INPUT' && !['button', 'checkbox', 'radio', 'file', 'range', 'color', 'submit', 'reset'].includes((t as HTMLInputElement).type))
       if (typing) return
+      // a plain Z is the viewport's zoom, in every mode (bowen 1791727452); ⌘Z / Ctrl-Z stays undo
+      if (e.key.toLowerCase() === 'z' && !e.metaKey && !e.ctrlKey && !e.altKey) { toggleZoom(); e.preventDefault(); return }
+      // then the write gates: restoring and playback take no other shortcut (dot 1791704242, 1791683911)
+      if (restoringNow.current) return
+      if (posing.current) return
       if (keyHooks.current.nudge?.(e)) return
       // one Esc cancels one thing: a gesture in progress (above) if there is one, else interaction's innermost (dot 1791553129)
-      if (e.key.toLowerCase() === 'z' && !e.metaKey && !e.ctrlKey) { chooseTool('Z'); e.preventDefault(); return }
       // a plain letter interaction takes is a tool key: it ends any gesture and leaves Z
       if (/^[a-y]$/i.test(e.key) && !e.metaKey && !e.ctrlKey && ix.key(e.key, mods(e))) { e.preventDefault(); chooseTool(ix.tool); return }
       if (ix.key(e.key, mods(e))) e.preventDefault()
@@ -669,16 +685,25 @@ export function App() {
           {pose ? <>
             <button onClick={stopPose}>Leave playback</button>
             {(['yaw', 'pitch'] as const).map(axis => <label key={axis}>{axis} {pose[axis]}
-              <input type="range" data-testid={axis} min={-LIMITS[axis]} max={LIMITS[axis]} step={1} value={pose[axis]} onChange={e => { const v = +e.target.value; setPoseText(t => ({ ...t, [axis]: String(v) })); changePose({ ...pose, [axis]: v }) }} />
+              <input type="range" data-testid={axis} min={-LIMITS[axis]} max={LIMITS[axis]} step={1} value={pose[axis]} onChange={e => changePose({ ...pose, [axis]: +e.target.value }, 'slider')} />
               <input data-testid={`${axis}-text`} value={poseText[axis]} style={{ width: 64, borderColor: poseTextValid(axis) ? undefined : '#c00' }} onChange={e => typePose(axis, e.target.value)} />
             </label>)}
+            {/* yaw and pitch on one grid (bowen 1791727397): its drag takes the one gesture slot, ending the old gesture first */}
+            <PosePad yaw={pose.yaw} pitch={pose.pitch} limits={LIMITS}
+              onStart={d => { gesture.current?.cancel('a pose pad press'); gesture.current = { id: d.pointerId, right: false, cancel: d.cancel } }}
+              onChange={p => changePose(p, 'pad')}
+              onEnd={cancel => { if (gesture.current?.cancel === cancel) gesture.current = null }} />
           </> : <button onClick={startPose}>Playback</button>}
+        </div>
+        {/* viewport tools change only what the canvas shows: enabled in every mode (bowen 1791727452) */}
+        <b>View</b>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+          <button data-testid="zoom" style={{ fontWeight: zoomTool ? 700 : 400, background: zoomTool ? '#cde' : undefined }} onClick={toggleZoom}>Zoom Z</button>
         </div>
         <fieldset disabled={!!pose || restoring} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
         <b>Tools</b>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
           {TOOLS.map(([t, label]) => { const on = !zoomTool && ix.tool === t; return <button key={t} style={{ fontWeight: on ? 700 : 400, background: on ? '#cde' : undefined }} onClick={() => chooseTool(t)}>{label}</button> })}
-          <button style={{ fontWeight: zoomTool ? 700 : 400, background: zoomTool ? '#cde' : undefined }} onClick={() => chooseTool('Z')}>Zoom Z</button>
         </div>
         {ix.tool === 'join' && <div>
           <select value={opts.joinMode} onChange={e => ix.setOptions({ joinMode: e.target.value as typeof opts.joinMode })}><option>smooth</option><option>cusp</option><option>arc</option></select>
@@ -855,7 +880,7 @@ export function App() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '4px 8px', borderBottom: '1px solid #ccc', minHeight: 18, color: (pose ? corrRefusal : pv.refusal) ? '#c00' : '#333' }}>{status}</div>
         <svg ref={svg} style={{ flex: 1, background: '#fafafa', touchAction: 'none', cursor: cursorFor(pressTakenBy, pressed) }} data-testid="canvas" viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
-          onPointerDown={restoring ? undefined : pose ? onPoseDown : moveRef ? onRefDown : onDown} onWheel={onWheel}
+          onPointerDown={e => (viewportPress(e) ? onDown(e) : restoring ? undefined : pose ? onPoseDown(e) : moveRef ? onRefDown(e) : onDown(e))} onWheel={onWheel}
           // the right click itself is the unmoved right press (onDown); a right press during a left
           // drag comes only as this event, and cancels that drag (one level)
           onContextMenu={e => { e.preventDefault(); if (gesture.current && !gesture.current.right) gesture.current.cancel('a right click') }}>
