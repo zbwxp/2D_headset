@@ -22,7 +22,7 @@
 
 1. **The record layer.** Every document gets `base:angle`, kind `record`, from creation: a copy of the front. It is not a view: never edited directly, never settled, and checked at open for integrity only (architecture §1).
 2. **Owner: the `animation` module** (package 4). It defines `base:angle` and, as its owner, the rules that differ by role:
-   - **A new line** (pen): only what is **new** is initialised in `base:angle`, its new end points and its handles, with the drawn shape. An **existing** end point keeps its baseline, so its own pending change is not swallowed (dot 1791680195). So a new line has no pending change of its own, but it can show one inherited from an existing end point. This lifts step 2's `new-line-needs-owner` refusal for this layer only, through an explicit owner rule passed to network; other non-view layers stay refused.
+   - **A new line** (pen): only what is **new** is initialised in `base:angle`, its new end points and its handles, with the drawn shape. An **existing** end point keeps its baseline, so its own pending change is not swallowed (dot 1791680195). Its baseline starts at those initial values. A pending change can then appear in two ways: inherited from an existing end point, or its own, once the front's settling (springs, links, mirror at the front) changes its shape after it is drawn (dot 1791680315). This lifts step 2's `new-line-needs-owner` refusal for this layer only, through an explicit owner rule passed to network; other non-view layers stay refused.
    - **Paste:** the clip's `base:angle` when it has one, so a copied unbroadcast change is carried, as the candidate "copy keeps baselines as they are". Otherwise the clip's front, so the baseline starts equal to the front. The layer correspondence names it explicitly; nothing is filled silently.
    - **Split, delete, bind, unbind** follow the kind-independent rules of step 2. A split re-expresses the old baseline at the same t; it never updates it to the current front.
    - **An arc's radius** in `base:angle` is not used by broadcast (rule 3 moves points and handles only). The owner rule gives a new arc the front's radius there, which lifts `arc-needs-owner` for this layer.
@@ -42,8 +42,9 @@
      No handle tips exist in such an edit (rule 0). An unchosen line sharing a moved point follows at that end with its handle vector kept, then springs settle it as after any move.
    - **Then** `base:angle := front` for exactly those points and handles.
    - **Strokes, radii and end strokes are not touched;** the stroke broadcast is separate (step 6).
-   - **One edit.** Other views are settled by positions only (links, springs), as after any structural change. The front is the edited view and gets its usual settle. A locked line that would change in any view refuses the whole broadcast.
+   - **One edit.** Only the views it wrote are settled, by positions only (links, springs); the front is not settled (rule 0). A locked line that would change in any view refuses the whole broadcast.
 4. **Fit** (`Editor.fit(units?)`): `base:angle := front` for the chosen lines' points and handles. No view changes. One edit and one undo; undo restores the pending difference. Fit on a locked line is allowed (*proposal*): it changes only a record.
+   - **Fit needs the complete link scope too** (dot 1791680315). A fit of one linked side alone would leave the two baselines different, and a later broadcast of both would be refused with no clear reason. So a fit where a chosen point's link partner is not an end of a chosen line is refused (`fit-link-incomplete`), with the partner named in the refusal.
 5. **"Unbroadcast change" mark:** `core.pendingLines()` lists lines whose points or handles differ between the front and `base:angle`. It is a read; the bench shows it.
 6. **Diagonal draft** (`Editor.draftCorners(units?)`, module `views`).
    - For the chosen lines, each corner view (±90, ±45) gets `front + (yaw view − front) + (pitch view − front)`, per point and per handle.
@@ -74,7 +75,9 @@
 
 ## Tests
 
-- A new line has no pending change of its own. Drawn from an existing end point with a pending change, that point keeps it and the new line shows it.
+- A new line's baseline equals its initial values. Drawn from an existing end point with a pending change, that point keeps it and the new line shows it. A front spring that turns the new line's handle afterwards gives it its own pending change.
+- Fit of one linked side alone is refused, naming the partner (`fit-link-incomplete`); both sides together are fitted together.
+- Every refusal of this stage names its reason and objects: `stage2-alone`, `broadcast-link-incomplete`, `broadcast-link-mismatch`, `fit-link-incomplete`, `broadcast-from-front`.
 - Stage boundary: broadcast / fit / draft together with a move or a structural edit, or with each other, is refused whole; with selections or a stroke broadcast, it is allowed.
 - Links: broadcasting one of two linked lines alone is refused. Both together move both by the same difference in every view, consume both baselines, and a second broadcast moves nothing ("two separate broadcasts of two linked lines" from dot 1791680195 → the first is refused).
 - Springs: a broadcast of one line whose end has a smooth join with an unchosen line settles that join in each target view.
