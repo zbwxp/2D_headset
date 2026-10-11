@@ -139,5 +139,16 @@ describe('the selection box in the bench', () => {
       expect(t.svg.style.cursor).not.toBe('nwse-resize')
     } finally { g.DOMPoint = kept }
   })
+
+  it('a right-button pan from a corner: after the release the hover is asked where the pointer now is (dot 1791737940)', async () => {
+    const t = await setup()
+    await act(async () => { t.svg.dispatchEvent(pe('pointermove', 100, t.Y + 100, 0)) })
+    expect(t.svg.style.cursor).toBe('nwse-resize')
+    const btn = (type: string, x: number, y: number, buttons: number) => { const e = pe(type, x, y, buttons); Object.defineProperty(e, 'button', { value: 2 }); return e }
+    await act(async () => { t.svg.dispatchEvent(btn('pointerdown', 100, t.Y + 100, 2)) })
+    await act(async () => { t.svg.dispatchEvent(btn('pointermove', 300, t.Y + 300, 2)) })
+    await act(async () => { t.svg.dispatchEvent(btn('pointerup', 300, t.Y + 300, 0)) })
+    expect(t.svg.style.cursor).not.toBe('nwse-resize') // the test's screen = drawing: the pointer is far from the corner now
+  })
 })
 

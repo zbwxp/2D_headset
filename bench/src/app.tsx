@@ -967,7 +967,10 @@ export function App() {
         <svg ref={svg} style={{ flex: 1, background: '#fafafa', touchAction: 'none', cursor: cursorFor(pressTakenBy, pressed) }} data-testid="canvas" viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
           onPointerDown={e => (viewportPress(e) ? onDown(e) : restoring ? undefined : pose ? onPoseDown(e) : moveRef ? onRefDown(e) : onDown(e))}
           // hovering tells interaction what the pointer is over on the selection box (the cursor follows; selection-box plan §6)
-          onPointerMove={e => { if (!gesture.current && !pose && !restoring && !moveRef && !zoomTool && e.buttons === 0) { hoverAt.current = { clientX: e.clientX, clientY: e.clientY, mods: mods(e) }; rehover.current() } }} onPointerLeave={() => { hoverAt.current = null; ix.pointerHover(null) }} onWheel={onWheel}
+          // the pointer's place is kept on every move and release over the canvas, a drag's too (a pan ends where the pointer
+          // is, dot 1791737940); the hover is asked only with no button and no gesture — and after every render
+          onPointerMove={e => { hoverAt.current = { clientX: e.clientX, clientY: e.clientY, mods: mods(e) }; if (e.buttons === 0) rehover.current() }}
+          onPointerUp={e => { hoverAt.current = { clientX: e.clientX, clientY: e.clientY, mods: mods(e) } }} onPointerLeave={() => { hoverAt.current = null; ix.pointerHover(null) }} onWheel={onWheel}
           // the right click itself is the unmoved right press (onDown); a right press during a left
           // drag comes only as this event, and cancels that drag (one level)
           onContextMenu={e => { e.preventDefault(); if (gesture.current && !gesture.current.right) gesture.current.cancel('a right click') }}>
