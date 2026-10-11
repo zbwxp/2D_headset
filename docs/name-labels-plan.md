@@ -1,5 +1,7 @@
 # Name labels on the canvas — rules before code
 
+**Accepted on dot's independent run** (dot 1791733152: root 830, bench 193, both tsc, 15/15 added; its own look in a browser kept apart). `lastPress()`'s reset on other tools' presses is ledger row 17.
+
 **Coded** (for dot's check; plan passed dot 1791732208): `name-labels/index.ts` (`labelsFor`, `middleOf`), the bench (the display kind set by an A / V press that picked a **line** — read from interaction's new `lastPress()` (what the last V / A press picked: line, point, handle, fill or none), not guessed from "no box", which also counted points and handles (dot 1791732824) — by `LayersPanel`'s new `onPick` for a line or curve row, and by find-by-name; labels drawn from `ix.selection()`'s lines, not in playback, `pointer-events: none`). Tests `name-labels/test/labels.test.ts` (6), `bench/test/name-labels.test.tsx` (6). Checked in Chrome on bowen's drawing: A on 左颅 shows "左颅", V on it shows "连续曲线1副本" beside the curve's middle line. Note: V on a line already selected keeps the selection as it is (V's behaviour unchanged; dot 1791732110), and the label shows the curve's name.
 
 Asked by bowen 1791731823: selecting a line — with **A** on the canvas, or by clicking its row in the layers panel — shows the line's name beside it; selecting a whole continuous curve with **V** shows the curve's name.
