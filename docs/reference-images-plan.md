@@ -94,6 +94,8 @@ Dragging on the canvas, masks, position slots, the colour picker, images in play
 
 ## 10. Picture library: one stored copy per picture (bowen 1791725516) — rules before code
 
+**Accepted for this round by bowen 1791730959** ("放行", answering 1791728091 and 1791730935: cursor, mirror and library on dot's source review, Claude's tests and bowen's use). dot's independent run since: root 822/822, bench 163/163, both tsc, real-Chromium IndexedDB 7/7, `111.json` and `112.json` file checks passed (dot 1791729318, 1791729479, 1791729539, 1791730622); its own look at the screen is still pending.
+
 **Coded** (for dot's check): `src/reference/index.ts` (library, `addAsset` / `renameAsset` / `removeAsset`, `library()`, version-6 `restore`, `fromV5`), `src/document` (the three edits, `library()`, `fromV5` for the archive), `src/archive` (version 6; version 5 converted), the bench (Place… through the library, the Library list, `refAct` / `libAct` — the one ending for every picture and library control). Tests: `test/reference-library.test.ts` (19), `bench/test/library.test.tsx` (17), the version-5 autosave restore in `bench/test/autosave.test.tsx`. Real file: bowen's `111.json` (version 5, 20,464,784 bytes) opens converted — one library entry used by 9 placements in 9 views, every image identical apart from naming its asset, the drawing outside `reference` unchanged — and saves as version 6 in 2,295,407 bytes, reopening identical; drawn in Chrome as before.
 
 **Why:** bowen's file `111.json` is 20 MB for 8 lines: one 2.2 MB reference sheet placed in all nine views is stored nine times (each `images[k].src`). He asks for a library: pictures added once, referenced by the views, the file not copying them.
