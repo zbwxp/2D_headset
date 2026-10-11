@@ -280,6 +280,30 @@ describe('mirror a picture left-right (§9)', () => {
     expect(t.pic().x).toBeCloseTo(20, 9)
   })
 
+  it('Mirror during a picture drag cancels the drag: no ghost on later moves, nothing written on the late release, its window listeners gone (dot 1791717672)', async () => {
+    const t = await setup()
+    await t.moveMode(true)
+    const live = new Map<string, Set<unknown>>()
+    const add = window.addEventListener, remove = window.removeEventListener
+    window.addEventListener = function (this: Window, type: string, f: unknown, o?: unknown) { if (/^pointer/.test(type)) { if (!live.has(type)) live.set(type, new Set()); live.get(type)!.add(f) } return add.call(this, type, f as EventListener, o as boolean) } as typeof window.addEventListener
+    window.removeEventListener = function (this: Window, type: string, f: unknown, o?: unknown) { live.get(type)?.delete(f); return remove.call(this, type, f as EventListener, o as boolean) } as typeof window.removeEventListener
+    try {
+      const x0 = t.drawnX()
+      await act(async () => { t.svg.dispatchEvent(pe('pointerdown', 0, 0, 1)); window.dispatchEvent(pe('pointermove', 30, 0, 1)) })
+      expect(t.drawnX()).toBe(x0 + 30) // the ghost follows the drag
+      const pending = [...live.values()].reduce((n, s) => n + s.size, 0)
+      expect(pending).toBeGreaterThan(0)
+      await act(async () => { t.button('Mirror ⇆', t.host.querySelector(`[data-ref="${t.id}"]`)!).click() }) // as a keyboard press on the button does
+      expect([...live.values()].reduce((n, s) => n + s.size, 0)).toBe(0)
+      expect(t.pic()).toMatchObject({ x: 0, flipped: true })
+      const text = save(bench().core)
+      await act(async () => { window.dispatchEvent(pe('pointermove', 60, 0, 1)) })
+      expect(t.drawnX()).toBe(x0) // no ghost from the old drag
+      await act(async () => { window.dispatchEvent(pe('pointerup', 60, 0, 0)) })
+      expect(save(bench().core)).toBe(text)
+    } finally { window.addEventListener = add; window.removeEventListener = remove }
+  })
+
   it('Mirror is unavailable in playback', async () => {
     const t = await setup()
     await act(async () => { t.button('Playback').click() })

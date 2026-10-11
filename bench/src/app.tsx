@@ -285,9 +285,12 @@ export function App() {
   }
   const cancelPreview = () => { previewNow.current = null; setRefPreview(null) }
   /** Mirror ⇆ (§9): what is seen, flipped left-right about the picture's centre — flipped toggled, angle
-   *  negated. A preview still open ends first by its one ending; the values are then read from the
-   *  document, so a late blur or pointerup of that preview finds nothing to write (dot 1791717133). */
+   *  negated. A gesture still running (a picture drag) is cancelled by its one cancel path, its window
+   *  listeners and its ghost with it (dot 1791717672); a panel preview still open ends by its one ending
+   *  (written if unchanged underneath). The values are then read from the document, so a late move, blur
+   *  or pointerup of either finds nothing to draw or write (dot 1791717133). */
   const mirrorRef = (id: string) => {
+    gesture.current?.cancel('Mirror')
     commitPreview()
     const r = core.in(shown).references().find(x => x.id === id)
     if (r) run(x => x.setReference(id, { flipped: !r.flipped, angle: 0 - r.angle }))
