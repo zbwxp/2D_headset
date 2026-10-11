@@ -8,6 +8,7 @@ import * as net from '../network'
 import * as views from '../views'
 import * as links from '../links'
 import { add, sub, type Vec } from '../geometry'
+import * as evaluate from '../evaluate'
 import { respond, checkKnots, MAX_KNOTS } from '../evaluate'
 
 type Id = net.Id
@@ -273,3 +274,156 @@ export function restoreResponses(v: unknown, n: net.NetworkState, l: links.Links
   }
   return structuredClone(data) as RStore as unknown as ResponsesState
 }
+
+// ---- the correction on an edge (stage 3b package 3; docs/stage3b-pkg3-correct.md) ----
+// A drag at a pose on an edge between two neighbouring views becomes one knot per dragged
+// control and axis on that edge's response; no view moves (the 90° move is package 4).
+
+export interface CorrectionTargets {
+  readonly points?: readonly { readonly id: Id; readonly position: Vec }[]
+  readonly handles?: readonly { readonly line: Id; readonly end: net.End; readonly vector: Vec }[]
+}
+type Control = { readonly kind: 'point'; readonly id: Id } | { readonly kind: 'handle'; readonly line: Id; readonly end: net.End }
+const objectsOf = (c: Control): net.RefusalObject[] => (c.kind === 'point' ? [{ kind: 'point', id: c.id }] : net.lineObjects([c.line]))
+/** A control's key: unambiguous for any id (the prefix and the one-letter end come first). */
+const keyOf = (c: Control) => (c.kind === 'point' ? `p:${c.id}` : `h:${c.end}:${c.line}`)
+const nameOf = (c: Control) => (c.kind === 'point' ? `point ${c.id}` : `handle ${c.end} of line ${c.line}`)
+
+/**
+ * The edge a pose lies on and the progress t along it (inner → outer), read as evaluate reads a
+ * pose: u = |yaw| / 90, v = |pitch| / 45, so a pose evaluate shows as a view is a view here too.
+ */
+export function edgeAt(pose: evaluate.Pose): { edge: views.Edge; t: number } {
+  if (!evaluate.inRange(pose)) throw new net.Refusal('pose-out-of-range', `pose-out-of-range: yaw ${pose.yaw}, pitch ${pose.pitch} (yaw within ±${evaluate.YAW_LIMIT}, pitch within ±${evaluate.PITCH_LIMIT})`)
+  const u = Math.abs(pose.yaw) / evaluate.YAW_LIMIT, v = Math.abs(pose.pitch) / evaluate.PITCH_LIMIT
+  const atEnd = (x: number) => x === 0 || x === 1
+  if (atEnd(u) && atEnd(v)) throw new net.Refusal('correction-at-view', `correction-at-view: yaw ${pose.yaw}, pitch ${pose.pitch} is a view; edit the view itself`)
+  const Y = pose.yaw < 0 ? -90 : 90, P = pose.pitch < 0 ? -45 : 45
+  let inner: string, outer: string, t: number
+  if (atEnd(v)) { inner = views.key(0, v ? P : 0); outer = views.key(Y, v ? P : 0); t = u }
+  else if (atEnd(u)) { inner = views.key(u ? Y : 0, 0); outer = views.key(u ? Y : 0, P); t = v }
+  else throw new net.Refusal('correction-off-edge', `correction-off-edge: yaw ${pose.yaw}, pitch ${pose.pitch} is inside a cell; this round corrects on the edges between neighbouring views only (bowen 1791692031)`)
+  return { edge: views.EDGES.find(e => e.inner === inner && e.outer === outer)!, t }
+}
+
+/** One control's value on one axis on an edge at progress t, summed as evaluate sums it there (zero weights left out). */
+function edgeValue(knots: readonly Knot[] | undefined, t: number, A: number, B: number): number {
+  const r = respond(knots, t)
+  let s: number | undefined
+  for (const [w, x] of [[1 - r, A], [r, B]] as const) if (w !== 0) s = s === undefined ? w * x : s + w * x
+  return s ?? 0
+}
+
+function knotsOf(s: RStore, c: Control, edge: string, axis: 'x' | 'y'): Knot[] | undefined {
+  const rec = c.kind === 'point' ? own(s.points, c.id) : own(s.handles, c.line)?.[c.end]
+  return rec ? own(rec, edge)?.[axis] : undefined
+}
+function setKnots(s: RStore, c: Control, edge: string, axis: 'x' | 'y', knots: Knot[]) {
+  let rec: Rec<{ x?: Knot[]; y?: Knot[] }>
+  if (c.kind === 'point') {
+    if (!own(s.points, c.id)) put(s.points, c.id, {})
+    rec = s.points[c.id]!
+  } else {
+    if (!own(s.handles, c.line)) put(s.handles, c.line, {})
+    rec = (s.handles[c.line]![c.end] ??= {})
+  }
+  if (!own(rec, edge)) put(rec, edge, {})
+  rec[edge]![axis] = knots
+}
+
+/** A control's value in a view, and in the drawing at a pose. */
+const inView = (h: net.NetworkState, c: Control): Vec => (c.kind === 'point' ? net.point(h, c.id).position : net.handle(net.line(h, c.line), c.end))
+const atPose = (p: evaluate.Posed, c: Control): Vec => (c.kind === 'point' ? p.points[c.id]! : p.lines[c.line]![c.end === 'a' ? 'ha' : 'hb'])
+
+const finiteVec = (v: unknown): v is Vec => !!v && typeof v === 'object' && Number.isFinite((v as Vec).x) && Number.isFinite((v as Vec).y)
+
+/**
+ * `correct(pose, targets)` (docs/stage3b-pkg3-correct.md §1–§5): the explicit targets are checked;
+ * each point stands for its link component (the target set: link-expanded points, explicit
+ * handles); locks and the axis cases run on the whole set; the knots are solved from the state as
+ * read before any write and written in one step; then the final check. `posed` evaluates the
+ * drawing (with the current responses) at the pose.
+ */
+export function correct(a: ResponsesState, n: net.NetworkState, l: links.LinksState, pose: evaluate.Pose, targets: CorrectionTargets, posed: () => evaluate.Posed) {
+  const { edge, t } = edgeAt(pose)
+  const bad = (why: string): never => { throw new net.Refusal('correction-bad-target', `correction-bad-target: ${why}`) }
+  // 1. the explicit targets
+  const ps = targets?.points ?? [], hs = targets?.handles ?? []
+  if (!Array.isArray(ps) || !Array.isArray(hs)) bad('points and handles must be lists')
+  const given = new Map<Id, Vec>(), handles = new Map<string, { control: Control; q: Vec }>()
+  for (const p of ps) {
+    if (!p || typeof p !== 'object' || typeof p.id !== 'string' || !net.hasPoint(n, p.id)) bad(`no point ${JSON.stringify(p?.id)}`)
+    if (given.has(p.id)) bad(`point ${p.id} is given twice`)
+    if (!finiteVec(p.position)) bad(`the position of point ${p.id} is not two finite numbers`)
+    given.set(p.id, { x: p.position.x, y: p.position.y })
+  }
+  for (const h of hs) {
+    if (!h || typeof h !== 'object' || typeof h.line !== 'string' || !net.hasLine(n, h.line)) bad(`no line ${JSON.stringify(h?.line)}`)
+    if (h.end !== 'a' && h.end !== 'b') bad(`line ${h.line} has no end ${JSON.stringify(h.end)}`)
+    const control: Control = { kind: 'handle', line: h.line, end: h.end }, k = keyOf(control)
+    if (handles.has(k)) bad(`handle ${h.end} of line ${h.line} is given twice`)
+    if (!finiteVec(h.vector)) bad(`the vector of handle ${h.end} of line ${h.line} is not two finite numbers`)
+    handles.set(k, { control, q: { x: h.vector.x, y: h.vector.y } })
+  }
+  // 2. link expansion: every member of a touched component joins the target set with the same target
+  const points = new Map<Id, Vec>()
+  for (const [id, q] of given) for (const m of component(l, id)) {
+    const had = points.get(m)
+    if (had && (had.x !== q.x || had.y !== q.y)) throw new net.Refusal('correction-link-conflict', `correction-link-conflict: linked points ${m} and ${id} are given different targets`, [{ kind: 'point', id: m }, { kind: 'point', id }])
+    points.set(m, q)
+  }
+  const set: { control: Control; q: Vec }[] = [...[...points].map(([id, q]) => ({ control: { kind: 'point', id } as Control, q })), ...handles.values()]
+  // 3. locks on the whole target set: a correction changes the in-between shape of every line it touches
+  for (const { control: c } of set) {
+    const locked = c.kind === 'point' ? net.linesAt(n, c.id).map(x => x.line).filter(x => x.state.locked).map(x => x.id) : net.line(n, c.line).state.locked ? [c.line] : []
+    if (locked.length) throw new net.Refusal('locked', `Line ${locked[0]} is locked; a correction of ${nameOf(c)} would change its in-between shape`, net.lineObjects(locked))
+  }
+  // 3. the axis cases, and 4. one solve from the state as read before any write
+  const s = R(a), inner = net.of(n, edge.inner), outer = net.of(n, edge.outer), before = posed()
+  const writes: { control: Control; axis: 'x' | 'y'; knots: Knot[] }[] = []
+  for (const { control: c, q } of set) for (const axis of AXES) {
+    const A = inView(inner, c)[axis], B = inView(outer, c)[axis], p = atPose(before, c)[axis]
+    if (q[axis] === p) continue // already met: nothing written (dot 1791687532)
+    if (A === B) throw new net.Refusal('correction-axis-fixed', `correction-axis-fixed: ${nameOf(c)}, axis ${axis}, is equal in both views of ${edge.key}; a response cannot move it (moving the outer view is package 4)`, objectsOf(c))
+    // solved without intermediate overflow; whether it reaches q is decided by the final check (dot 1791691300)
+    const sc = Math.max(Math.abs(A), Math.abs(B), Math.abs(q[axis]))
+    const w = (q[axis] / sc - A / sc) / (B / sc - A / sc)
+    if (!Number.isFinite(w)) throw new net.Refusal('correction-not-finite', `correction-not-finite: ${nameOf(c)}, axis ${axis}, on ${edge.key}: the views are too close for this target`, objectsOf(c))
+    const knots = [...(knotsOf(s, c, edge.key, axis) ?? []).filter(k => k[0] !== t), [t, w] as Knot].sort((x, y) => x[0] - y[0])
+    if (knots.length > MAX_KNOTS) throw new net.Refusal('correction-too-many-knots', `correction-too-many-knots: ${nameOf(c)}, axis ${axis}, on ${edge.key} would have ${knots.length} knots (at most ${MAX_KNOTS})`, objectsOf(c))
+    writes.push({ control: c, axis, knots })
+  }
+  if (!writes.length) return
+  // the protected targets on this edge, as they stand before the write: every knot of every control there
+  const controls: Control[] = [
+    ...Object.keys(s.points).map(id => ({ kind: 'point', id }) as Control),
+    ...Object.keys(s.handles).flatMap(line => (['a', 'b'] as const).map(end => ({ kind: 'handle', line, end }) as Control)),
+  ]
+  const protectedBefore = controls.flatMap(c => AXES.flatMap(axis => {
+    const knots = knotsOf(s, c, edge.key, axis)
+    const written = writes.some(w => w.axis === axis && keyOf(w.control) === keyOf(c))
+    return (knots ?? []).filter(k => !(written && k[0] === t)).map(k => ({ c, axis, t: k[0], v: edgeValue(knots, k[0], inView(inner, c)[axis], inView(outer, c)[axis]) }))
+  }))
+  for (const w of writes) setKnots(s, w.control, edge.key, w.axis, w.knots)
+  // 5. the final check
+  const after = posed()
+  const notReproduced = (c: Control, why: string): never => { throw new net.Refusal('correction-not-reproduced', `correction-not-reproduced: ${nameOf(c)} ${why}`, objectsOf(c)) }
+  for (const { control: c, q } of set) for (const axis of AXES) {
+    const got = atPose(after, c)[axis]
+    if (!(Math.abs(got - q[axis]) <= 1e-9 * Math.max(1, Math.abs(q[axis])))) notReproduced(c, `shows ${got} on axis ${axis} at this pose, not its target ${q[axis]}`)
+  }
+  const inSet = new Set(set.map(x => keyOf(x.control)))
+  for (const id of Object.keys(before.points)) {
+    const c: Control = { kind: 'point', id }
+    if (!inSet.has(keyOf(c)) && !sameVec(before.points[id]!, after.points[id]!)) notReproduced(c, 'is outside the targets but changed at this pose')
+  }
+  for (const line of Object.keys(before.lines)) for (const end of ['a', 'b'] as const) {
+    const c: Control = { kind: 'handle', line, end }
+    if (!inSet.has(keyOf(c)) && !sameVec(atPose(before, c), atPose(after, c))) notReproduced(c, 'is outside the targets but changed at this pose')
+  }
+  // protected targets at their recorded progress, never through a pose (dot 1791691388)
+  for (const k of protectedBefore) {
+    if (edgeValue(knotsOf(s, k.c, edge.key, k.axis), k.t, inView(inner, k.c)[k.axis], inView(outer, k.c)[k.axis]) !== k.v) notReproduced(k.c, `lost its protected target at progress ${k.t} on ${edge.key}, axis ${k.axis}`)
+  }
+}
+const sameVec = (p: Vec, q: Vec) => p.x === q.x && p.y === q.y

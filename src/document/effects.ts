@@ -111,6 +111,8 @@ export const EFFECTS: Record<string, Effect> = {
   broadcastShape: { reads: 'draft', intents: 'non-front', shapes: 'non-front', records: true, shared: [], autoStructure: false, settle: 'non-front-positions', alone: true },
   draftCorners: { reads: 'draft', intents: 'corners', shapes: 'corners', records: false, shared: [], autoStructure: false, settle: 'non-front-positions', alone: true },
   fit: { reads: 'draft', intents: 'none', shapes: 'none', records: true, shared: [], autoStructure: false, settle: 'none', alone: true },
+  // stage 3b package 3: knots on one edge's responses only; no view moves, nothing to settle
+  correct: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['animation'], autoStructure: false, settle: 'none', alone: true },
   broadcastStroke: { reads: 'draft', intents: 'none', shapes: 'others', records: false, shared: [], autoStructure: false, settle: 'none', alone: false },
   // mirror (front only, so the edited view is the front). Inside the operation apply copies the
   // source's geometry, strokes, end strokes and line states onto the target in the front; sets or

@@ -1,6 +1,12 @@
 # Stage 3b, package 3: the correction on an edge (`correct`) — rules and read / write flow
 
-**Status:** rules accepted by dot 1791691453 as this package's acceptance basis. The edges-only scope is confirmed by bowen 1791692031; the code follows these rules. Earlier: for dot's check (dot 1791691047).
+**Status:** rules accepted by dot 1791691453 as this package's acceptance basis. The edges-only scope is confirmed by bowen 1791692031. **Coded** (for dot's check): `animation.correct` / `animation.edgeAt` (`src/animation/index.ts`), `Editor.correct` (`src/document/index.ts`), the declaration in `src/document/effects.ts`; tests in `test/correct.test.ts` and the `correct` case of `test/effects.test.ts`. Earlier: for dot's check (dot 1791691047).
+
+**How the code reads the pose:** as `evaluate` does, u = |yaw| / 90 and v = |pitch| / 45, so a pose `evaluate` shows as a view is a view here (e.g. pitch 5e-324 gives v = 0: the yaw-0 view, `correction-at-view`). The edge is the one whose two views are the only ones with weight at that pose.
+
+**What the tests cannot reach, and how it was checked:** the three guards of the final check (a control outside the target set changed, a handle outside it changed, a protected knot lost) cannot fire after a correct solve. They were checked by pairs of mutations (2026-10-11): a solve broken to write a foreign handle, a foreign point, or to drop the old knots is refused with the matching `correction-not-reproduced` message; with that guard switched off the broken result goes through. Every other rule has a test that fails when the rule is removed (15 single mutations).
+
+**Ledger:** rows 13 (`modelOf` lives in `document`, so `correct` takes a `posed` callback) and 14 (`edgeValue` repeats `evaluate`'s on-edge sum) are new, found while coding.
 
 **Scope and what is not claimed:**
 - **On the edges between neighbouring views only**, confirmed by bowen 1791692031. Package 3 builds the edge case, which is needed in any answer. It does **not** deliver corrections "at any angle": inside a cell nothing can be corrected directly yet.

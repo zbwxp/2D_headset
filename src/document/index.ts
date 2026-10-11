@@ -407,6 +407,16 @@ export class Editor {
     animation.fit(this.s.network, this.s.links, lines)
   }
   /**
+   * In-between correction (stage 3b package 3; docs/stage3b-pkg3-correct.md): at a pose on an
+   * edge between neighbouring views, the given points (with their link components) and handle
+   * vectors are made to show their targets there, by knots on that edge's responses. No view
+   * moves; it stands alone in its edit.
+   */
+  correct(pose: evaluate.Pose, targets: animation.CorrectionTargets) {
+    const s = this.s
+    animation.correct(s.animation, s.network, s.links, pose, targets, () => evaluate.evaluate(modelOf(s), pose))
+  }
+  /**
    * Stroke broadcast: the selected lines' (or `units`') own strokes and their end points'
    * end strokes, as in this view, assigned to every other view (views.broadcastStroke).
    * Without a line it is refused, as delete is.
