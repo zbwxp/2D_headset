@@ -1,6 +1,6 @@
 # Stage 3b: in-between correction (插帧) — direction and rules, before code
 
-**Status:** first draft. Three direction questions go to bowen (§1); the rules (§2–§7) are proposals for dot's check. Nothing is coded until both pass.
+**Status:** first draft, corrected after dot 1791687457. One scope question goes to bowen (§1); the rules (§2–§7) are proposals for dot's check. Nothing is coded until both pass.
 
 **Ledger check** (`docs/consolidation-ledger.md`):
 - **Row 1 is triggered:** a correction is a new edit whose settling is neither "full" nor any stage-2 mode. 3b consolidates it first (§6): operations declare their effects, the transaction checks and merges them, a missing declaration is an error.
@@ -35,18 +35,25 @@
     - bind looks up the link component's authority (minimum id);
     - a new line has no response (linear).
 
-## 1. Direction questions for bowen
+## 1. Decided, and the one question for bowen
 
-1. **Where can a correction be made?**
-   - **甲 (proposal):** on the lines between two neighbouring views, e.g. yaw 30 pitch 0, or yaw 90 pitch 20 — every 30° / 60° case bowen named. Inside a cell (e.g. yaw 30 pitch 20) the result follows from the four lines around it; correcting there directly comes later.
-   - 乙: anywhere, inside cells too (v103 had both, with a different rule for each).
-2. **Does a correction need a Save button?**
-   - **甲 (proposal):** no. Each release is one edit and one undo step, like any drag. This is what bowen chose for the 90° move (乙, 1791651929), applied to the whole correction.
-   - 乙: as v103, a draft with explicit Save / Discard.
-3. **When something cannot bend because it is the same at 0° and 90°** (e.g. a point that does not move between front and side), the 90° view has to move. How much?
-   - **甲 (proposal, simplest):** the in-between curve keeps its shape and the 90° view moves by whatever the target needs. Correcting close to 0° then moves 90° a lot (about 1 / progress times the drag).
-   - 乙: as v103, balance the two: the 90° view moves less, the in-between curve bends more, within a limit.
-   - Either way 0° never moves, and only views touching the front may be moved this way (as v103: front ↔ ±90 yaw, front ↔ ±45 pitch); elsewhere the correction is refused with the reason.
+Corrected after dot 1791687457: two of the three first-draft questions re-asked rules that are already decided.
+
+**Already decided (not asked again):**
+- **No Save button:** a release takes effect at once; the response change and any 90° move are undone together in one step (bowen 1791651929 乙).
+- **The 90° rule** (`docs/architecture-multiview.md` §6, rules of 2026-10-03/04):
+  - 0° never moves;
+  - first keep 90° fixed and adjust the response;
+  - only if the target is still unreachable may 90° move, minimally;
+  - end points are penalised more than handles, a weighting, not a ban.
+
+  The algorithm that meets this goal, and the range it can reach, are ours to argue (§4a, open item 4). The first draft's "keep the response, move 90° by whatever is needed" is withdrawn: it does not minimise the move and is not the decided goal.
+
+**The one question for bowen: a narrower scope for this round.**
+- bowen decided that corrections are made "at any angle bowen moves to".
+- **Proposal for 3b:** open corrections only on the lines between two neighbouring views (e.g. yaw 30 pitch 0, yaw 90 pitch 20), which covers the 30° / 60° cases.
+- **Not in 3b:** corrections inside a cell (e.g. yaw 30 pitch 20). There the drawing follows from the four lines around it, but it cannot be corrected directly yet.
+- This narrows a decided requirement, so it needs bowen's yes. It is not a reinterpretation of "any angle".
 
 ## 2. The data: responses (owner `animation`)
 
@@ -65,15 +72,16 @@
 
 ## 4. The correction (`Editor.correct(pose, targets)`)
 
-- **Where:** a pose exactly on an edge (answer to Q1), not at a view (there you edit the view itself).
+- **Where:** a pose exactly on an edge (the 3b scope, §1), not at a view (there you edit the view itself).
 - **What:** target positions for points and target vectors for handles, as dragged at the pose. Anything not given is unchanged.
 - **Per control and axis**, with A, B the edge's two views and t the progress:
   - if `|B − A| > ε`: insert the knot `[t, (q − A) / (B − A)]`, replacing a knot at exactly t; all other knots stay, so every angle corrected before keeps its value;
-  - else the axis cannot bend, and the 90° rule applies (answer to Q3). On an edge not touching the front it is refused (`correction-axis-fixed`, naming the control, the axis and the edge).
+  - else the axis cannot bend with the response alone, and the decided 90° rule applies (§4a). On an edge not touching the front it is refused (`correction-axis-fixed`, naming the control, the axis and the edge).
+- **4a. When the response alone cannot reach the target** (the decided goal, §1): 0° fixed; 90° moves only for the controls and axes that cannot be reached otherwise, and minimally, end points costing more than handles. The concrete cost, whether the in-between curve's shape (not only the dragged controls) counts as in v103's sampled rows, the bounds, and which targets are then reachable are open item 4, argued with dot before package 4. v103's version is the reference: penalties 16 / 1 / 0.005, trust radius ±8, extent bound, calibrated angles re-solved and protected, a local minimum (`boundedBasisInverse.ts`, `surfaceBasisFallback.ts`).
 - **Linked points** move together: a target for one point is a target for its whole link component (§5).
 - **Smooth joins:** nothing is re-aligned at the pose (slot B is a placeholder). Only the dragged controls change.
 - **Refused:**
-  - at a view, or off an edge (Q1);
+  - at a view, or off an edge (the 3b scope, §1);
   - a pose outside the domain;
   - a target on a locked line;
   - anything other than point / handle targets (topology, join modes, radii, strokes);
@@ -114,9 +122,10 @@
 1. **Archive format 4:** opening a format-3 file as format 4 with no responses is a migration. Refuse as before (bowen redraws), or accept 3 → 4 as "no responses"?
 2. Split with responses: refuse in 3b (proposal) or carry them (v103's expressions).
 3. Links and responses: one response set per link component, and refusing links whose responses differ.
-4. Order of packages (proposal):
+4. **The 90° minimal move:** the cost and its terms (dragged controls only, or the in-between curve's shape too), the bounds, how earlier corrected angles are protected, and what is reachable. To be argued against the decided goal, not chosen for simplicity.
+5. Order of packages (proposal):
    - **1:** ledger row 1, the declarations, no behaviour change;
    - **2:** responses as data, `follow`, archive, evaluate with responses;
    - **3:** `correct` on edges (without the 90° fallback);
-   - **4:** the 90° fallback (after bowen's Q3);
+   - **4:** the 90° minimal move (after open item 4 is argued);
    - **5:** bench: drag at a pose in playback.
