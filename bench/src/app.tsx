@@ -3,7 +3,7 @@
 // "Interaction", doc 22); one-shot panel commands call core's public operations and then
 // tell interaction (doc 22 §3.5). Uses core's public entry only.
 import { useEffect, useReducer, useRef, useState } from 'react'
-import { Core, save, open, correctionEdge, Refusal, type Vec, type Snapshot, type Editor } from '../../src'
+import { Core, save, open, correctionEdge, Refusal, type Vec, type Snapshot, type Editor, type ReferenceImage, type ReferenceProps, type ReferenceSlot } from '../../src'
 import { createInteraction, REACH, type Tool, type Preview } from '../../interaction'
 import eyeFixture from '../../test/fixtures/v2-right-eye.json'
 import { LayersPanel } from '../../visual'
@@ -154,6 +154,14 @@ export function App() {
   // pictures that failed to draw (a stored picture that does not decode): shown in the status, nothing else changes
   // bound to the drawing and the picture's source, not the id alone: a good picture with the same id in another drawing is not marked (dot 1791703225)
   const [refBroken, setRefBroken] = useState<{ core: Core; id: string; src: string }[]>([])
+  // round two (docs/reference-images-plan.md §8, §8a): a live preview of one picture's changes, the
+  // Move picture mode and its active picture; each bound to the drawing, the App's counter and the picture
+  type RefBind = { core: Core; gen: number; id: string; src: string }
+  const [refPreview, setRefPreview] = useState<null | (RefBind & { base: ReferenceImage; props: ReferenceProps })>(null)
+  const previewNow = useRef(refPreview)
+  const [moveRef, setMoveRef] = useState(false)
+  const [activeRef, setActiveRef] = useState<null | RefBind>(null)
+  const keyHooks = useRef<{ nudge?: (e: KeyboardEvent) => boolean }>({})
   // this App's read-only flag and its own logged wrapper: another App mounting, posing or
   // unmounting never touches them (dot 1791686247)
   const posing = useRef(false) // set only by startPose / stopPose, with the pose state
@@ -181,7 +189,7 @@ export function App() {
   // the drawing this frame shows, bound with it during playback: a press on a frame drawn before
   // another App changed the shared drawing must not start a correction (dot 1791697642)
   const frame = useRef<{ core: Core; text: string } | null>(null)
-  frame.current = pose ? { core, text: save(core) } : null
+  frame.current = pose || moveRef ? { core, text: save(core) } : null
   const reader = posed && !(posed instanceof Error) ? posed : core.in(shown)
   const s = reader.snapshot(), g = reader.geometry()
   // one visibility rule for the playback drag's picking, its point marks and its ghost, computed once
@@ -211,6 +219,26 @@ export function App() {
   })
 
   /** A one-shot panel command: straight to core, then interaction checks its unfinished operations (doc 22 §3.5). */
+  /** The picture a binding names, if the drawing, the counter, the view's list and its source still hold. */
+  const refNow = (b: RefBind | null) => (b && b.core === core && b.gen === refGen.current ? core.in(shown).references().find(r => r.id === b.id && r.src === b.src) : undefined)
+  const SETTABLE = ['x', 'y', 'scale', 'angle', 'opacity', 'visible'] as const
+  const sameBase = (a: ReferenceImage, b: ReferenceImage) => SETTABLE.every(k => a[k] === b[k])
+  /** A live change of one picture, drawn but not written (§8.1). */
+  const previewRef = (r: ReferenceImage, props: ReferenceProps) => {
+    const p = previewNow.current
+    const next = p && p.id === r.id && refNow(p) ? { ...p, props: { ...p.props, ...props } } : { core, gen: refGen.current, id: r.id, src: r.src, base: r, props }
+    previewNow.current = next; setRefPreview(next)
+  }
+  /** The preview ends once: written if its picture is unchanged underneath, else dropped (§8a.1). */
+  const commitPreview = () => {
+    const p = previewNow.current
+    if (!p) return
+    previewNow.current = null; setRefPreview(null)
+    const now = refNow(p)
+    if (!now || !sameBase(now, p.base)) { note('reference change dropped: the picture changed underneath'); bump(); return }
+    run(x => x.setReference(p.id, p.props))
+  }
+  const cancelPreview = () => { previewNow.current = null; setRefPreview(null) }
   const run = (fn: (e: Editor) => void) => {
     // the outcome goes to interaction, the one owner of feedback (dot 1791551067)
     try { logged(core).editIn(env.current.view, fn); ix.outcome(); return true }
@@ -298,6 +326,76 @@ export function App() {
    * (dot 1791696808); the target is the start plus the pointer's displacement; on release one
    * `correct` edit, unless the drawing changed meanwhile. The same one gesture slot and cancel path.
    */
+  /**
+   * Move picture (§8.2): a press on a visible picture of this view (topmost first, inside its rotated
+   * rectangle) drags it; preview at start + displacement, one setReference on release unless the
+   * drawing changed. Lines are never picked while the mode is on.
+   */
+  const onRefDown = (e: React.PointerEvent) => {
+    if (gesture.current) {
+      if (gesture.current.id !== e.pointerId) return
+      gesture.current.cancel('a new press of the same pointer')
+    }
+    if (e.button !== 0) return
+    const shownFrom = frame.current
+    if (!shownFrom || shownFrom.core !== core || shownFrom.text !== save(core)) { note('press ignored: the drawing changed since this frame was drawn; redrawn'); bump(); return }
+    const at = toDoc(e)
+    const inside = (r: ReferenceImage) => {
+      const a = -r.angle * Math.PI / 180, dx = at.x - r.x, dy = at.y - r.y
+      const lx = dx * Math.cos(a) - dy * Math.sin(a), ly = dx * Math.sin(a) + dy * Math.cos(a)
+      return Math.abs(lx) <= r.width * r.scale / 2 && Math.abs(ly) <= r.height * r.scale / 2
+    }
+    const hit = [...core.in(shown).references()].reverse().find(r => r.visible && inside(r))
+    if (!hit) return
+    const bind = { core: shownFrom.core, gen: refGen.current, id: hit.id, src: hit.src }
+    setActiveRef(bind)
+    cancelPreview()
+    const id = e.pointerId, pressed = P(e.clientX, e.clientY)
+    let moved = false, done = false
+    const target = (ev: PointerEvent) => { const now = toDoc(ev); return { x: hit.x + now.x - at.x, y: hit.y + now.y - at.y } }
+    const travel = (ev: PointerEvent) => { moved ||= Math.hypot(ev.clientX - pressed.x, ev.clientY - pressed.y) > CLICK }
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== id) return
+      if ((ev.buttons & 1) === 0) { release(ev); return }
+      travel(ev)
+      if (moved) { const next = { ...bind, base: hit, props: target(ev) }; previewNow.current = next; setRefPreview(next) }
+    }
+    const release = (ev: PointerEvent) => {
+      if (ev.pointerId !== id) return
+      travel(ev)
+      stop()
+      if (!moved) return
+      if (core !== shownFrom.core || save(core) !== shownFrom.text) { note('picture move cancelled: the drawing changed during the drag'); bump(); return }
+      run(x => x.setReference(hit.id, target(ev)))
+    }
+    const cancelWith = (why: string) => { if (done) return; stop(); note(`picture move cancelled by ${why}`); bump() }
+    const onCancel = (ev: PointerEvent) => { if (ev.pointerId === id) cancelWith('pointercancel') }
+    const onOtherDown = (ev: PointerEvent) => { if (ev.pointerId === id) cancelWith('a new press of the same pointer') }
+    const onBlur = () => cancelWith('leaving the window')
+    const onMenu = () => cancelWith('a right click')
+    const listeners: [string, (ev: PointerEvent) => void][] = [['pointermove', move], ['pointerup', release], ['pointercancel', onCancel], ['blur', onBlur], ['contextmenu', onMenu]]
+    const stop = () => {
+      done = true
+      for (const [t, f] of listeners) window.removeEventListener(t, f as EventListener)
+      window.removeEventListener('pointerdown', onOtherDown, true)
+      previewNow.current = null; setRefPreview(null)
+      if (gesture.current?.cancel === cancelWith) gesture.current = null
+    }
+    gesture.current = { id, right: false, cancel: cancelWith }
+    for (const [t, f] of listeners) window.addEventListener(t, f as EventListener)
+    window.addEventListener('pointerdown', onOtherDown, true)
+  }
+  /** Arrow keys while Move picture is on (§8.2, §8a.2): they nudge the active picture and never reach lines. */
+  keyHooks.current.nudge = (e: KeyboardEvent) => {
+    if (!moveRef || !e.key.startsWith('Arrow')) return false
+    e.preventDefault()
+    if (gesture.current || previewNow.current) return true
+    const r = refNow(activeRef)
+    if (!r) return true
+    const step = e.shiftKey ? 10 : 1, d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key as 'ArrowLeft']
+    if (d) run(x => x.setReference(r.id, { x: r.x + d[0]!, y: r.y + d[1]! }))
+    return true
+  }
   const onPoseDown = (e: React.PointerEvent) => {
     if (gesture.current) {
       if (gesture.current.id !== e.pointerId) return
@@ -403,6 +501,7 @@ export function App() {
       const typing = t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable
         || (t.tagName === 'INPUT' && !['button', 'checkbox', 'radio', 'file', 'range', 'color', 'submit', 'reset'].includes((t as HTMLInputElement).type))
       if (typing) return
+      if (keyHooks.current.nudge?.(e)) return
       // one Esc cancels one thing: a gesture in progress (above) if there is one, else interaction's innermost (dot 1791553129)
       if (e.key.toLowerCase() === 'z' && !e.metaKey && !e.ctrlKey) { chooseTool('Z'); e.preventDefault(); return }
       // a plain letter interaction takes is a tool key: it ends any gesture and leaves Z
@@ -544,12 +643,37 @@ export function App() {
             }
             reader.readAsDataURL(f)
           }} /></label>
-          {core.in(shown).references().map(r => <div key={r.id} data-ref={r.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+          <label><input type="checkbox" data-testid="move-picture" checked={moveRef} onChange={e => { if (!e.target.checked) { gesture.current?.cancel('Move picture turned off'); setActiveRef(null) } cancelPreview(); setMoveRef(e.target.checked) }} /> Move picture (drag it, or arrow keys; Shift ×10)</label>
+          {core.in(shown).references().map(r => {
+            const live = refPreview && refPreview.id === r.id && refNow(refPreview) ? { ...r, ...refPreview.props } : r
+            const active = refNow(activeRef)?.id === r.id
+            const RANGE = { x: [box.x, box.x + box.w, 1], y: [box.y, box.y + box.h, 1], scale: [-3, 2, 0.01], angle: [-180, 180, 1], opacity: [0, 1, 0.01] } as const
+            const writeSlots = (slots: ReferenceSlot[]) => run(x => x.setReference(r.id, { slots }))
+            return <div key={r.id} data-ref={r.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 2, outline: active ? '1px solid #2a7fff' : undefined }}>
             <input type="checkbox" checked={r.visible} onChange={e => run(x => x.setReference(r.id, { visible: e.target.checked }))} />
-            {(['x', 'y', 'scale', 'angle', 'opacity'] as const).map(k => <label key={k}>{k} <input key={`${r.id}:${k}:${r[k]}`} data-field={k} type="number" style={{ width: 54 }} defaultValue={r[k]} step={k === 'opacity' ? 0.1 : undefined}
-              onKeyDown={e => { if (e.key === 'Enter') { const v = Number((e.target as HTMLInputElement).value); if ((e.target as HTMLInputElement).value.trim() !== '' && Number.isFinite(v)) run(x => x.setReference(r.id, { [k]: v })) } }} /></label>)}
+            {(['x', 'y', 'scale', 'angle', 'opacity'] as const).map(k => {
+              const [lo, hi, step] = RANGE[k], toSlider = (v: number) => (k === 'scale' ? Math.log10(v) : v), fromSlider = (v: number) => (k === 'scale' ? 10 ** v : v)
+              return <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>{k}
+                <input key={`${r.id}:${k}:${r[k]}`} data-field={k} type="number" style={{ width: 54 }} defaultValue={r[k]} step={k === 'opacity' ? 0.1 : undefined}
+                  onChange={e => { const t = e.target.value, v = Number(t); if (t.trim() !== '' && Number.isFinite(v)) previewRef(r, { [k]: v }) }}
+                  onKeyDown={e => { if (e.key === 'Enter') commitPreview(); else if (e.key === 'Escape') { cancelPreview(); (e.target as HTMLInputElement).value = String(r[k]) } }}
+                  onBlur={commitPreview} />
+                <input data-slider={k} type="range" min={lo} max={hi} step={step} value={Math.min(hi, Math.max(lo, toSlider(live[k])))} style={{ width: 70 }}
+                  onChange={e => previewRef(r, { [k]: fromSlider(Number(e.target.value)) })} onPointerUp={commitPreview} onKeyUp={commitPreview} onBlur={commitPreview} />
+              </label>
+            })}
             {B('Remove', () => run(x => x.removeReference(r.id)))}
-          </div>)}
+            <div data-slots={r.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 2, width: '100%' }}>
+              {r.slots.map((sl, k) => <span key={k} data-slot={k} style={{ border: '1px solid #ccc', padding: '0 3px' }}>
+                <b title="double-click to rename" onDoubleClick={() => { const n = prompt('slot name', sl.name); if (n !== null) writeSlots(r.slots.map((x, j) => (j === k ? { ...x, name: n.slice(0, 100) } : x))) }}>{sl.name || `slot ${k + 1}`}</b>
+                <button onClick={() => writeSlots(r.slots.map((x, j) => (j === k ? { ...x, placement: { x: r.x, y: r.y, scale: r.scale, angle: r.angle } } : x)))}>存</button>
+                <button disabled={!sl.placement} onClick={() => sl.placement && run(x => x.setReference(r.id, { ...sl.placement! }))}>调出</button>
+                <button onClick={() => writeSlots(r.slots.map((x, j) => (j === k ? { ...x, placement: null } : x)))}>×</button>
+              </span>)}
+              <button onClick={() => writeSlots([...r.slots, { name: '', placement: null }])}>＋ 加一格</button>
+            </div>
+          </div>
+          })}
         </div>
         <b>Names</b>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
@@ -613,11 +737,13 @@ export function App() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '4px 8px', borderBottom: '1px solid #ccc', minHeight: 18, color: (pose ? corrRefusal : pv.refusal) ? '#c00' : '#333' }}>{status}</div>
         <svg ref={svg} style={{ flex: 1, background: '#fafafa', touchAction: 'none', cursor: zoomTool ? 'zoom-in' : undefined }} viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
-          onPointerDown={pose ? onPoseDown : onDown} onWheel={onWheel}
+          onPointerDown={pose ? onPoseDown : moveRef ? onRefDown : onDown} onWheel={onWheel}
           // the right click itself is the unmoved right press (onDown); a right press during a left
           // drag comes only as this event, and cancels that drag (one level)
           onContextMenu={e => { e.preventDefault(); if (gesture.current && !gesture.current.right) gesture.current.cancel('a right click') }}>
-          {!pose && core.in(shown).references().filter(r => r.visible).map(r => {
+          {!pose && core.in(shown).references().filter(r => r.visible).map(r0 => {
+            // a live preview of this picture, if it is still bound to what is shown (§8.1, §8a.3)
+            const r = refPreview && refPreview.id === r0.id && refNow(refPreview) ? { ...r0, ...refPreview.props } : r0
             const w = r.width * r.scale, h = r.height * r.scale
             return <image key={r.id} data-reference={r.id} href={r.src} x={r.x - w / 2} y={r.y - h / 2} width={w} height={h} opacity={r.opacity} preserveAspectRatio="none"
               transform={`rotate(${r.angle} ${r.x} ${r.y})`} onError={() => { const at = core; setRefBroken(b => (b.some(x => x.core === at && x.id === r.id && x.src === r.src) ? b : [...b, { core: at, id: r.id, src: r.src }])) }} />

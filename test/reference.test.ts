@@ -1,12 +1,12 @@
 // Reference pictures (docs/reference-images-plan.md; dot 1791701244): a module in the one document
 // state, its edits never settle the drawing, checked at placing and at open.
 import { describe, it, expect } from 'vitest'
-import { Core, save, open, Refusal, type ReferenceImage } from '../src'
+import { Core, save, open, Refusal, type ReferenceImage, type ReferenceInput } from '../src'
 
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
 const JPEG = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD='
 const WEBP = 'data:image/webp;base64,UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA=='
-const img = (id: string, more: Partial<ReferenceImage> = {}): ReferenceImage => ({ id, view: 'view:0,0', src: PNG, width: 1, height: 1, x: 0, y: 0, scale: 10, angle: 0, opacity: 0.5, visible: true, ...more })
+const img = (id: string, more: Partial<ReferenceImage> = {}): ReferenceInput => ({ id, view: 'view:0,0', src: PNG, width: 1, height: 1, x: 0, y: 0, scale: 10, angle: 0, opacity: 0.5, visible: true, ...more })
 const code = (f: () => void) => { try { f() } catch (x) { return x instanceof Refusal ? x.code : (x as Error).message } return 'no refusal' }
 function doc() {
   const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })
@@ -88,5 +88,42 @@ describe('reference pictures', () => {
     const pasted = doc()
     pasted.edit(e => e.paste(d.copy(['ab']), 'L', { x: 100, y: 0 }, 'p'))
     expect(pasted.in('view:0,0').references()).toEqual([])
+  })
+
+  it('slots: save and recall through setReference, one undo step each; survive a file; a file without slots opens with none (dot 1791703489)', () => {
+    const d = doc()
+    d.edit(e => e.placeReference(img('r1')))
+    expect(d.in('view:0,0').references()[0]!.slots).toEqual([])
+    const slot = { name: '正面', placement: { x: 5, y: 6, scale: 2, angle: 10 } }
+    d.edit(e => e.setReference('r1', { slots: [slot, { name: '空', placement: null }] }))
+    d.edit(e => e.setReference('r1', { x: 100, y: 100 }))
+    d.edit(e => e.setReference('r1', { ...slot.placement })) // recall
+    expect(d.in('view:0,0').references()[0]).toMatchObject({ x: 5, y: 6, scale: 2, angle: 10 })
+    d.undo()
+    expect(d.in('view:0,0').references()[0]).toMatchObject({ x: 100, y: 100 })
+    const text = save(d)
+    expect(open(text).in('view:0,0').references()[0]!.slots).toEqual([slot, { name: '空', placement: null }])
+    const without = JSON.parse(text); delete without.document.reference.images[0].slots
+    expect(open(JSON.stringify(without)).in('view:0,0').references()[0]!.slots).toEqual([])
+  })
+
+  it('bad slots are refused, in an edit and in a file: null, an object, a bad slot, a scale whose drawn size overflows, too many', () => {
+    const d = doc()
+    d.edit(e => e.placeReference(img('r1', { width: 16384 })))
+    const bad: unknown[] = [null, {}, [{ name: 1, placement: null }], [{ name: 'a', placement: { x: 0, y: 0, scale: 0, angle: 0 } }],
+      [{ name: 'a', placement: { x: 0, y: 0, scale: 1.7e308, angle: 0 } }], [{ name: 'a', placement: [] }], Array.from({ length: 1001 }, () => ({ name: '', placement: null }))]
+    for (const v of bad) expect([v === null ? 'null' : JSON.stringify(v).slice(0, 30), code(() => d.edit(e => e.setReference('r1', { slots: v as never })))]).toEqual([v === null ? 'null' : JSON.stringify(v).slice(0, 30), 'reference-bad-slots'])
+    const file = JSON.parse(save(d)); file.document.reference.images[0].slots = null
+    expect(() => open(JSON.stringify(file))).toThrow(/open-failed: reference: reference-bad-slots/)
+  })
+
+  it('slots are copied in and out: changing the caller\'s list or a read copy does not reach the document or its undo', () => {
+    const d = doc()
+    const slots = [{ name: 'a', placement: { x: 1, y: 2, scale: 1, angle: 0 } }]
+    d.edit(e => e.placeReference(img('r1', { slots })))
+    ;(slots[0]!.placement as { x: number }).x = 999
+    const read = d.in('view:0,0').references()[0]!
+    ;(read.slots[0]!.placement as { x: number }).x = 777
+    expect(d.in('view:0,0').references()[0]!.slots[0]!.placement!.x).toBe(1)
   })
 })

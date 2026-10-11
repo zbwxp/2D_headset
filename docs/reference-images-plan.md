@@ -71,6 +71,8 @@ Dragging on the canvas, masks, position slots, the colour picker, images in play
 
 ### 8a. Boundaries added (dot 1791703489); no round-two code until round one passes
 
+**Round two coded** (plan accepted by dot 1791703574): core `slots` in `src/reference`; bench live preview, Move picture, slots panel; tests `test/reference.test.ts` (slots), `bench/test/reference-move.test.tsx`. Not observable today: Move picture's ownership of the arrow keys when no picture is active (interaction handles no arrow keys at all); the guard stays for when it does.
+
 1. **A preview ends once.** Enter commits and ends it, so a later blur commits nothing; Esc or any cancel ends it, so a late blur or pointerup commits nothing. Only a text that parses to a finite number in the field's range reaches core: "", "-" and other invalid text change nothing. A preview whose picture was undone, removed or changed elsewhere since it started (a different drawing, source or value underneath) is dropped, never written back.
 2. **Move picture owns its inputs while on.** Arrow keys never reach lines or the selection while it is on, even with no valid active picture (they then do nothing). During a drag or a slider preview the arrow keys are ignored. Turning the toggle off cancels a drag first.
 3. **Active picture and preview are bound** to the drawing, the view, the picture (id and source) and the App's cancel counter (§7.1). Opening another drawing whose picture has the same id does not inherit the old active target or preview.

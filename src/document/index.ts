@@ -425,7 +425,7 @@ export class Editor {
     })
   }
   /** Reference pictures (docs/reference-images-plan.md): place, change or remove one; never settles. */
-  placeReference(image: reference.ReferenceImage) { reference.place(this.s.reference, image) }
+  placeReference(image: reference.ReferenceInput) { reference.place(this.s.reference, image) }
   setReference(id: Id, props: reference.ReferenceProps) { reference.set(this.s.reference, id, props) }
   removeReference(id: Id) { reference.remove(this.s.reference, id) }
   /**

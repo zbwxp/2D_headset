@@ -22,7 +22,13 @@ export interface ReferenceImage {
   readonly angle: number
   readonly opacity: number
   readonly visible: boolean
+  /** Saved placements (v2's 存 / 调出 / ×; docs/reference-images-plan.md §8.3): at most 1000. */
+  readonly slots: readonly ReferenceSlot[]
 }
+/** What placing takes: a picture whose slots may be left out (none). */
+export type ReferenceInput = Omit<ReferenceImage, 'slots'> & { readonly slots?: readonly ReferenceSlot[] }
+export interface Placement { readonly x: number; readonly y: number; readonly scale: number; readonly angle: number }
+export interface ReferenceSlot { readonly name: string; readonly placement: Placement | null }
 export type ReferenceProps = Partial<Omit<ReferenceImage, 'id' | 'view' | 'src' | 'width' | 'height'>>
 declare const opaque: unique symbol
 export type ReferenceState = { readonly [opaque]: 'reference' }
@@ -30,7 +36,7 @@ const S = (s: ReferenceState) => s as unknown as { images: ReferenceImage[] }
 
 export const create = (): ReferenceState => ({ images: [] }) as unknown as ReferenceState
 /** v2's limits (4bc7cc2 `schema.ts` `IMAGE_LIMITS`). */
-export const LIMITS = Object.freeze({ srcLength: 100_000_000, side: 16384 })
+export const LIMITS = Object.freeze({ srcLength: 100_000_000, side: 16384, slots: 1000, slotName: 100 })
 
 const TYPES: Record<string, (b: number[]) => boolean> = {
   png: b => [0x89, 0x50, 0x4e, 0x47].every((x, i) => b[i] === x),
@@ -63,7 +69,28 @@ export function check(v: unknown): ReferenceImage {
   if (!(scale > 0) || !Number.isFinite(w * scale) || !Number.isFinite(h * scale)) refuse('reference-bad-value', 'scale must be positive and give a finite size')
   if ((i.opacity as number) < 0 || (i.opacity as number) > 1) refuse('reference-bad-value', 'opacity must be within 0–1')
   if (typeof i.visible !== 'boolean') refuse('reference-bad-value', 'visible must be true or false')
-  return { id: i.id as string, view: i.view as string, src: src as string, width: w, height: h, x: i.x as number, y: i.y as number, scale, angle: i.angle as number, opacity: i.opacity as number, visible: i.visible as boolean }
+  // slots: missing is none (an optional field of version 5); present must be a list of good slots, copied (dot 1791703489)
+  const slots = i.slots === undefined ? [] : checkSlots(i.slots, w, h)
+  return { id: i.id as string, view: i.view as string, src: src as string, width: w, height: h, x: i.x as number, y: i.y as number, scale, angle: i.angle as number, opacity: i.opacity as number, visible: i.visible as boolean, slots }
+}
+
+function checkSlots(v: unknown, w: number, h: number): ReferenceSlot[] {
+  if (!Array.isArray(v) || v.length > LIMITS.slots) refuse('reference-bad-slots', `slots must be a list of at most ${LIMITS.slots}`)
+  const out: ReferenceSlot[] = []
+  for (let k = 0; k < (v as unknown[]).length; k++) {
+    if (!Object.hasOwn(v as unknown[], k)) refuse('reference-bad-slots', `slot ${k} is missing`)
+    const s = (v as unknown[])[k] as Record<string, unknown> | null
+    if (!s || typeof s !== 'object' || Array.isArray(s)) refuse('reference-bad-slots', `slot ${k} must be an object`)
+    if (typeof s!.name !== 'string' || s!.name.length > LIMITS.slotName) refuse('reference-bad-slots', `slot ${k}'s name must be a string of at most ${LIMITS.slotName} characters`)
+    const p = s!.placement as Record<string, unknown> | null
+    if (p === null) { out.push({ name: s!.name as string, placement: null }); continue }
+    if (!p || typeof p !== 'object' || Array.isArray(p)) refuse('reference-bad-slots', `slot ${k}'s placement must be an object or null`)
+    for (const f of ['x', 'y', 'scale', 'angle']) if (typeof p[f] !== 'number' || !Number.isFinite(p[f])) refuse('reference-bad-slots', `slot ${k}'s ${f} must be a finite number`)
+    const sc = p.scale as number
+    if (!(sc > 0) || !Number.isFinite(w * sc) || !Number.isFinite(h * sc)) refuse('reference-bad-slots', `slot ${k}'s scale must be positive and give a finite size`)
+    out.push({ name: s!.name as string, placement: { x: p.x as number, y: p.y as number, scale: sc, angle: p.angle as number } })
+  }
+  return out
 }
 
 export function place(s: ReferenceState, image: unknown) {
@@ -76,7 +103,7 @@ export function set(s: ReferenceState, id: string, props: ReferenceProps) {
   if (i < 0) refuse('reference-unknown', `no reference image ${JSON.stringify(id)}`)
   const was = S(s).images[i]!, p = (props ?? {}) as Record<string, unknown>
   const pick = <K extends keyof ReferenceImage>(k: K) => (Object.hasOwn(p, k) ? p[k] : was[k])
-  S(s).images[i] = check({ ...was, x: pick('x'), y: pick('y'), scale: pick('scale'), angle: pick('angle'), opacity: pick('opacity'), visible: pick('visible') })
+  S(s).images[i] = check({ ...was, x: pick('x'), y: pick('y'), scale: pick('scale'), angle: pick('angle'), opacity: pick('opacity'), visible: pick('visible'), slots: pick('slots') })
 }
 export function remove(s: ReferenceState, id: string) {
   const i = S(s).images.findIndex(x => x.id === id)
@@ -84,7 +111,7 @@ export function remove(s: ReferenceState, id: string) {
   S(s).images.splice(i, 1)
 }
 /** The images of one view, in placing order, as copies. */
-export const list = (s: ReferenceState, view: string): ReferenceImage[] => S(s).images.filter(x => x.view === view).map(x => ({ ...x }))
+export const list = (s: ReferenceState, view: string): ReferenceImage[] => S(s).images.filter(x => x.view === view).map(x => structuredClone(x))
 
 /** At open: every image checked, ids unique. */
 export function restore(v: unknown): ReferenceState {
