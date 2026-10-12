@@ -33,6 +33,7 @@
     "../pose-pad",
     "../slider",
     "../name-labels",
-    "../move"
+    "../move",
+    "../ink"
   ]
 }

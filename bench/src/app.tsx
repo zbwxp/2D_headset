@@ -14,6 +14,7 @@ import { PosePad } from '../../pose-pad'
 import { labelsFor, middleOf, type Kind as LabelKind } from '../../name-labels'
 import { createMover, isArrow, type Target } from '../../move'
 import { Slider } from '../../slider'
+import { createInkCache } from '../../ink'
 
 type Id = string
 type Unit = Snapshot['selection'][number]
@@ -185,6 +186,9 @@ export function App() {
   const [refPreview, setRefPreview] = useState<null | (RefBind & { base: ReferenceImage; props: ReferenceProps })>(null)
   const previewNow = useRef(refPreview)
   const [moveRef, setMoveRef] = useState(false)
+  // ink outlines (docs/ink-p1-checklist.md): an experimental switch, off by default, not saved, never in undo
+  const [inkOn, setInkOn] = useState(false)
+  const inkCache = useRef(createInkCache())
   const [activeRef, setActiveRef] = useState<null | RefBind>(null)
   const keyHooks = useRef<{ nudge?: (e: KeyboardEvent) => boolean; afterArrow?: () => void; poseArrow?: (e: KeyboardEvent) => void }>({})
   // moving by keyboard (docs/move-plan.md): the picture's sessions run here, the selection's in interaction;
@@ -245,6 +249,11 @@ export function App() {
   frame.current = pose || moveRef ? { core, text: save(core) } : null
   const reader = posed && !(posed instanceof Error) ? posed : core.in(shown)
   const s = reader.snapshot(), g = reader.geometry()
+  // with the switch on, each visible line's ink (P1: single lines, today's round-capped look); a line whose ink a check
+  // flags is still drawn and marked red (visible, reproducible — never hidden); only a line with nothing to draw is drawn
+  // as today's stroke (bowen 1791801560 / 1791801629, dot 1791801801)
+  const ink = inkOn ? inkCache.current.build(g, s) : null, inkOf = new Map((ink?.pieces ?? []).map(p => [p.source.id, p] as const))
+  const inkDefects = new Map((ink?.diagnostics ?? []).filter(d => d.status === 'defect').map(d => [d.line, d.reason ?? ''] as const))
   // one visibility rule for the playback drag's picking, its point marks and its ghost, computed once
   // per frame (dot 1791697776; docs/stage3b-pkg5-problems.md): the visible lines and the points they end at
   const shownLines = s.lines.filter(l => l.state.visible), shownEnds = new Set(shownLines.flatMap(l => [l.a, l.b]))
@@ -933,6 +942,7 @@ export function App() {
               run(x => { const asset = x.addAsset({ id: nid('asset-'), name: f.name.slice(0, 100), ...pic }); x.placeReference({ id: nid('ref-'), view, asset, width: pic.width, height: pic.height, x: at.x + at.w / 2, y: at.y + at.h / 2, scale: k, angle: 0, opacity: 0.5, visible: true }) })
             })
           }} /></label>
+          <label title="实验：用墨迹轮廓画线（单线，与今天的圆头描边同形）"><input type="checkbox" data-testid="ink-outline" checked={inkOn} onChange={e => setInkOn(e.target.checked)} /> 墨迹轮廓（实验）{ink && <span data-testid="ink-diagnostics"> · 已验证 {ink.diagnostics.filter(d => d.status === 'verified').length} · 未完全证明 {ink.diagnostics.filter(d => d.status === 'unproven').length} · 瑕疵 {ink.diagnostics.filter(d => d.status === 'defect').length} · 回退 {ink.diagnostics.filter(d => d.status === 'fallback').length}</span>}</label>
           <label><input type="checkbox" data-testid="move-picture" checked={moveRef} onChange={e => { if (!e.target.checked) { gesture.current?.cancel('Move picture turned off'); setActiveRef(null) } cancelPreview(); setMoveRef(e.target.checked) }} /> Move picture (drag it, or arrow keys; Shift ×10)</label>
           {core.in(shown).references().map(r => {
             const live = refPreview && refPreview.id === r.id && refNow(refPreview) ? { ...r, ...refPreview.props } : r
@@ -1098,6 +1108,12 @@ export function App() {
             const l = line(G.id), on = selLines.includes(l.id), picked = pv.pick?.kind === 'line' && pv.pick.id === l.id
             // while posing, no edit marks: neither selection nor picks (dot 1791686247)
             const stroke = pose ? (l.state.locked ? '#933' : '#111') : cutLines.has(l.id) ? '#bbb' : picked ? '#f80' : pv.mirrorSource.includes(l.id) ? '#a3c' : on ? '#06f' : l.state.locked ? '#933' : '#111'
+            const piece = l.state.visible ? inkOf.get(l.id) : undefined
+            if (piece) {
+              const d = piece.loops.map(q => 'M' + q.map(v => `${v.x} ${v.y}`).join(' L') + ' Z').join(' '), why = inkDefects.get(l.id)
+              return <g key={G.id}><path data-ink={l.id} d={d} fill={stroke} fillRule="nonzero" stroke="none" />
+                {why !== undefined && <path data-ink-defect={l.id} d={d} fill="none" stroke="#e00" strokeWidth={1.5 * px} strokeDasharray={`${3 * px} ${2 * px}`}><title>{why}</title></path>}</g>
+            }
             return <path key={G.id} d={path(G.curve)} fill="none" stroke={stroke} strokeWidth={l.stroke.width}
               strokeDasharray={l.state.visible ? undefined : `${4 * px} ${4 * px}`} opacity={l.state.visible ? 1 : 0.35} strokeLinecap="round" />
           })}
