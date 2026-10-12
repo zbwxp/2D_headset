@@ -84,3 +84,10 @@ export function unionOutline(polys) {
 }
 export const segCross = (P1, P2, P3, P4) => { const d1 = sub(P2, P1), d2 = sub(P4, P3), den = cross(d1, d2); if (Math.abs(den) < 1e-12) return false; const w = sub(P3, P1), s = cross(w, d2) / den, t = cross(w, d1) / den; return s > 1e-9 && s < 1 - 1e-9 && t > 1e-9 && t < 1 - 1e-9 }
 export const circle = (c, r, n = 32) => Array.from({ length: n }, (_, i) => add(c, [Math.cos(i / n * 2 * Math.PI) * r, Math.sin(i / n * 2 * Math.PI) * r]))
+/** SVG lines of a reading, wrapped at about `maxChars` per line at its ' · ' separators (dot 1791784087: readings
+ *  spilled into the next cell). */
+export function readingLines(x, y, text, { maxChars = 46, size = 8, lineH = 10, fill = '#555' } = {}) {
+  const parts = text.split(' · '), lines = []
+  for (const part of parts) { const last = lines[lines.length - 1]; if (last !== undefined && (last + ' · ' + part).length <= maxChars) lines[lines.length - 1] = last + ' · ' + part; else lines.push(part) }
+  return lines.map((l, i) => `<text x="${x}" y="${y + i * lineH}" font-size="${size}" fill="${fill}">${l.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</text>`).join('')
+}

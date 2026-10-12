@@ -6,7 +6,7 @@
 // closed loop, crossings, rotations; a bridge folding back along its chord; the width across the zone (min / max,
 // a bulge if outside the two lines' widths) — the local width change reported as it is. Run: node sharp-join-O3.mjs
 import { writeFileSync } from 'node:fs'
-import { add, circle, cross, dot, f, len, mul, segCross, sub, unionOutline } from './outline.mjs'
+import { add, circle, cross, dot, f, len, mul, readingLines, segCross, sub, unionOutline } from './outline.mjs'
 
 const unit = a => mul(a, 1 / (len(a) || 1))
 const cubic = (P0, P1, P2, P3, t) => { const u = 1 - t; return add(add(mul(P0, u * u * u), mul(P1, 3 * u * u * t)), add(mul(P2, 3 * u * t * t), mul(P3, t * t * t))) }
@@ -55,7 +55,7 @@ angles.forEach((deg, r) => cols.forEach(([k0, k1, k], c) => {
     for (const ch of openChains) body += `<path d="M${ch.map(f).join(' L')}" fill="none" stroke="#e00"/>`
   }
   body += `<text x="${ox + 6}" y="${oy + 14}" font-size="9" fill="${O3 ? '#363' : '#a50'}">${label}</text>`
-  if (note) body += `<text x="${ox + 6}" y="${oy + cell - 22}" font-size="7" fill="${/FAIL|BULGE|loops [02-9]|open [1-9]|bad [1-9]|crossings [1-9]|folds [1-9]|folds \d+\/[1-9]/.test(note) ? '#e00' : '#555'}">${note}</text>`
+  if (note) body += readingLines(ox + 6, oy + cell - 46, note, { fill: /FAIL|BULGE|loops [02-9]|open [1-9]|bad [1-9]|crossings [1-9]|folds [1-9]|folds \d+\/[1-9]/.test(note) ? '#e00' : '#555' })
   body += `<rect x="${ox}" y="${oy}" width="${cell - 6}" height="${cell - 6}" fill="none" stroke="#ddd"/>`
 }))
 angles.forEach((deg, r) => { body += `<text x="${pad}" y="${pad + 50 + r * cell + cell / 2}" font-size="13">${deg}°</text>` })

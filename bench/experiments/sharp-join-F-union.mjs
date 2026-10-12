@@ -6,7 +6,7 @@
 // on it: the number of loops, vertices not joining exactly two sub-edges, crossings, square-end corners on it. Verifies the construction only — not the look. Run: node sharp-join-F-union.mjs → F-union.svg beside it.
 import { writeFileSync } from 'node:fs'
 
-import { add, circle, clipHalf, cross, dot, f, insideEO, len, meet, mul, segCross, strictlyInside, sub, unionOutline } from './outline.mjs'
+import { add, circle, clipHalf, cross, dot, f, insideEO, len, meet, mul, readingLines, segCross, strictlyInside, sub, unionOutline } from './outline.mjs'
 
 const angles = [8, 12, 20, 30]
 const cols = [[1, 1, 3], [1, 1, 6], [1, 3, 3], [1, 3, 6], [3, 1, 3], [3, 1, 6]]
@@ -74,7 +74,7 @@ angles.forEach((deg, r) => cols.forEach(([k0, k1, k], c) => {
     for (const q of [band(start0, p, o0), band(p, end1, o1), circle(start0, h0), circle(end1, h1)]) body += `<path d="M${q.map(f).join(' L')} Z" fill="#111" opacity="0.35"/>`
   }
   body += `<text x="${ox + 6}" y="${oy + 14}" font-size="10" fill="${fdrawn ? '#363' : '#a50'}">${cls}</text>`
-  body += `<text x="${ox + 6}" y="${oy + cell - 22}" font-size="8" fill="${/crossings [1-9]|shown: [A-Z]|bad vertices [1-9]|loops ([02-9]|1\d)|open [1-9]|FAIL/.test(note) ? '#e00' : '#555'}">${note}</text>`
+  body += readingLines(ox + 6, oy + cell - 46, note, { fill: /crossings [1-9]|shown: [A-Z]|bad vertices [1-9]|loops ([02-9]|1\d)|open [1-9]|FAIL/.test(note) ? '#e00' : '#555' })
   body += `<rect x="${ox}" y="${oy}" width="${cell - 6}" height="${cell - 6}" fill="none" stroke="#ddd"/>`
 }))
 angles.forEach((deg, r) => { body += `<text x="${pad}" y="${pad + 50 + r * cell + cell / 2}" font-size="13">${deg}°</text>` })
