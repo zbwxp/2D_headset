@@ -107,6 +107,7 @@ const CASES: Case[] = [
   { op: 'linkJoin', args: () => ['r', 's', 'qr', 'st', { mode: 'smooth' }] },
   { op: 'removeLinkJoin', args: () => ['r', 's', 'qr', 'st'], setup: d => d.edit(e => e.linkJoin('r', 's', 'qr', 'st', { mode: 'smooth' })) },
   { op: 'lineStroke', args: () => ['ab', { width: 3, profile: 'uniform' }] },
+  { op: 'pointWidth', args: () => ['a', 3] },
   { op: 'stroke', args: d => [groupOf(d, 'ab'), { width: 4, profile: 'uniform' }] },
   { op: 'reorderGroup', args: d => [groupOf(d, 'xy'), 0] },
   { op: 'moveGroup', args: d => [groupOf(d, 'xy'), 'M'] },

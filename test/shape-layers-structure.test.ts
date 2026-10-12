@@ -206,11 +206,11 @@ describe('insert (paste) on several layers', () => {
     expect(() => clipboard.check(clip)).not.toThrow()
     const bad = (f: (c: any) => void) => { const c = structuredClone(clip) as any; f(c); return () => clipboard.check(c) }
     expect(bad(c => { c.network.layers[0].points.pop() })).toThrow(/exactly the clip's points/)
-    expect(bad(c => { c.network.layers[0].points.push({ id: 'ghost', position: { x: 0, y: 0 } }) })).toThrow(/exactly the clip's points/)
+    expect(bad(c => { c.network.layers[0].points.push({ id: 'ghost', position: { x: 0, y: 0 }, width: 1 }) })).toThrow(/exactly the clip's points/)
     expect(bad(c => { c.network.layers[0].lines = [] })).toThrow(/exactly the clip's lines/)
     expect(bad(c => { c.network.layers.push(structuredClone(c.network.layers[0])) })).toThrow(/appears twice/)
     expect(bad(c => { delete c.network.source })).toThrow(/source layer is not text/)
-    expect(bad(c => { c.network.layers[0].lines[0].stroke.width = 'wide' })).toThrow(/stroke width is not a finite number/)
+    expect(bad(c => { c.network.layers[0].points[0].width = 'wide' })).toThrow(/width is not a finite number/)
     expect(bad(c => { c.network.layers[0].kind = 'magic' })).toThrow(/unknown kind/)
   })
 })

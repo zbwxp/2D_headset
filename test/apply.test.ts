@@ -499,7 +499,9 @@ describe('mirror link under random edits', () => {
           ok[kind] = (ok[kind] ?? 0) + 1
         } catch { /* refused edits are fine */ }
         for (const f of pairsMirrored(d)) failures.push(`seed ${seed} step ${step}: ${f}`)
-        for (const p of s(d).mirrorPairs) if (line(d, p.a).stroke.width !== line(d, p.b).stroke.width) failures.push(`seed ${seed} step ${step}: ${p.a}|${p.b} widths differ`)
+        // widths at corresponding ends (a pair drawn the other way round matches a with b; widths belong to points)
+        const at = (id: string, end: 'a' | 'b') => { const st = line(d, id).stroke; return end === 'b' ? st.widthB ?? st.width : st.width }
+        for (const p of s(d).mirrorPairs) for (const end of ['a', 'b'] as const) if (Math.abs(at(p.a, end) - at(p.b, p.reversed === (end === 'a') ? 'b' : 'a')) > 1e-6) failures.push(`seed ${seed} step ${step}: ${p.a}|${p.b} widths differ at ${end}: ${at(p.a, end)} / ${at(p.b, p.reversed === (end === 'a') ? 'b' : 'a')}`)
       }
     }
     expect(failures.slice(0, 8)).toEqual([])

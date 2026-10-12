@@ -21,16 +21,18 @@ complex shapes (an upper eyelid) are an outline + fill. Replaces the per-line tw
   the width goes with the point; paste → pasted points carry their widths; mirror apply → each target point takes its
   source point's width (points are matched, so reversal needs no special case); broadcast stroke → the line's two points'
   widths copied to the other views.
-- **Archive VERSION 9:** `widths` per layer, required, positive. Versions 8 / 7 (and 6 / 5 through their conversions)
-  convert once: a point's width = the largest width any line had at that point in that layer (1 for a point with no
-  line); lines lose `width` / `widthB`. Stated as the third approved conversion? — **asked of bowen** (the archive rule
-  allows conversions only with approval; without it his v8 drawings would not open).
+- **Archive VERSION 9:** `widths` per layer, required, positive; a line's stroke holds only `profile`. Older files go
+  through **one separate module, `src/legacy/`** (bowen 1791820592 approved the conversion and asked that it be
+  removable at once; dot 1791820713): it turns a version 5–8 document into version 9 — 5 → 6, 6 → 7 as before, then
+  7 / 8 → 9: a point's width = the largest width any line had at that point in that layer (1 for a point with no
+  line), the lines keep their profile — and the archive's normal reader takes the result. Nothing else knows an old
+  format; a release deletes `src/legacy/` and its one call in `src/archive/index.ts`.
 
 ## 2. Ink / zones
 - Unchanged code path: widths at a joint are now always equal, so the bound / smooth easing never runs; cusp tips use
   the shared width; free ends round with the point's width.
-- The transition zone (过渡区) no longer affects widths; it stays in the data (arcs use it for nothing either) — the
-  panel hides it for now; removing it from the core is left to a later clean-up (ledger row).
+- The transition zone (过渡区) no longer affects widths (they are equal at every point); it stays in the data and the
+  panel for now — removing it is a later clean-up, logged in docs/consolidation-ledger.md (row 20).
 
 ## 3. Panel / bench
 - A line's properties: 「起点宽」「终点宽」 edit its two **points'** widths (noted: 「这个点上的线一起变」).

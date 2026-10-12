@@ -36,8 +36,9 @@ describe('stroke broadcast', () => {
       expect(endIn(d, k, 'a')).toEqual({ taper: 3 })
       expect(endIn(d, k, 'b')).toEqual({ taper: 9 }) // b is shared with bc: its end stroke is assigned too
     }
-    // the unchosen line keeps its own stroke in every view; shapes are untouched
-    expect(d.views().map(k => strokeIn(d, k, 'bc'))).toEqual(bcBefore)
+    // the unchosen line keeps its profile and its far end's width in every view; at b, the point it shares with ab, it now
+    // has the broadcast width (widths belong to points, bowen 1791820396); shapes are untouched
+    expect(d.views().map(k => strokeIn(d, k, 'bc'))).toEqual(bcBefore.map(st => { const c = st.widthB ?? st.width; return c === 3 ? { width: 3, profile: st.profile } : { width: 3, widthB: c, profile: st.profile } }))
     expect(d.views().map(k => JSON.stringify(d.in(k).snapshot().points.map(p => p.position)))).toEqual(shapes)
   })
 
@@ -58,6 +59,9 @@ describe('stroke broadcast', () => {
     expect(all(d)).toBe(locked)
     expect(() => d.editIn(SIDE, e => e.broadcastStroke([{ kind: 'point', id: 'a' }]))).toThrow(/select-lines-to-broadcast/)
     expect(() => d.editIn(SIDE, e => e.broadcastStroke())).toThrow(/select-lines-to-broadcast/)
+    // ab alone is refused too while bc is locked: its point b is bc's (widths belong to points)
+    expect(() => d.editIn(SIDE, e => e.broadcastStroke([{ kind: 'line', id: 'ab' }]))).toThrow(/Locked lines would change \(bc\)/)
+    d.edit(e => e.lineState('bc', { locked: false }))
     // the selection is the default target
     d.editIn(SIDE, e => { e.select([{ kind: 'line', id: 'ab' }]); e.broadcastStroke() })
     expect(strokeIn(d, FRONT, 'ab').width).toBe(3)

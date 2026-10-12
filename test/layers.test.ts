@@ -243,11 +243,12 @@ describe('state changes and locks', () => {
 })
 
 describe('line width and locks', () => {
-  it('15. a group width change skips locked lines', () => {
+  it('15. a group width change skips locked lines — and the points a locked line ends at (widths at points, bowen 1791820396)', () => {
     const d = doc('A'); triangle(d, 'A')
     d.edit(e => e.lineState('ab', { locked: true }))
     d.edit(e => e.stroke(groupOf(d, 'ab').id, { width: 4, profile: 'uniform' }))
-    expect(s(d).lines.map(l => [l.id, l.stroke.width])).toEqual([['ab', 1], ['bc', 4], ['ca', 4]])
+    // only c is free of the locked ab: bc runs b (1) → c (4), ca runs c (4) → a (1)
+    expect(s(d).lines.map(l => [l.id, l.stroke.width, l.stroke.widthB])).toEqual([['ab', 1, undefined], ['bc', 1, 4], ['ca', 4, 1]])
     expect(() => d.edit(e => e.lineStroke('ab', { width: 4, profile: 'uniform' }))).toThrow(/Locked/)
   })
 

@@ -38,7 +38,8 @@ export function PropertiesPanel({ s, subject, zones = [], run, slider, toolRadiu
   const fillsOf = (ids: Id[]) => s.loops.filter(l => l.filled && l.route.every(u => ids.includes(u.line)))
 
   let title = '未选择', rows: [string, string][] = [], lists: { label: string; point: Id; line?: Id }[] = []
-  let widthOf: { id: Id; width: number; widthB: number; locked: boolean } | null = null
+  // widths belong to points (bowen 1791820396): each field edits one point's width in this view
+  let widthRows: { label: string; point: Id; value: number; attr: string }[] = []
   if (subject?.kind === 'layer' && s.layers.some(l => l.id === subject.id)) {
     const ids = s.lines.filter(l => layerOf.get(l.a) === subject.id).map(l => l.id)
     title = `图层 · ${layerName(subject.id)}`
@@ -72,7 +73,7 @@ export function PropertiesPanel({ s, subject, zones = [], run, slider, toolRadiu
     }
     title = `线 · ${l.name}`
     // the width is edited here, in this view (bowen 1791814093: the line's own properties); typed values commit with Enter
-    if (run) widthOf = { id: l.id, width: l.stroke.width, widthB: l.stroke.widthB ?? l.stroke.width, locked: l.state.locked }
+    if (run) widthRows = [{ label: '起点宽', point: l.a, value: l.stroke.width, attr: 'data-line-width' }, { label: '终点宽', point: l.b, value: l.stroke.widthB ?? l.stroke.width, attr: 'data-line-width-b' }]
     rows = [
       ['连续曲线', groupOf(l.id)?.name ?? '—'],
       ['图层', layerName(lineLayer(l.id))],
@@ -91,7 +92,8 @@ export function PropertiesPanel({ s, subject, zones = [], run, slider, toolRadiu
   } else if (subject?.kind === 'point' && s.points.some(p => p.id === subject.id)) {
     const at = s.lines.filter(l => l.a === subject.id || l.b === subject.id)
     title = `点 · ${subject.id}`
-    rows = [['图层', layerName(layerOf.get(subject.id))], ['相接的线', at.map(l => l.name).join('、') || '—']]
+    rows = [['图层', layerName(layerOf.get(subject.id))], ['相接的线', at.map(l => l.name).join('、') || '—'], ...(run ? [] : [['宽度', String(s.points.find(p => p.id === subject.id)!.width)] as [string, string]])]
+    if (run) widthRows = [{ label: '宽度', point: subject.id, value: s.points.find(p => p.id === subject.id)!.width, attr: 'data-point-width' }]
     lists.push({ label: '接法', point: subject.id })
   }
 
@@ -104,13 +106,13 @@ export function PropertiesPanel({ s, subject, zones = [], run, slider, toolRadiu
         {rows.map(([k, v]) => <div key={k} style={{ display: 'flex', gap: 8, padding: '2px 0' }}>
           <span style={{ color: C.key, width: 64, flex: 'none' }}>{k}</span><span style={{ wordBreak: 'break-all' }}>{v}</span>
         </div>)}
-        {widthOf && ([['a', '起点宽', widthOf.width, 'data-line-width'], ['b', '终点宽', widthOf.widthB, 'data-line-width-b']] as const).map(([end, label, value, attr]) =>
-          <div key={end} style={{ display: 'flex', gap: 8, padding: '2px 0', alignItems: 'center' }}>
-            <span style={{ color: C.key, width: 64, flex: 'none' }}>{label}</span>
-            <Slider value={value} identity={`${scope ?? ''}|${widthOf.id}|width-${end}`} accept={v => v > 0} track={null} steps={{ step: 1, long: 10, short: 0.1 }}
-              fieldAttrs={{ [attr]: widthOf.id }} {...(slider ?? { onStart: () => true, onEnd: () => {}, onField: () => {} })} onPreview={() => {}}
-              onCommit={v => { const w = widthOf!, st = s.lines.find(x => x.id === w.id)!.stroke; run?.(e => e.lineStroke(w.id, end === 'a' ? { ...st, width: v, widthB: w.widthB } : { ...st, widthB: v })) }} onCancel={() => {}} />
-            <span style={{ color: C.dim, fontSize: 11 }}>本视角</span>
+        {widthRows.map(w =>
+          <div key={w.label} style={{ display: 'flex', gap: 8, padding: '2px 0', alignItems: 'center' }}>
+            <span style={{ color: C.key, width: 64, flex: 'none' }}>{w.label}</span>
+            <Slider value={w.value} identity={`${scope ?? ''}|${w.point}|point-width`} accept={v => v > 0} track={null} steps={{ step: 1, long: 10, short: 0.1 }}
+              fieldAttrs={{ [w.attr]: subject?.id ?? w.point }} {...(slider ?? { onStart: () => true, onEnd: () => {}, onField: () => {} })} onPreview={() => {}}
+              onCommit={v => { run?.(e => e.pointWidth(w.point, v)) }} onCancel={() => {}} />
+            <span style={{ color: C.dim, fontSize: 11 }} title="宽度属于点：接在这个点上的线一起变">本视角 · 点 {w.point}</span>
           </div>)}
         {lists.map(x => <div key={x.label + x.point}>
           <div style={{ color: C.key, padding: '4px 0 0' }}>{x.label}</div>

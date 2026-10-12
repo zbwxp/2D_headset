@@ -102,6 +102,7 @@ export const EFFECTS: Record<string, Effect> = {
   removeLinkJoin: full({ reads: 'draft', shared: ['links'] }),
   // strokes, groups, fills
   lineStroke: full({ reads: 'draft', shapes: 'edited' }),
+  pointWidth: full({ reads: 'draft', shapes: 'edited' }),
   stroke: full({ reads: 'draft', shapes: 'edited' }),
   reorderGroup: full({ reads: 'draft', shared: ['groups'] }),
   moveGroup: full({ reads: 'draft', shared: STRUCTURAL }),

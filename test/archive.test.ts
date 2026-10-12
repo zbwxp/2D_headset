@@ -128,12 +128,12 @@ describe('save and open', () => {
     const cases: [string, string, RegExp][] = [
       ['not JSON', '{oops', /not JSON/],
       ['another format', JSON.stringify({ format: 'something', version: 1, document: {} }), /not a headset v3 drawing/],
-      ['another version', good.replace('"version":8', '"version":9'), /unsupported version 9/],
+      ['another version', good.replace('"version":9', '"version":10'), /unsupported version 10/],
       // format versions (docs/archive-plan.md): 1 single view (bowen 1791651929); 2 stage 1, no angle baseline (dot 1791680650); 3 stage 2, no responses (stage 3b)
-      ['a version 1 file', good.replace('"version":8', '"version":1'), /unsupported version 1/],
-      ['a version 2 file (stage 1)', good.replace('"version":8', '"version":2'), /unsupported version 2/],
-      ['a version 3 file (stage 2)', good.replace('"version":8', '"version":3'), /unsupported version 3/],
-      ['a version 4 file (stage 3b, no reference pictures)', good.replace('"version":8', '"version":4'), /unsupported version 4/],
+      ['a version 1 file', good.replace('"version":9', '"version":1'), /unsupported version 1/],
+      ['a version 2 file (stage 1)', good.replace('"version":9', '"version":2'), /unsupported version 2/],
+      ['a version 3 file (stage 2)', good.replace('"version":9', '"version":3'), /unsupported version 3/],
+      ['a version 4 file (stage 3b, no reference pictures)', good.replace('"version":9', '"version":4'), /unsupported version 4/],
       ['a missing part', edit(doc => { delete doc.links }), /missing links/],
       ['a line pointing to a missing point', edit(doc => { doc.network.lines[0].a = 'nowhere' }), /open-failed/],
       ['a point id used twice', edit(doc => { doc.network.points.push({ ...doc.network.points[0] }) }), /open-failed/],
@@ -158,7 +158,8 @@ describe('save and open', () => {
       ['a mirror pair on a missing line', edit(doc => { doc.apply.pairs[0].a = 'gone' }), /mirror pair 0 uses a missing line/],
       ['a line without a name', edit(doc => { doc.names.line.pop() }), /has no name/],
       // the rest of the same class (dot 1791512188): each module's own type, reference and relation checks
-      ['a negative line width', edit(doc => { const L = doc.network.shapes.layers[0]; L.lines[Object.keys(L.lines)[0]!].stroke.width = -1 }), /stroke width that is not positive/],
+      ['a negative point width', edit(doc => { const L = doc.network.shapes.layers[0]; L.widths[Object.keys(L.widths)[0]!] = -1 }), /width that is not positive/],
+      ['a width stored on a line (widths belong to points)', edit(doc => { const L = doc.network.shapes.layers[0]; L.lines[Object.keys(L.lines)[0]!].stroke.width = 2 }), /holds more than its profile/],
       ['a missing stroke', edit(doc => { const L = doc.network.shapes.layers[0]; delete L.lines[Object.keys(L.lines)[0]!].stroke }), /stroke in view:0,0 is not an object/],
       ['an axis that is not a number', edit(doc => { doc.apply.axis = 'middle' }), /mirror axis is not a finite number/],
       ['a point in a missing layer', edit(doc => { doc.network.points[0].layer = 'nowhere' }), /in a missing layer/],

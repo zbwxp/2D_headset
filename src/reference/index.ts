@@ -233,21 +233,3 @@ export function restore(v: unknown): ReferenceState {
   return s
 }
 
-/**
- * The one conversion, version 5 → 6 (bowen 1791726456: this once): every image checked as version 5 checked
- * it, then its inline picture moved into the library — identical contents become one entry, named by the
- * first image's id, with its size as the default — and the image names it by `asset`, keeping its own size,
- * placement, `flipped` and slots. Plain data in, plain data out; `restore` checks the result.
- */
-export function fromV5(v: unknown): { images: unknown[]; library: Asset[] } {
-  const images = (v as { images?: unknown } | null)?.images
-  if (!Array.isArray(images)) throw new Error('open-failed: reference: images must be a list')
-  const s = create()
-  for (let k = 0; k < images.length; k++) openFailed(() => {
-    if (!Object.hasOwn(images, k)) throw new Error(`image ${k} is missing`)
-    const i = images[k] as Record<string, unknown> | null
-    if (i && typeof i === 'object' && Object.hasOwn(i, 'asset')) refuse('reference-bad-value', 'a version-5 image holds its picture inline')
-    place(s, i)
-  })
-  return { images: S(s).images.map(x => structuredClone(x)), library: S(s).library.map(x => structuredClone(x)) }
-}

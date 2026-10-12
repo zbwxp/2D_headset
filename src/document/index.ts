@@ -58,7 +58,8 @@ const createState = (axis = 0): State => ({
 export interface Snapshot {
   /** Layers bottom → top; `type` is the 元组件 type when it has one. */
   layers: (net.Layer & { type?: string })[]
-  points: { id: Id; layer: Id; position: Vec; links: Id[]; endStroke?: joins.EndStroke }[]
+  /** `width`: the point's stroke width in this view, shared by every line ending there (bowen 1791820396). */
+  points: { id: Id; layer: Id; position: Vec; width: number; links: Id[]; endStroke?: joins.EndStroke }[]
   lines: { id: Id; name: string; a: Id; b: Id; ha: Vec; hb: Vec; state: net.ElementState; stroke: net.Stroke }[]
   groups: (groups.Group & { name: string })[]
   joins: joins.JoinRow[]
@@ -324,11 +325,29 @@ export class Editor {
     for (const [x, y, lx, ly] of this.paired(apply.pairedLinkJoins(this.s.apply, this.s.network, a, b, la, lb))) { links.removeJoin(this.s.links, x, y, lx, ly); net.touch(this.tx.changes, x); net.touch(this.tx.changes, y) }
   }
 
-  // stroke: stored on each line (bowen 1791434322)
-  lineStroke(line: Id, stroke: net.Stroke) { for (const id of this.paired(apply.pairedLines(this.s.apply, this.s.network, line))) net.setLineStroke(this.s.network, id, stroke) }
-  /** A group's width change is a batch over its unlocked lines (Q29 D). */
+  // stroke: a line's profile is its own; its widths are its two points' (bowen 1791820396), so setting a line's widths
+  // sets its points' and changes every line ending there
+  // (the widths go through the points, so a mirror partner drawn the other way round gets them at the right ends)
+  lineStroke(line: Id, stroke: net.Stroke) {
+    if (!(stroke.width > 0 && Number.isFinite(stroke.width)) || (stroke.widthB !== undefined && !(stroke.widthB > 0 && Number.isFinite(stroke.widthB)))) throw new Error('Stroke width must be a positive number')
+    for (const id of this.paired(apply.pairedLines(this.s.apply, this.s.network, line))) net.setLineProfile(this.s.network, id, stroke.profile)
+    const l = net.line(this.s.network, line)
+    this.pointWidth(l.a, stroke.width)
+    this.pointWidth(l.b, stroke.widthB ?? stroke.width)
+  }
+  /** A point's width in this view, shared by every line ending there (bowen 1791820396). */
+  pointWidth(point: Id, width: number) { for (const p of this.paired(apply.pairedPoints(this.s.apply, this.s.network, point))) net.setPointWidth(this.s.network, p, width) }
+  /**
+   * A group's width change is a batch over its unlocked lines (Q29 D): their profile, and the width of each of their
+   * points that no locked line ends at (a shared point would change the locked line).
+   */
   stroke(group: Id, stroke: net.Stroke) {
-    for (const id of groups.get(this.s.groups, group).lines) if (!net.line(this.s.network, id).state.locked) this.lineStroke(id, stroke)
+    const n = this.s.network, ids = groups.get(this.s.groups, group).lines.filter(id => !net.line(n, id).state.locked)
+    const lockedAt = (p: Id) => net.linesAt(n, p).some(e => e.line.state.locked)
+    for (const id of ids) {
+      const l = net.line(n, id)
+      this.lineStroke(id, { ...l.stroke, profile: stroke.profile, width: lockedAt(l.a) ? l.stroke.width : stroke.width, widthB: lockedAt(l.b) ? net.widthAt(l.stroke, 'b') : stroke.widthB ?? stroke.width })
+    }
   }
 
   // groups (continuous curves)
@@ -738,7 +757,7 @@ export class LayerReader {
       layers: net.layerRecords(n).map(l => { const type = meta.typeOf(s.meta, l.id); return { ...l, ...(type ? { type } : {}) } }),
       points: net.points(n).map(p => {
         const end = joins.endStroke(s.joins, n, p.id)
-        return { id: p.id, layer: p.layer, position: p.position, links: links.partners(s.links, p.id), ...(end ? { endStroke: end } : {}) }
+        return { id: p.id, layer: p.layer, position: p.position, width: net.pointWidth(n, p.id), links: links.partners(s.links, p.id), ...(end ? { endStroke: end } : {}) }
       }),
       lines: net.lines(n).map(l => ({ ...l, name: names.of(s.names, 'line', l.id)! })),
       groups: groupList.map(g => ({ ...g, name: names.of(s.names, 'group', g.id)! })),
@@ -814,43 +833,7 @@ export class LayerReader {
 
 const PARTS = ['network', 'groups', 'joins', 'links', 'fills', 'apply', 'names', 'meta', 'animation', 'reference'] as const
 
-/**
- * Version 5's document with its reference pictures converted to the library form (the one conversion, for
- * version 5 only; bowen 1791726456). Nothing else differs between 5 and 6; `importState` checks the result.
- */
-export function fromV5(doc: unknown): unknown {
-  if (!doc || typeof doc !== 'object') return doc
-  const d = doc as Record<string, unknown>
-  if (!d.reference || typeof d.reference !== 'object') return doc // missing: refused by importState as for any file
-  return { ...d, reference: reference.fromV5(d.reference) }
-}
-
 /** The document as plain data, without the selection (docs/archive-plan.md). */
-/**
- * Format 6 → 7 (docs/ink-joins-principle.md §2.6, bowen 1791808493): binding becomes a join, so a
- * point carrying exactly two line ends and no join gets a 'bound' join — what the two lines were
- * (仅绑定) before; a fork gets none; each shape layer gains an empty zone table (every zone
- * automatic). Only for a version-6 file: a version-7 drawing is opened as stored.
- */
-export function fromV6(doc: unknown): unknown {
-  if (!doc || typeof doc !== 'object') return doc
-  const d = doc as { network?: { lines?: unknown }; joins?: { rows?: unknown } }
-  if (!d.network || !Array.isArray(d.network.lines) || !d.joins || !Array.isArray(d.joins.rows)) return doc // refused by importState as for any file
-  const ends = new Map<string, string[]>()
-  for (const l of d.network.lines as { id?: unknown; a?: unknown; b?: unknown }[]) {
-    for (const p of [l.a, l.b]) if (typeof p === 'string' && typeof l.id === 'string') ends.set(p, [...(ends.get(p) ?? []), l.id])
-  }
-  // the shape layers gain the per-view zone table (empty: every join's zone automatic)
-  const net6 = d.network as { shapes?: { layers?: unknown } }
-  const network = net6.shapes && Array.isArray(net6.shapes.layers)
-    ? { ...d.network, shapes: { ...net6.shapes, layers: (net6.shapes.layers as Record<string, unknown>[]).map(L => (L && typeof L === 'object' && !('zone' in L) ? { ...L, zone: {} } : L)) } }
-    : d.network
-  const joined = new Set((d.joins.rows as { point?: unknown }[]).map(r => r.point))
-  const added = [...ends].filter(([p, ls]) => ls.length === 2 && ls[0] !== ls[1] && !joined.has(p))
-    .map(([point, ls]) => ({ point, lines: ls[0]! < ls[1]! ? [ls[0], ls[1]] : [ls[1], ls[0]], mode: 'bound' }))
-  return { ...d, network, joins: { ...d.joins, rows: [...(d.joins.rows as unknown[]), ...added] } }
-}
-
 export function exportState(core: Core): Record<string, unknown> {
   const s = core['state']
   return structuredClone(Object.fromEntries(PARTS.map(k => [k, k === 'network' ? net.exportData(s.network) : s[k]])))

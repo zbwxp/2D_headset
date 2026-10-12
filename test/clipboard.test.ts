@@ -185,7 +185,7 @@ describe('paste', () => {
       // shapes are only in the clip's shape layers (architecture §1; step 2)
       ['a coordinate that is text', bad(c => { c.network.layers[0].points[0].position.y = '3' }), /is not a finite number/],
       ['a lock that is not true / false', bad(c => { c.network.lines[0].state.locked = 'yes' }), /is not true \/ false/],
-      ['a negative stroke width', bad(c => { c.network.layers[0].lines[0].stroke.width = -2 }), /positive number/],
+      ['a negative point width', bad(c => { c.network.layers[0].points[0].width = -2 }), /width that is not positive/],
       ['a clip without its source shape layer', bad(c => { c.network.source = 'view:9,9' }), /no shape layer view:9,9, its source/],
       ['a join on a line outside the clip', bad(c => { c.joins.rows[0].lines[0] = 'k1' }), /points outside the clip/],
       ['an arc join without a radius in one view', bad(c => { c.joins.layers[4].radii.pop() }), /positive radius/],

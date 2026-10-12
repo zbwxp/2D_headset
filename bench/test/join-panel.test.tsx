@@ -160,7 +160,8 @@ describe('the join list in the properties panel', () => {
     const t = await setup()
     await t.pick('line', 'l1')
     await act(async () => { bench().edit(e => e.lineStroke('l2', { width: 4, profile: 'uniform' })); bench().refresh() })
-    expect(t.host.querySelector('[data-join-zone-auto="l1↔l2"]')!.textContent).toBe('自动 16')
+    // l2's width sets its points, so both lines are 4 at b (widths at points, bowen 1791820396): 4² / 4 = 4
+    expect(t.host.querySelector('[data-join-zone-auto="l1↔l2"]')!.textContent).toBe('自动 4')
     await act(async () => { (window as unknown as { bench: { ix: { setTool(t: string): void } } }).bench.ix.setTool('join'); bench().refresh() })
     const options = [...t.host.querySelectorAll('select option')].map(o => o.textContent)
     expect(options).toContain('bound')

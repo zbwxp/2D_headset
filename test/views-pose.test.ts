@@ -38,11 +38,18 @@ function oracle(d: Core, pose: { yaw: number; pitch: number }) {
   const file = JSON.parse(save(d))
   const front = (file.document.network.shapes.layers as { key: string; points: unknown; lines: unknown; radius: unknown; zone?: unknown; end?: unknown }[]).find(l => l.key === FRONT)!
   front.points = posed.points
-  front.lines = posed.lines
+  // the posed strokes as stored: the profile on each line, the widths on the points (bowen 1791820396)
+  const ends = new Map((file.document.network.lines as { id: string; a: string; b: string }[]).map(l => [l.id, l] as const))
+  const widthAt = (line: string, point: string) => { const st = posed.lines[line]!.stroke; return ends.get(line)!.b === point && st.widthB !== undefined ? st.widthB : st.width }
+  front.lines = Object.fromEntries(Object.entries(posed.lines).map(([id, l]) => [id, { ha: l.ha, hb: l.hb, stroke: { profile: l.stroke.profile } }]))
+  ;(front as { widths?: unknown }).widths = Object.fromEntries(Object.keys(posed.points).map(p => {
+    const l = [...ends.values()].find(x => x.a === p || x.b === p)
+    return [p, l ? widthAt(l.id, p) : 1]
+  }))
   front.radius = posed.radii
   // a posed zone equal to the automatic length of the posed widths stays automatic (J1)
   front.zone = Object.fromEntries(Object.entries(posed.zones).filter(([k, z]) => {
-    const [, l0, l1] = JSON.parse(k) as [string, string, string], w0 = posed.lines[l0]!.stroke.width, w1 = posed.lines[l1]!.stroke.width
+    const [p, l0, l1] = JSON.parse(k) as [string, string, string], w0 = widthAt(l0, p), w1 = widthAt(l1, p)
     const auto = Math.max(w0, w1) ** 2 / Math.min(w0, w1)
     return Math.abs(z - auto) > 1e-12 * Math.max(1, auto)
   }))

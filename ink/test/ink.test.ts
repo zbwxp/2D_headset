@@ -9,6 +9,12 @@ import { sk } from '../../test/sketch'
 import { band, build, createInkCache, cuspTip, flatten, lineInk, outputDefect, segmentDistance, vertexBand, type Cubic } from '..'
 
 const P = (x: number, y = 0): Vec => ({ x, y })
+// The ink keeps its own input contract — a stroke per line, which may differ from a neighbour's at a joint. The core now
+// stores one width per point (bowen 1791820396), so tests of the ink's unequal-width handling give it per-line strokes
+// directly: `setW` records them, `snap` is the snapshot with them.
+const inkWidths = new WeakMap<Core, Record<string, { width: number; widthB?: number }>>()
+const setW = (d: Core, id: string, width: number, widthB?: number) => { const m = inkWidths.get(d) ?? {}; m[id] = widthB === undefined ? { width } : { width, widthB }; inkWidths.set(d, m) }
+const snap = (d: Core) => { const s = d.snapshot(), m = inkWidths.get(d) ?? {}; return { ...s, lines: s.lines.map(l => (m[l.id] ? { ...l, stroke: { profile: l.stroke.profile, ...m[l.id]! } } : l)) } }
 const line = (a: Vec, b: Vec): Cubic => [a, { x: a.x + (b.x - a.x) / 3, y: a.y + (b.y - a.y) / 3 }, { x: a.x + 2 * (b.x - a.x) / 3, y: a.y + 2 * (b.y - a.y) / 3 }, b]
 const bez = (c: Cubic, t: number): Vec => { const u = 1 - t; return { x: u * u * u * c[0].x + 3 * u * u * t * c[1].x + 3 * u * t * t * c[2].x + t * t * t * c[3].x, y: u * u * u * c[0].y + 3 * u * u * t * c[1].y + 3 * u * t * t * c[2].y + t * t * t * c[3].y } }
 const area = (l: readonly Vec[]) => l.reduce((s, p, i) => { const q = l[(i + 1) % l.length]!; return s + p.x * q.y - q.x * p.y }, 0) / 2
@@ -175,8 +181,8 @@ describe('arc joins — the arc inked at its lines\' width, the lines and the ar
   })
   it('unequal widths: the width eases along the arc — one loop, each end as wide as its line, the band within ε', () => {
     const d = doc()
-    d.edit(e => e.lineStroke('bc', { width: 8, profile: 'uniform' } as never))
-    const g = d.geometry(), ink = build(g, d.snapshot()), arc = ink.pieces.find(p => p.source.kind === 'arc')!
+    setW(d, 'bc', 8)
+    const g = d.geometry(), ink = build(g, snap(d)), arc = ink.pieces.find(p => p.source.kind === 'arc')!
     const dg = ink.diagnostics.find(x => x.source.kind === 'arc')!
     expect(dg.status).toBe('unproven')
     expect(dg.evidence!.checks).toMatchObject({ simple: true, band: true })
@@ -190,9 +196,9 @@ describe('arc joins — the arc inked at its lines\' width, the lines and the ar
     expect(Math.abs(across(c[0], { x: c[1].x - c[0].x, y: c[1].y - c[0].y }) - 4)).toBeLessThan(0.2)
     expect(Math.abs(across(c[3], { x: c[3].x - c[2].x, y: c[3].y - c[2].y }) - 8)).toBeLessThan(0.2)
     // an everyday edit: a new width at one end → a new arc piece, the other line's piece reused
-    const cache = createInkCache(), before = cache.build(d.geometry(), d.snapshot())
-    d.edit(e => e.lineStroke('bc', { width: 6, profile: 'uniform' } as never))
-    const after = cache.build(d.geometry(), d.snapshot()), of = (i: typeof after, k: string) => i.pieces.find(p => p.source.kind === k && (k === 'arc' || p.source.id === 'ab'))
+    const cache = createInkCache(), before = cache.build(d.geometry(), snap(d))
+    setW(d, 'bc', 6)
+    const after = cache.build(d.geometry(), snap(d)), of = (i: typeof after, k: string) => i.pieces.find(p => p.source.kind === k && (k === 'arc' || p.source.id === 'ab'))
     expect(of(after, 'arc')).not.toBe(of(before, 'arc'))
     expect(of(after, 'line')).toBe(of(before, 'line'))
   })
@@ -224,9 +230,10 @@ describe('smooth joins — one outline; unequal widths ease to the average at th
     d.edit(e => {
       e.layer('L')
       widths.forEach((_, i) => sk(e).point('p' + i, 'L', P(60 * i))); sk(e).point('p' + widths.length, 'L', P(60 * widths.length))
-      widths.forEach((w, i) => { sk(e).line('l' + i, 'p' + i, 'p' + (i + 1)); e.lineStroke('l' + i, { width: w, profile: 'uniform' } as never) })
+      widths.forEach((_, i) => sk(e).line('l' + i, 'p' + i, 'p' + (i + 1)))
       for (let i = 1; i < widths.length; i++) e.join('p' + i, 'l' + (i - 1), 'l' + i, { mode: 'smooth' })
     })
+    widths.forEach((w, i) => setW(d, 'l' + i, w))
     return d
   }
   const of = (ink: ReturnType<typeof build>, id: string) => ink.pieces.find(p => p.source.id === id)!
@@ -236,7 +243,7 @@ describe('smooth joins — one outline; unequal widths ease to the average at th
     expect(ink.groups[0]!.loops.length).toBe(1)
   })
   it('4 and 8: both 6 wide at the joint, one S-curve centred there — 4 + 4·σ(¼) = 4.625 at s = λ/2 on the narrow side (bowen 1791817874), back to 4 and 8 beyond λ (λ = min(24, 20, 20) = 20)', () => {
-    const d = chain([4, 8]), ink = build(d.geometry(), d.snapshot())
+    const d = chain([4, 8]), ink = build(d.geometry(), snap(d))
     expect(ink.diagnostics.every(x => x.status === 'unproven')).toBe(true)
     expect(section(of(ink, 'l0').loops, 60)).toBeCloseTo(6, 1)
     expect(section(of(ink, 'l1').loops, 60)).toBeCloseTo(6, 1)
@@ -249,20 +256,20 @@ describe('smooth joins — one outline; unequal widths ease to the average at th
     expect(ink.groups[0]!.loops.length).toBe(1)
   })
   it('a chain 4 – 8 – 4: the middle line eases at both ends and is back to 8 in its middle', () => {
-    const d = chain([4, 8, 4]), ink = build(d.geometry(), d.snapshot()), mid = of(ink, 'l1').loops
+    const d = chain([4, 8, 4]), ink = build(d.geometry(), snap(d)), mid = of(ink, 'l1').loops
     expect(section(mid, 60)).toBeCloseTo(6, 1)
     expect(section(mid, 90)).toBeCloseTo(8, 1)
     expect(section(mid, 120)).toBeCloseTo(6, 1)
     expect(ink.groups.length).toBe(1)
   })
   it('a neighbour\'s new width or visibility rebuilds this line\'s ink (the easing rule is in its cache key)', () => {
-    const d = chain([4, 8]), cache = createInkCache(), first = cache.build(d.geometry(), d.snapshot())
-    d.edit(e => e.lineStroke('l1', { width: 6, profile: 'uniform' } as never))
-    const wider = cache.build(d.geometry(), d.snapshot())
+    const d = chain([4, 8]), cache = createInkCache(), first = cache.build(d.geometry(), snap(d))
+    setW(d, 'l1', 6)
+    const wider = cache.build(d.geometry(), snap(d))
     expect(of(wider, 'l0')).not.toBe(of(first, 'l0'))
     expect(section(of(wider, 'l0').loops, 60)).toBeCloseTo(5, 1)
     d.edit(e => e.lineState('l1', { visible: false }))
-    const hidden = cache.build(d.geometry(), d.snapshot())
+    const hidden = cache.build(d.geometry(), snap(d))
     expect(section(of(hidden, 'l0').loops, 59)).toBeCloseTo(4, 1)
   })
   it('a smooth join and an arc join on one line: one group', () => {
@@ -290,10 +297,10 @@ describe('two end widths (bowen 1791818995): a line tapers linearly from its a-e
     d.edit(e => {
       e.layer('L'); sk(e).point('a', 'L', P(0)); sk(e).point('p', 'L', P(30)); sk(e).point('c', 'L', P(60))
       sk(e).line('l0', 'a', 'p'); sk(e).line('l1', 'p', 'c')
-      e.lineStroke('l0', { width: 4, widthB: 1, profile: 'uniform' } as never); e.lineStroke('l1', { width: 3, profile: 'uniform' } as never)
       e.join('p', 'l0', 'l1', { mode: 'bound' })
     })
-    const l0 = build(d.geometry(), d.snapshot()).pieces.find(p => p.source.id === 'l0')!
+    setW(d, 'l0', 4, 1); setW(d, 'l1', 3)
+    const l0 = build(d.geometry(), snap(d)).pieces.find(p => p.source.id === 'l0')!
     // no zones given: λ = min(3 × 3, 30 / 3) = 9; beyond it the taper itself, at the joint the average 2
     expect(across(l0.loops, 20)).toBeCloseTo(4 - 3 * 20 / 30, 1)
     expect(across(l0.loops, 29.9)).toBeCloseTo(2, 1)
@@ -335,10 +342,10 @@ describe('sharp (cusp) joins — the lines\' ink plus v103\'s tip (Slack 1791804
       e.layer('L')
       sk(e).point('a', 'L', P(-50)); sk(e).point('p', 'L', P(0)); sk(e).point('c', 'L', P(-50 * Math.cos(t), 50 * Math.sin(t)))
       sk(e).line('l0', 'a', 'p'); sk(e).line('l1', 'p', 'c')
-      e.lineStroke('l0', { width: w0, profile: 'uniform' } as never); e.lineStroke('l1', { width: w1, profile: 'uniform' } as never)
       e.join('p', 'l0', 'l1', { mode: 'cusp' })
     })
-    return build(d.geometry(), d.snapshot())
+    setW(d, 'l0', w0); setW(d, 'l1', w1)
+    return build(d.geometry(), snap(d))
   }
   const far = (loops: readonly (readonly Vec[])[]) => Math.max(...loops.flat().map(v => Math.hypot(v.x, v.y)))
   it('equal widths at 60°: one outline, the tip as long as v103\'s miter, h / sin(θ/2) = 4', () => {
@@ -406,21 +413,20 @@ describe('sharp (cusp) joins — the lines\' ink plus v103\'s tip (Slack 1791804
       e.layer('L')
       sk(e).point('a', 'L', P(-50)); sk(e).point('p', 'L', P(0)); sk(e).point('c', 'L', P(-50 * Math.cos(t), 50 * Math.sin(t)))
       sk(e).line('l0', 'a', 'p'); sk(e).line('l1', 'p', 'c')
-      e.lineStroke('l0', { width: 4, profile: 'uniform' } as never); e.lineStroke('l1', { width: 2, profile: 'uniform' } as never)
       e.join('p', 'l0', 'l1', { mode: 'bound' })
     })
+    setW(d, 'l0', 4); setW(d, 'l1', 2)
     // l0's half-width across x = −s: the loops' edges crossing that vertical line
     const half = (loops: readonly (readonly Vec[])[], x: number) => { const ys = loops.flatMap(l => l.flatMap((a, i) => { const b = l[(i + 1) % l.length]!; return (a.x - x) * (b.x - x) <= 0 && a.x !== b.x ? [a.y + (b.y - a.y) * (x - a.x) / (b.x - a.x)] : [] })); return (Math.max(...ys) - Math.min(...ys)) / 2 }
-    const s = d.snapshot(), zones = d.in('view:0,0').zones()
-    expect(zones[0]!.limited).toBeCloseTo(8, 6) // auto: 4² / 2
-    const ink = build(d.geometry(), { ...s, zones }), l0 = ink.pieces.find(p => p.source.id === 'l0')!
+    // the zone the core would give these widths (auto 4² / 2 = 8, within a third of each 50-long line)
+    const zones = [{ point: 'p', lines: ['l0', 'l1'] as [string, string], limited: 8 }]
+    const ink = build(d.geometry(), { ...snap(d), zones }), l0 = ink.pieces.find(p => p.source.id === 'l0')!
     expect(ink.groups.length).toBe(1)
     expect(ink.groups[0]!.loops.length).toBe(1)
     expect(half(l0.loops, -0.02)).toBeCloseTo(1.5, 1) // the average of 2 and 1 at the joint
     expect(half(l0.loops, -4.5)).toBeCloseTo(2, 2) // full width beyond λ = 8 / 2
     // a manual zone of 2: λ = 1
-    d.edit(e => e.zone('p', 'l0', 'l1', 2))
-    const l0b = build(d.geometry(), { ...d.snapshot(), zones: d.in('view:0,0').zones() }).pieces.find(p => p.source.id === 'l0')!
+    const l0b = build(d.geometry(), { ...snap(d), zones: [{ ...zones[0]!, limited: 2 }] }).pieces.find(p => p.source.id === 'l0')!
     expect(half(l0b.loops, -1.2)).toBeCloseTo(2, 2)
   })
   it('J3-min: a smooth join is not cut (its round end stays, paused J2)', () => {

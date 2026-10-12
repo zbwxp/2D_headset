@@ -15,7 +15,9 @@ export type Id = string
 export type LayerKind = 'view' | 'expression' | 'record'
 export const KINDS: readonly LayerKind[] = Object.freeze(['view', 'expression', 'record'])
 export interface Stroke { readonly width: number; readonly widthB?: number; readonly profile: string }
-export interface LineShape { readonly ha: Vec; readonly hb: Vec; readonly stroke: Stroke }
+/** A line's stored stroke: its profile only — widths belong to its points (bowen 1791820396). */
+export interface LineStroke { readonly profile: string }
+export interface LineShape { readonly ha: Vec; readonly hb: Vec; readonly stroke: LineStroke }
 /**
  * `copyNew`: a non-view layer whose owner has declared that new geometry (a new line's new
  * points and handles, a new arc's radius) takes the drawn values there, as in a view; and
@@ -40,7 +42,9 @@ interface LayerData {
   kind: LayerKind
   copyNew: boolean
   points: Record<Id, Vec>
-  lines: Record<Id, { ha: Vec; hb: Vec; stroke: Mutable<Stroke> }>
+  /** Every point's stroke width in this layer (bowen 1791820396: widths belong to points; a new point gets 1). */
+  widths: Record<Id, number>
+  lines: Record<Id, { ha: Vec; hb: Vec; stroke: Mutable<LineStroke> }>
   /** Values owned by other modules, stored per layer (step 4, dot 1791654260): shapes only stores them. */
   radius: Record<string, number>
   zone: Record<string, number>
@@ -57,11 +61,13 @@ function vecIn(v: Vec): Vec {
   if (!v || !Number.isFinite(v.x) || !Number.isFinite(v.y)) throw new Error('Coordinates must be finite numbers')
   return { x: v.x, y: v.y }
 }
-function strokeIn(s: Stroke): Mutable<Stroke> {
-  if (!s || !(s.width > 0) || !Number.isFinite(s.width)) throw new Error('Stroke width must be a positive number')
-  if (s.widthB !== undefined && !(s.widthB > 0 && Number.isFinite(s.widthB))) throw new Error('Stroke end width must be a positive number')
-  // one form per content: the b-end width only when it differs (two end widths, bowen 1791818995)
-  return s.widthB !== undefined && s.widthB !== s.width ? { width: s.width, widthB: s.widthB, profile: String(s.profile) } : { width: s.width, profile: String(s.profile) }
+function strokeIn(s: LineStroke): Mutable<LineStroke> {
+  if (!s) throw new Error('A stroke is needed')
+  return { profile: String(s.profile) }
+}
+function widthIn(w: number): number {
+  if (!(w > 0) || !Number.isFinite(w)) throw new Error('Stroke width must be a positive number')
+  return w
 }
 const vecOut = (v: Vec): Vec => Object.freeze({ x: v.x, y: v.y })
 
@@ -78,7 +84,7 @@ function layer(s: ShapesState, key: string): LayerData {
 /** A drawing's shapes with one empty first layer. */
 export function create(first: LayerInfo): ShapesState {
   if (typeof first.key !== 'string' || !first.key) throw new Error('A shape layer needs a key')
-  return { layers: [{ key: first.key, kind: kindIn(first.kind), copyNew: false, points: {}, lines: {}, radius: {}, zone: {}, end: {} }] } as Store as unknown as ShapesState
+  return { layers: [{ key: first.key, kind: kindIn(first.kind), copyNew: false, points: {}, widths: {}, lines: {}, radius: {}, zone: {}, end: {} }] } as Store as unknown as ShapesState
 }
 
 /** A new layer holding a copy of `from` (every point and line has a shape in every layer). */
@@ -86,7 +92,7 @@ export function addLayer(s: ShapesState, key: string, kind: LayerKind, from: str
   if (typeof key !== 'string' || !key) throw new Error('A shape layer needs a key')
   if (S(s).layers.some(l => l.key === key)) throw new Error(`Shape layer ${key} already exists`)
   const src = layer(s, from)
-  S(s).layers.push({ key, kind: kindIn(kind), copyNew: kind !== 'view' && copyNew === true, points: structuredClone(src.points), lines: structuredClone(src.lines), radius: structuredClone(src.radius), zone: structuredClone(src.zone), end: structuredClone(src.end) })
+  S(s).layers.push({ key, kind: kindIn(kind), copyNew: kind !== 'view' && copyNew === true, points: structuredClone(src.points), widths: structuredClone(src.widths), lines: structuredClone(src.lines), radius: structuredClone(src.radius), zone: structuredClone(src.zone), end: structuredClone(src.end) })
 }
 
 export const layers = (s: ShapesState): readonly LayerInfo[] => Object.freeze(S(s).layers.map(l => Object.freeze({ key: l.key, kind: l.kind, ...(l.copyNew ? { copyNew: true } : {}) })))
@@ -107,6 +113,17 @@ export function line(s: ShapesState, key: string, id: Id): LineShape {
   if (!l) throw new Error(`No line ${id} in shape layer ${key}`)
   return Object.freeze({ ha: vecOut(l.ha), hb: vecOut(l.hb), stroke: Object.freeze({ ...l.stroke }) })
 }
+/** A point's stroke width in one layer. */
+export function width(s: ShapesState, key: string, point: Id): number {
+  const w = own(layer(s, key).widths, point)
+  if (w === undefined) throw new Error(`No point ${point} in shape layer ${key}`)
+  return w
+}
+export function setWidth(s: ShapesState, key: string, point: Id, w: number) {
+  const L = layer(s, key)
+  if (own(L.widths, point) === undefined) throw new Error(`No point ${point} in shape layer ${key}`)
+  put(L.widths, point, widthIn(w))
+}
 /** Every point position of one layer (one pass, for bulk readers). */
 export function positions(s: ShapesState, key: string): ReadonlyMap<Id, Vec> {
   const pts = layer(s, key).points
@@ -124,7 +141,7 @@ export function setHandle(s: ShapesState, key: string, id: Id, end: 'a' | 'b', v
   if (end === 'a') l.ha = vecIn(v)
   else l.hb = vecIn(v)
 }
-export function setStroke(s: ShapesState, key: string, id: Id, stroke: Stroke) {
+export function setStroke(s: ShapesState, key: string, id: Id, stroke: LineStroke) {
   const l = own(layer(s, key).lines, id)
   if (!l) throw new Error(`No line ${id} in shape layer ${key}`)
   l.stroke = strokeIn(stroke)
@@ -175,20 +192,24 @@ export const slotKeys = (s: ShapesState, key: string, slot: Slot): string[] => O
  * A new point or line gets its shape in one layer. Every layer must end up holding
  * every point and line; network checks that before a structural change completes.
  */
-export function putPoint(s: ShapesState, key: string, point: Id, v: Vec) { put(layer(s, key).points, point, vecIn(v)) }
-export function putLine(s: ShapesState, key: string, id: Id, shape: { ha: Vec; hb: Vec; stroke: Stroke }) {
+export function putPoint(s: ShapesState, key: string, point: Id, v: Vec, w = 1) {
+  const L = layer(s, key)
+  put(L.points, point, vecIn(v))
+  put(L.widths, point, widthIn(w))
+}
+export function putLine(s: ShapesState, key: string, id: Id, shape: { ha: Vec; hb: Vec; stroke: LineStroke }) {
   put(layer(s, key).lines, id, { ha: vecIn(shape.ha), hb: vecIn(shape.hb), stroke: strokeIn(shape.stroke) })
 }
 /** A point or line removed from the structure leaves every layer. */
-export function removePoint(s: ShapesState, point: Id) { for (const L of S(s).layers) drop(L.points, point) }
+export function removePoint(s: ShapesState, point: Id) { for (const L of S(s).layers) { drop(L.points, point); drop(L.widths, point) } }
 export function removeLine(s: ShapesState, id: Id) { for (const L of S(s).layers) drop(L.lines, id) }
 
 /** Every layer holds exactly these points and lines (an internal consistency check). */
 export function covers(s: ShapesState, points: readonly Id[], lines: readonly Id[]): boolean {
   for (const L of S(s).layers) {
     const p = Object.keys(L.points), l = Object.keys(L.lines)
-    if (p.length !== points.length || l.length !== lines.length) return false
-    if (points.some(id => !Object.hasOwn(L.points, id)) || lines.some(id => !Object.hasOwn(L.lines, id))) return false
+    if (p.length !== points.length || l.length !== lines.length || Object.keys(L.widths).length !== points.length) return false
+    if (points.some(id => !Object.hasOwn(L.points, id) || !Object.hasOwn(L.widths, id)) || lines.some(id => !Object.hasOwn(L.lines, id))) return false
   }
   return true
 }
@@ -202,7 +223,7 @@ const vec = (v: unknown, what: string): Vec => { const o = obj(v, what); return 
 
 /**
  * Shape layers from saved data, checked: known kinds, unique keys, and every layer holds
- * a finite shape for exactly the given points and lines (a positive stroke width).
+ * a finite shape for exactly the given points (a position and a positive width) and lines.
  */
 export function restore(v: unknown, ids: { points: readonly Id[]; lines: readonly Id[] }): ShapesState {
   const o = obj(v, 'shapes')
@@ -214,19 +235,23 @@ export function restore(v: unknown, ids: { points: readonly Id[]; lines: readonl
     if (keys.has(L.key)) fail(`shape layer ${L.key} appears twice`)
     keys.add(L.key)
     if (!KINDS.includes(L.kind as LayerKind)) fail(`shape layer ${L.key} has an unknown kind`)
-    const P = obj(L.points, `shape layer ${L.key} points`), Ls = obj(L.lines, `shape layer ${L.key} lines`)
-    const points: Record<Id, Vec> = {}, lines: LayerData['lines'] = {}
-    for (const id of ids.points) { if (!Object.hasOwn(P, id)) fail(`shape layer ${L.key} has no position for point ${id}`); put(points, id, vec(P[id], `point ${id} in ${L.key}`)) }
+    const P = obj(L.points, `shape layer ${L.key} points`), Ls = obj(L.lines, `shape layer ${L.key} lines`), Wd = obj(L.widths, `shape layer ${L.key} widths`)
+    const points: Record<Id, Vec> = {}, widths: Record<Id, number> = {}, lines: LayerData['lines'] = {}
+    for (const id of ids.points) {
+      if (!Object.hasOwn(P, id)) fail(`shape layer ${L.key} has no position for point ${id}`)
+      put(points, id, vec(P[id], `point ${id} in ${L.key}`))
+      if (!Object.hasOwn(Wd, id)) fail(`shape layer ${L.key} has no width for point ${id}`)
+      const w = num(Wd[id], `width of point ${id} in ${L.key}`)
+      if (!(w > 0)) fail(`point ${id} has a width that is not positive in ${L.key}`)
+      put(widths, id, w)
+    }
+    if (Object.keys(Wd).length !== ids.points.length) fail(`shape layer ${L.key} has widths for points that do not exist`)
     for (const id of ids.lines) {
       if (!Object.hasOwn(Ls, id)) fail(`shape layer ${L.key} has no shape for line ${id}`)
       const s = obj(Ls[id], `line ${id} in ${L.key}`), k = obj(s.stroke, `line ${id} stroke in ${L.key}`)
-      const width = num(k.width, `line ${id} stroke width in ${L.key}`)
-      if (!(width > 0)) fail(`line ${id} has a stroke width that is not positive in ${L.key}`)
       if (typeof k.profile !== 'string') fail(`line ${id} stroke profile in ${L.key} is not text`)
-      const widthB = k.widthB === undefined ? undefined : num(k.widthB, `line ${id} stroke end width in ${L.key}`)
-      if (widthB !== undefined && !(widthB > 0)) fail(`line ${id} has a stroke end width that is not positive in ${L.key}`)
-      if (widthB === width) fail(`line ${id} stores an end width equal to its width in ${L.key} (one form per content)`)
-      put(lines, id, { ha: vec(s.ha, `line ${id} ha in ${L.key}`), hb: vec(s.hb, `line ${id} hb in ${L.key}`), stroke: widthB === undefined ? { width, profile: k.profile } : { width, widthB, profile: k.profile } })
+      if (Object.keys(k).length !== 1) fail(`line ${id} stroke in ${L.key} holds more than its profile (widths belong to points)`)
+      put(lines, id, { ha: vec(s.ha, `line ${id} ha in ${L.key}`), hb: vec(s.hb, `line ${id} hb in ${L.key}`), stroke: { profile: k.profile } })
     }
     if (Object.keys(P).length !== ids.points.length) fail(`shape layer ${L.key} has positions for points that do not exist`)
     if (Object.keys(Ls).length !== ids.lines.length) fail(`shape layer ${L.key} has shapes for lines that do not exist`)
@@ -247,7 +272,7 @@ export function restore(v: unknown, ids: { points: readonly Id[]; lines: readonl
     if (L.copyNew !== undefined && typeof L.copyNew !== 'boolean') fail(`shape layer ${L.key} copyNew is not true / false`)
     const copyNew = L.copyNew === true
     if (copyNew && L.kind === 'view') fail(`shape layer ${L.key} is a view marked copyNew`)
-    return { key: L.key, kind: L.kind as LayerKind, copyNew, points, lines, radius, zone, end }
+    return { key: L.key, kind: L.kind as LayerKind, copyNew, points, widths, lines, radius, zone, end }
   })
   return { layers } as Store as unknown as ShapesState
 }

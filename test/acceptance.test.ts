@@ -152,7 +152,7 @@ describe('dot draft: links, smooth springs, arcs, groups', () => {
     expect(d.geometry()).toEqual(g)
   })
 
-  it('binding group A (first) to group C keeps A’s slot, with B unchanged; each line keeps its own width (bowen 甲, reply to 1791458383)', () => {
+  it('binding group A (first) to group C keeps A’s slot, with B unchanged; the kept point keeps its width (bowen 甲, reply to 1791458383; widths at points since bowen 1791820396)', () => {
     const d = graph([['x', 'a', 'b'], ['y', 'c', 'd'], ['z', 'e', 'f']], { a: P(0), b: P(1), c: P(3), d: P(4), e: P(6), f: P(7) })
     const [a, b, c] = d.snapshot().groups
     d.edit(e => { e.stroke(a!.id, { width: 7, profile: 'first' }); e.stroke(c!.id, { width: 2, profile: 'last' }); e.bind('a', 'e') })
@@ -160,8 +160,9 @@ describe('dot draft: links, smooth springs, arcs, groups', () => {
     expect(groups).toHaveLength(2)
     expect(groups[0]!.id).toBe(a!.id)
     expect(groups[1]!.id).toBe(b!.id)
-    const width = (id: string) => d.snapshot().lines.find(l => l.id === id)!.stroke.width
-    expect([width('x'), width('z')]).toEqual([7, 2])
+    const stroke = (id: string) => d.snapshot().lines.find(l => l.id === id)!.stroke
+    // x keeps 7; z now starts at the kept point a (7) and still ends at f (2)
+    expect([stroke('x'), stroke('z')]).toEqual([{ width: 7, profile: 'first' }, { width: 7, widthB: 2, profile: 'last' }])
   })
 })
 

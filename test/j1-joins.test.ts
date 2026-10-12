@@ -167,9 +167,10 @@ describe('a join\'s transition zone: per view, kept through mode changes and str
     d.editIn(SIDE, e => e.zone('b', 'l1', 'l2', 12))
     // front: automatic, widths 1 and 1 → 1² / 1 = 1; side: 12; on the yaw axis the blend is (1 − u)·1 + u·12
     for (const yaw of [20, 80]) expect(d.atPose({ yaw, pitch: 0 }).snapshot().joins.find(j => j.point === 'b')?.zone).toBeCloseTo(1 + 11 * yaw / 90, 12)
-    // a new width changes the automatic length (4² / 1 = 16) in the blend; at the front, which is automatic, it reads automatic
+    // a new width changes the automatic length in the blend: l2's width sets its points b and c, so both lines are 4 at
+    // b (widths at points, bowen 1791820396) → 4² / 4 = 4; at the front, which is automatic, it reads automatic
     d.edit(e => e.lineStroke('l2', { width: 4, profile: 'uniform' }))
-    expect(d.model().views.find(v => v.yaw === 0 && v.pitch === 0)!.zones![JSON.stringify(['b', 'l1', 'l2'])]).toBe(16)
+    expect(d.model().views.find(v => v.yaw === 0 && v.pitch === 0)!.zones![JSON.stringify(['b', 'l1', 'l2'])]).toBe(4)
     expect(d.atPose({ yaw: 0, pitch: 0 }).snapshot().joins.find(j => j.point === 'b')?.zone).toBeUndefined()
   })
 })
@@ -179,9 +180,10 @@ describe('J1b: the zones read (desired and after the short-line limit)', () => {
     const d = doc()
     d.edit(e => { e.line('l1', at('a', 0), at('b', 30)); e.line('l2', 'b', at('c', 36)) })
     d.edit(e => e.lineStroke('l2', { width: 4, profile: 'uniform' }))
-    // desired 4² / 1 = 16; the shorter line is 6 long → each side at most 2 → limited 4
+    // both lines are 4 at b (l2's width sets its points) → desired 4² / 4 = 4; the shorter line is 6 long → each side
+    // at most 2 → limited 4
     const z = d.in('view:0,0').zones()
-    expect(z).toMatchObject([{ point: 'b', lines: ['l1', 'l2'], desired: 16, manual: false }])
+    expect(z).toMatchObject([{ point: 'b', lines: ['l1', 'l2'], desired: 4, manual: false }])
     expect(z[0]!.limited).toBeCloseTo(4, 9) // the drawn length is a numeric arc length
     d.editIn('view:90,0', e => e.zone('b', 'l1', 'l2', 3))
     expect(d.in('view:90,0').zones()[0]).toMatchObject({ desired: 3, manual: true })
