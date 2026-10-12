@@ -1,5 +1,7 @@
 # One slider for the whole program — rules before code
 
+**Accepted** at `73f9e95` (dot 1791772836: root 881, bench 267, both tsc, 39 added checks, 180 source files unchanged; a real browser not independently checked). bowen 1791769016's ask is complete: playback, the background picture, the stroke width and the join radius all use the one slider.
+
 **Module blur** (dot 1791772430, 1791772443): the module ends its own thumb run when the window loses focus (a window `blur` listener for the run, removed at its end and on unmount); the app's own cancel after it is a no-op. Test in `bench/test/slider.test.tsx`.
 
 Three code commits → `docs/slider-problems.md` (the events × states table this package lacked).
