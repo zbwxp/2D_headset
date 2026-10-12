@@ -188,6 +188,7 @@ export function App() {
   const [moveRef, setMoveRef] = useState(false)
   // ink outlines (docs/ink-p1-checklist.md): an experimental switch, off by default, not saved, never in undo
   const [inkOn, setInkOn] = useState(false)
+  const [canvasPicks, setCanvasPicks] = useState(0)
   const inkCache = useRef(createInkCache())
   const [activeRef, setActiveRef] = useState<null | RefBind>(null)
   const keyHooks = useRef<{ nudge?: (e: KeyboardEvent) => boolean; afterArrow?: () => void; poseArrow?: (e: KeyboardEvent) => void }>({})
@@ -439,6 +440,8 @@ export function App() {
     // A or V picked a line (a line already selected included): the labels follow the tool. A point, a handle or
     // nothing picked changes nothing (dot 1791732824); what was picked is the interaction's, not decided here
     if (kind === 'tool' && (ix.tool === 'A' || ix.tool === 'V') && ix.lastPress() === 'line') setLabelKind(ix.tool === 'A' ? 'line' : 'curve')
+    // every canvas pick of a line or a point counts, even of the object already picked: the properties panel shows the last pick (dot)
+    if (kind === 'tool' && (ix.tool === 'A' || ix.tool === 'V') && (ix.lastPress() === 'line' || ix.lastPress() === 'point')) setCanvasPicks(n => n + 1)
     if (!kind) return
     let moved = false
     const zoomBy = (k: number) => setBox({ x: at.x - (at.x - from.x) * k, y: at.y - (at.y - from.y) * k, w: from.w * k, h: from.h * k })
@@ -1201,7 +1204,7 @@ export function App() {
         </div>
       </div>
       <LayersPanel key={drawing} s={s} g={g} selected={selLayers} active={drawLayer} select={selectLayers} run={run} newLayerId={() => nid('layer-')} onPick={setLabelKind}
-        zones={zones} slider={sliderHooks} toolRadius={opts.radius} canvasSubject={canvasSubject} />
+        zones={zones} slider={sliderHooks} toolRadius={opts.radius} canvasSubject={canvasSubject} canvasPicks={canvasPicks} joinScope={`${drawing}|${shown}`} />
     </div>
   )
 }

@@ -3,7 +3,7 @@
 // continuous curves; rows drag to reorder; buttons along the bottom. Visual UI only: every
 // change is a one-shot core operation through `run` (doc 22 §3.5). Part of the visual package
 // (docs/visual-plan.md); no visual principles yet.
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Snapshot, Geometry, Zones, Editor, Vec } from '../src'
 import { PropertiesPanel, type Subject } from './PropertiesPanel'
 import type { SliderHooks } from './JoinList'
@@ -46,9 +46,13 @@ interface Props {
   toolRadius?: number
   /** The canvas's single selected line or point: when it changes, the properties show it (the last of a canvas pick and a list click wins). */
   canvasSubject?: Subject | null
+  /** The drawing and the view shown: the join controls' identity, so a draft never crosses views. */
+  joinScope?: string
+  /** A count of canvas picks: a new pick of the same object shows it again after a list click (dot). */
+  canvasPicks?: number
 }
 
-export function LayersPanel({ s, g, selected, active, select, run, newLayerId, onPick, zones, slider, toolRadius, canvasSubject }: Props) {
+export function LayersPanel({ s, g, selected, active, select, run, newLayerId, onPick, zones, slider, toolRadius, canvasSubject, joinScope, canvasPicks = 0 }: Props) {
   const [open, setOpen] = useState<Set<Id>>(new Set())
   const [anchor, setAnchor] = useState<Id | null>(null)
   const [rowAnchor, setRowAnchor] = useState<Id | null>(null)
@@ -59,7 +63,13 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId, o
   const canvasKey = canvasSubject ? `${canvasSubject.kind}:${canvasSubject.id}` : ''
   const covers = (x: Subject, y: Subject) => (x.kind === y.kind && x.id === y.id)
     || (x.kind === 'group' && y.kind === 'line' && !!s.groups.find(gr => gr.id === x.id)?.lines.includes(y.id))
-  useEffect(() => { if (canvasSubject && !(subject && covers(subject, canvasSubject))) setSubject(canvasSubject) }, [canvasKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  const lastPicks = useRef(canvasPicks)
+  useEffect(() => {
+    // a new canvas pick shows its object whatever the panel showed; a selection the list click itself made does not take the panel back
+    const picked = canvasPicks !== lastPicks.current
+    lastPicks.current = canvasPicks
+    if (canvasSubject && (picked || !(subject && covers(subject, canvasSubject)))) setSubject(canvasSubject)
+  }, [canvasKey, canvasPicks]) // eslint-disable-line react-hooks/exhaustive-deps
   const selLines = new Set(s.selection.flatMap(u => (u.kind === 'line' ? [u.id] : [])))
   /**
    * A click on a continuous curve or a line row picks it as V / A would (bowen 1791558186): plain =
@@ -212,7 +222,7 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId, o
           </div>
         })}
       </div>
-      <PropertiesPanel s={s} subject={subject ?? (active ? { kind: 'layer', id: active } : null)} zones={zones} run={run} slider={slider} toolRadius={toolRadius} />
+      <PropertiesPanel s={s} subject={subject ?? (active ? { kind: 'layer', id: active } : null)} zones={zones} run={run} slider={slider} toolRadius={toolRadius} scope={joinScope} />
     </div>
   )
 }

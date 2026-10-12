@@ -14,8 +14,10 @@ export type SliderHooks = Pick<SliderProps, 'onStart' | 'onEnd' | 'onField'>
 const idle: SliderHooks = { onStart: () => true, onEnd: () => {}, onField: () => {} }
 const fmt = (v: number) => String(Number(v.toFixed(3)))
 
-export function JoinList({ s, zones, point, line, run, slider = idle, toolRadius = 10 }: {
+export function JoinList({ s, zones, point, line, run, slider = idle, toolRadius = 10, scope = '' }: {
   s: Snapshot; zones: Zones; point: Id
+  /** The drawing and view the values belong to: part of each control's identity, so a typing draft never crosses to another view (dot 1791813754). */
+  scope?: string
   /** The line whose end this is, when the panel shows a line: its rows are marked, the topmost governs its end. */
   line?: Id
   run?: (fn: (e: Editor) => void) => boolean
@@ -42,7 +44,7 @@ export function JoinList({ s, zones, point, line, run, slider = idle, toolRadius
   return (
     <div data-join-list={point} style={{ margin: '2px 0 4px 8px' }}>
       {rows.map((r, i) => {
-        const z = zoneOf(r.lines), key = `${point}|${r.lines.join('|')}`
+        const z = zoneOf(r.lines), key = `${point}|${r.lines.join('|')}`, ident = `${scope}|${key}`
         return (
           <div key={key} data-join-row={r.lines.join('↔')} draggable onDragStart={() => setDragged(i)} onDragOver={e => e.preventDefault()} onDrop={() => drop(i)}
             style={{ background: i === governing ? C.mark : C.row, border: `1px solid ${C.line}`, borderRadius: 3, padding: '3px 6px', marginBottom: 2, cursor: 'grab', opacity: line !== undefined && !r.lines.includes(line) ? 0.6 : 1 }}>
@@ -57,14 +59,14 @@ export function JoinList({ s, zones, point, line, run, slider = idle, toolRadius
                 {MODES.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
               </select>
             </div>
-            {r.mode === 'arc' && r.radius !== undefined && <Slider label="半径" value={r.radius} identity={`${key}|radius`} accept={v => v > 0} track={null} steps={{ step: 1, long: 10, short: 0.1 }}
+            {r.mode === 'arc' && r.radius !== undefined && <Slider label="半径" value={r.radius} identity={`${ident}|radius`} accept={v => v > 0} track={null} steps={{ step: 1, long: 10, short: 0.1 }}
               fieldAttrs={{ 'data-join-radius': r.lines.join('↔') }} {...slider} onPreview={() => {}} onCommit={v => run?.(ed => ed.join(point, r.lines[0], r.lines[1], { mode: 'arc', radius: v }))} onCancel={() => {}} />}
             {z && <div style={{ display: 'flex', gap: 6, alignItems: 'center', color: C.dim }}>
               <span>过渡区</span>
               <label><input type="checkbox" data-join-zone-manual={r.lines.join('↔')} checked={z.manual}
                 onChange={e => run?.(ed => ed.zone(point, r.lines[0], r.lines[1], e.target.checked ? Number(fmt(z.desired)) : null))} /> 手动</label>
               {z.manual
-                ? <Slider value={z.desired} identity={`${key}|zone`} accept={v => v > 0} track={null} steps={{ step: 1, long: 10, short: 0.1 }}
+                ? <Slider value={z.desired} identity={`${ident}|zone`} accept={v => v > 0} track={null} steps={{ step: 1, long: 10, short: 0.1 }}
                     fieldAttrs={{ 'data-join-zone': r.lines.join('↔') }} {...slider} onPreview={() => {}} onCommit={v => run?.(ed => ed.zone(point, r.lines[0], r.lines[1], v))} onCancel={() => {}} />
                 : <span data-join-zone-auto={r.lines.join('↔')}>自动 {fmt(z.desired)}</span>}
               <span data-join-zone-limited={r.lines.join('↔')}>限长后 {fmt(z.limited)}</span>

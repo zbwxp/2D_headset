@@ -35,19 +35,25 @@ async function setup() {
   const input = host.querySelector('[data-testid="open"]') as HTMLInputElement
   Object.defineProperty(input, 'files', { value: [new File([save(d)], 'd.json')], configurable: true })
   await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); await wait(50) })
+  const svg = host.querySelector('[data-testid="canvas"]') as SVGSVGElement
+  ;(svg as unknown as { getScreenCTM: () => unknown }).getScreenCTM = () => ({ inverse: () => ({}) })
+  Object.defineProperty(svg, 'clientWidth', { value: 800 }); Object.defineProperty(svg, 'clientHeight', { value: 600 })
   await act(async () => { bench().chooseView('view:0,0') })
+  const pe = (type: string, x: number, y: number, buttons: number) => { const e = new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0, buttons }); Object.defineProperty(e, 'pointerId', { value: 1 }); return e }
+  const press = async (x: number, y: number) => { await act(async () => { svg.dispatchEvent(pe('pointerdown', x, y, 1)); window.dispatchEvent(pe('pointerup', x, y, 0)) }) }
+  const tool = async (k: string) => { await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true })) }) }
   const pick = async (kind: 'line' | 'point', id: string) => { await act(async () => { bench().edit(e => e.select([{ kind, id }])); bench().refresh() }) }
   const rows = (point: string) => [...host.querySelectorAll(`[data-join-list="${point}"] [data-join-row]`)] as HTMLElement[]
   const title = () => [...host.querySelectorAll('div')].find(x => x.title === '收起属性')?.textContent ?? ''
   const joinsAt = (p: string) => bench().core.snapshot().joins.filter(j => j.point === p).map(j => `${j.lines.join('↔')}:${j.mode}`)
-  return { host, pick, rows, title, joinsAt }
+  return { host, pick, rows, title, joinsAt, press, tool }
 }
 
 describe('the join list in the properties panel', () => {
   it('a line picked on the canvas: each shared end lists its point\'s joins, the governing one marked; a bound join\'s zone automatic', async () => {
     const t = await setup()
     await t.pick('line', 'l1')
-    expect(t.title()).toContain('线 · ')
+    expect(t.title()).toMatch(/属性 线 · /)
     const r = t.rows('b')
     expect(r.map(x => x.dataset.joinRow)).toEqual(['l1↔l2'])
     expect(r[0]!.querySelector('[data-governing]')).not.toBeNull()
@@ -99,7 +105,45 @@ describe('the join list in the properties panel', () => {
     await act(async () => { bench().edit(e => e.moveHandle('l1', 'a', { x: 5, y: 5 })); bench().refresh() }) // a canvas change that is not a new pick
     expect(t.title()).toContain('图层 · A')
     await t.pick('line', 'l2')
-    expect(t.title()).toContain('线 · ')
+    expect(t.title()).toMatch(/属性 线 · /)
+  })
+  it('a typed zone or radius not yet committed never lands in another view (dot 1791813754)', async () => {
+    const t = await setup()
+    await act(async () => {
+      bench().edit(e => e.join('b', 'l1', 'l2', { mode: 'arc', radius: 5 }))
+      for (const v of ['view:0,0', 'view:90,0']) bench().core.editIn(v, e => e.zone('b', 'l1', 'l2', 1))
+      bench().refresh()
+    })
+    await t.pick('line', 'l1')
+    const zoneOf = (v: string) => bench().core.in(v).snapshot().joins.find(j => j.point === 'b')!
+    for (const [attr, read] of [['data-join-zone', (v: string) => zoneOf(v).zone], ['data-join-radius', (v: string) => zoneOf(v).radius]] as const) {
+      const before = ['view:0,0', 'view:90,0'].map(read)
+      const field = () => t.host.querySelector(`[${attr}="l1↔l2"]`) as HTMLInputElement
+      await act(async () => { setValue(field(), '17') })
+      await act(async () => { bench().chooseView('view:90,0') })
+      await act(async () => { key('Enter', field()) })
+      expect(['view:0,0', 'view:90,0'].map(read)).toEqual(before)
+      await act(async () => { bench().chooseView('view:0,0') })
+    }
+  })
+  it('a canvas press on the same point after a list click shows the point again (dot): every canvas pick counts', async () => {
+    const t = await setup()
+    await t.tool('a'); await t.press(100, 200)
+    expect(t.title()).toContain('点 · p')
+    const layer = [...t.host.querySelectorAll('span[title="双击改名"]')].find(x => x.textContent === 'A') as HTMLElement
+    await act(async () => { layer.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    expect(t.title()).toContain('图层 · A')
+    await t.press(100, 200)
+    expect(t.title()).toContain('点 · p')
+    // a curve clicked in the list, then one of its lines picked on the canvas: the line shows
+    await act(async () => { ([...t.host.querySelectorAll('svg title')].find(x => x.textContent === '展开全部图层')!.parentElement!).dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    const curveRow = ([...t.host.querySelectorAll('[title^="点击选中这条连续曲线"]')] as HTMLElement[]).find(r => r.textContent?.includes(bench().core.snapshot().groups.find(g => g.lines.includes('l1'))!.name))!
+    await act(async () => { curveRow.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    expect(t.title()).toContain('连续曲线 · ')
+    await t.press(300, 400) // empty canvas: the curve's lines are deselected; not a pick
+    expect(t.title()).toContain('连续曲线 · ')
+    await t.press(50, 0) // l1, a line of that curve: a new pick wins over the curve the list showed
+    expect(t.title()).toMatch(/属性 线 · /)
   })
   it('a new width updates the automatic zone; the Join tool offers bound', async () => {
     const t = await setup()

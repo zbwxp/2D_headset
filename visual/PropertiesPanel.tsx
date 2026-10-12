@@ -11,7 +11,7 @@ export type Subject = { kind: 'layer' | 'group' | 'line' | 'point'; id: Id }
 const C = { bg: '#2b2b2b', line: '#262626', text: '#ddd', dim: '#8a8a8a', key: '#9a9a9a' }
 const JOIN: Record<string, string> = { smooth: '平滑', cusp: '尖角', arc: '圆弧' }
 
-export function PropertiesPanel({ s, subject, zones = [], run, slider, toolRadius }: {
+export function PropertiesPanel({ s, subject, zones = [], run, slider, toolRadius, scope }: {
   s: Snapshot; subject: Subject | null
   /** The joins' zones in this view (J1b): the join lists show them. */
   zones?: Zones
@@ -20,6 +20,8 @@ export function PropertiesPanel({ s, subject, zones = [], run, slider, toolRadiu
   slider?: SliderHooks
   /** A join set to 圆弧 here takes the Join tool's radius. */
   toolRadius?: number
+  /** The drawing and the view the join values belong to (controls' identity). */
+  scope?: string
 }) {
   const [open, setOpen] = useState(true)
   const layerOf = new Map(s.points.map(p => [p.id, p.layer]))
@@ -99,7 +101,7 @@ export function PropertiesPanel({ s, subject, zones = [], run, slider, toolRadiu
         </div>)}
         {lists.map(x => <div key={x.label + x.point}>
           <div style={{ color: C.key, padding: '4px 0 0' }}>{x.label}</div>
-          <JoinList s={s} zones={zones} point={x.point} line={x.line} run={run} slider={slider} toolRadius={toolRadius} />
+          <JoinList s={s} zones={zones} point={x.point} line={x.line} run={run} slider={slider} toolRadius={toolRadius} scope={scope} />
         </div>)}
         {/* more properties go here as they are settled (bowen 1791599608: a placeholder for now) */}
         <div style={{ color: C.dim, padding: '6px 0 0', fontStyle: 'italic' }}>更多属性（待定）</div>
