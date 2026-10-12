@@ -20,6 +20,15 @@ export interface Geometry {
   arcs: { key: string; point: Id; lines: [Id, Id]; curve: Cubic }[]
   fills: { id: Id; color: string; visible: boolean; parts: Part[] }[]
 }
+/**
+ * Every join's transition zone in one view (docs/ink-joins-principle.md §4, J1b) — a read beside the
+ * geometry, not part of it: it depends on the widths, which never change the geometry (Q27). `desired` —
+ * the manual length of this view, else wider² / narrower from this view's widths; `limited` — after the
+ * short-line limit (between two lines 2·min(desired/2, L0/3, L1/3); at an arc of length A, desired ≤ A →
+ * desired, else A + 2·min((desired − A)/2, L0/3, L1/3)), L the lines' drawn lengths; `manual` — whether
+ * this view holds a manual value. Not yet what the ink draws (J2).
+ */
+export type Zones = { point: Id; lines: [Id, Id]; desired: number; limited: number; manual: boolean }[]
 
 const reverse = (c: Cubic): Cubic => [c[3], c[2], c[1], c[0]]
 // Keys use JSON encoding so no id can collide through a separator (dot 1791427637).
@@ -49,6 +58,20 @@ export function derive(n: net.NetworkState, j: joins.JoinsState, f: fills.FillsS
     .sort((a, b) => drawOrder.get(a.id)! - drawOrder.get(b.id)!)
     .map(v => ({ id: v.id, color: v.color!, visible: v.visible!, parts: loopParts(o, v.route) }))
   return { lines, arcs: [...o.arcByKey.values()], fills: fillGeometry }
+}
+
+/** The joins' zones in the view `n` is bound to. */
+export function zones(n: net.NetworkState, j: joins.JoinsState): Zones {
+  const o = outline(n, j)
+  const width = (id: Id) => net.line(n, id).stroke.width, drawnLength = (id: Id) => arcLength(o.drawn.get(id)!)
+  return joins.rows(j, n).map(r => {
+    const desired = r.zone ?? joins.autoZone(width(r.lines[0]), width(r.lines[1]))
+    const side = Math.min(drawnLength(r.lines[0]), drawnLength(r.lines[1])) / 3
+    const arc = r.mode === 'arc' ? o.arcByKey.get(arcKey(r.point, r.lines)) : undefined
+    const A = arc ? arcLength(arc.curve) : 0
+    const limited = arc ? (desired <= A ? desired : A + 2 * Math.min((desired - A) / 2, side)) : 2 * Math.min(desired / 2, side)
+    return { point: r.point, lines: [r.lines[0], r.lines[1]], desired, limited, manual: r.zone !== undefined }
+  })
 }
 
 /** Trims and arcs from the arc joins; the drawn curve of every line. */

@@ -173,3 +173,22 @@ describe('a join\'s transition zone: per view, kept through mode changes and str
     expect(d.atPose({ yaw: 0, pitch: 0 }).snapshot().joins.find(j => j.point === 'b')?.zone).toBeUndefined()
   })
 })
+
+describe('J1b: the zones read (desired and after the short-line limit)', () => {
+  it('between two lines: 2·min(desired/2, L/3); the same at every view through the view reader and the pose reader', () => {
+    const d = doc()
+    d.edit(e => { e.line('l1', at('a', 0), at('b', 30)); e.line('l2', 'b', at('c', 36)) })
+    d.edit(e => e.lineStroke('l2', { width: 4, profile: 'uniform' }))
+    // desired 4² / 1 = 16; the shorter line is 6 long → each side at most 2 → limited 4
+    const z = d.in('view:0,0').zones()
+    expect(z).toMatchObject([{ point: 'b', lines: ['l1', 'l2'], desired: 16, manual: false }])
+    expect(z[0]!.limited).toBeCloseTo(4, 9) // the drawn length is a numeric arc length
+    d.editIn('view:90,0', e => e.zone('b', 'l1', 'l2', 3))
+    expect(d.in('view:90,0').zones()[0]).toMatchObject({ desired: 3, manual: true })
+    expect(d.in('view:90,0').zones()[0]!.limited).toBeCloseTo(3, 9)
+    for (const k of d.views()) {
+      const [yaw, pitch] = k.slice(5).split(',').map(Number)
+      expect(d.atPose({ yaw: yaw!, pitch: pitch! }).zones()).toEqual(d.in(k).zones())
+    }
+  })
+})

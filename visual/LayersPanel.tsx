@@ -3,9 +3,10 @@
 // continuous curves; rows drag to reorder; buttons along the bottom. Visual UI only: every
 // change is a one-shot core operation through `run` (doc 22 §3.5). Part of the visual package
 // (docs/visual-plan.md); no visual principles yet.
-import { useState } from 'react'
-import type { Snapshot, Geometry, Editor, Vec } from '../src'
+import { useEffect, useState } from 'react'
+import type { Snapshot, Geometry, Zones, Editor, Vec } from '../src'
 import { PropertiesPanel, type Subject } from './PropertiesPanel'
+import type { SliderHooks } from './JoinList'
 import { Rename } from '../rename'
 
 type Id = string
@@ -39,14 +40,26 @@ interface Props {
   newLayerId: () => Id
   /** A line row or a curve row was clicked (the app's name labels follow it; docs/name-labels-plan.md). */
   onPick?: (kind: 'line' | 'curve') => void
+  /** The joins' zones in this view, the program's slider hooks and the Join tool's radius (the join lists, J1b). */
+  zones?: Zones
+  slider?: SliderHooks
+  toolRadius?: number
+  /** The canvas's single selected line or point: when it changes, the properties show it (the last of a canvas pick and a list click wins). */
+  canvasSubject?: Subject | null
 }
 
-export function LayersPanel({ s, g, selected, active, select, run, newLayerId, onPick }: Props) {
+export function LayersPanel({ s, g, selected, active, select, run, newLayerId, onPick, zones, slider, toolRadius, canvasSubject }: Props) {
   const [open, setOpen] = useState<Set<Id>>(new Set())
   const [anchor, setAnchor] = useState<Id | null>(null)
   const [rowAnchor, setRowAnchor] = useState<Id | null>(null)
   // the unit whose properties show below: the last layer, curve or line clicked (bowen 1791599608)
   const [subject, setSubject] = useState<Subject | null>(null)
+  // a canvas pick of one line or point shows it; a later list click keeps its own subject until the canvas pick changes
+  // again. A pick the list click itself made (its line, or a line of its curve) leaves the clicked item showing.
+  const canvasKey = canvasSubject ? `${canvasSubject.kind}:${canvasSubject.id}` : ''
+  const covers = (x: Subject, y: Subject) => (x.kind === y.kind && x.id === y.id)
+    || (x.kind === 'group' && y.kind === 'line' && !!s.groups.find(gr => gr.id === x.id)?.lines.includes(y.id))
+  useEffect(() => { if (canvasSubject && !(subject && covers(subject, canvasSubject))) setSubject(canvasSubject) }, [canvasKey]) // eslint-disable-line react-hooks/exhaustive-deps
   const selLines = new Set(s.selection.flatMap(u => (u.kind === 'line' ? [u.id] : [])))
   /**
    * A click on a continuous curve or a line row picks it as V / A would (bowen 1791558186): plain =
@@ -199,7 +212,7 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId, o
           </div>
         })}
       </div>
-      <PropertiesPanel s={s} subject={subject ?? (active ? { kind: 'layer', id: active } : null)} />
+      <PropertiesPanel s={s} subject={subject ?? (active ? { kind: 'layer', id: active } : null)} zones={zones} run={run} slider={slider} toolRadius={toolRadius} />
     </div>
   )
 }

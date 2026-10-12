@@ -136,7 +136,7 @@ describe('atPose: read only', () => {
     expect(save(e)).toBe(saved)
   })
 
-  it('a pose outside the domain is a refusal; the model is a copy; the reader offers only snapshot and geometry', () => {
+  it('a pose outside the domain is a refusal; the model is a copy; the reader offers only reads: snapshot, geometry and the joins\' zones (J1b)', () => {
     const d = doc()
     // the edges: just past each bound, not a number, infinite; the bounds themselves and −0 are inside
     for (const pose of [{ yaw: 90.0001, pitch: 0 }, { yaw: -90.0001, pitch: 0 }, { yaw: 0, pitch: 45.0001 }, { yaw: 0, pitch: -45.0001 }, { yaw: NaN, pitch: 0 }, { yaw: 0, pitch: NaN }, { yaw: Infinity, pitch: 0 }, { yaw: 0, pitch: -Infinity }]) {
@@ -150,7 +150,7 @@ describe('atPose: read only', () => {
     ;(m.views[0]!.points.a as { x: number }).x = 999
     expect(d.model().views[0]!.points.a!.x).not.toBe(999)
     const r = d.atPose({ yaw: 10, pitch: 10 })
-    expect(Object.getOwnPropertyNames(Object.getPrototypeOf(r)).sort()).toEqual(['constructor', 'geometry', 'snapshot'])
+    expect(Object.getOwnPropertyNames(Object.getPrototypeOf(r)).sort()).toEqual(['constructor', 'geometry', 'snapshot', 'zones'])
   })
 })
 

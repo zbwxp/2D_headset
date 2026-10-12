@@ -3,11 +3,11 @@
 J1 (778e955, accepted by dot 1791812679) put the joins in the core: 'bound', the per-point list (order = precedence), the per-view zone. J1b lets bowen see and change them: the panel and the Join tool. Principle: docs/ink-joins-principle.md §2.2, §2.5, §4. No ink change (J2).
 
 ## 1. The zone's length as a read (core, `derived`)
-- The panel shows a join's desired length and the length actually used after the short-line limit (dot 1791809701). The visual package may only import core types (visual/test/boundary.test.ts), and J2's ink needs the same numbers, so they come from the view's geometry: `Geometry.zones: { point, lines, desired, used, manual }[]` (src/derived/index.ts), one per join, in the view read:
+- The panel shows a join's desired length and the length actually used after the short-line limit (dot 1791809701). The visual package may only import core types (visual/test/boundary.test.ts), and J2's ink needs the same numbers, so they come from a core read: `zones(): { point, lines, desired, limited, manual }[]` on the view reader and the pose reader (computed by src/derived `zones`), one per join — **beside `geometry()`, not in it**: the zones depend on the widths, and the widths never change the geometry (Q27; test/acceptance.test.ts "width and taper do not change geometry"):
   - `desired` = the manual zone of this view, else `autoZone(w0, w1)` = wider² / narrower from this view's widths (src/joins `autoZone`, J1);
-  - `used` — the principle's limit (§4): between two lines, 2 · min(desired / 2, L0 / 3, L1 / 3), L = the lines' drawn lengths in this view; at an arc of length A, desired ≤ A → desired, else A + 2 · min((desired − A) / 2, L0 / 3, L1 / 3);
+  - `limited` (the 限长后长度) — the principle's limit (§4): between two lines, 2 · min(desired / 2, L0 / 3, L1 / 3), L = the lines' drawn lengths in this view; at an arc of length A, desired ≤ A → desired, else A + 2 · min((desired − A) / 2, L0 / 3, L1 / 3);
   - `manual` — whether this view holds a manual value.
-- This extends the existing `geometry()` read with a field; row 6 asks no restructuring here — checked instead: the current view, a posed view and the existing geometry entries give the same zones (dot 1791812909).
+- A new read beside `geometry()`; row 6 asks no restructuring here — checked instead: the current view, a posed view and the existing geometry entries give the same zones (dot 1791812909).
 - Named **「限长后长度」** (the length after the limit), not the ink's used length: J2 does not use these zones yet (dot 1791812909).
 
 ## 2. The panel (visual/PropertiesPanel.tsx)
@@ -34,4 +34,4 @@ J1 (778e955, accepted by dot 1791812679) put the joins in the core: 'bound', the
 7. Width change → automatic desired / 限长后长度 update.
 8. Canvas: select one line → its panel; then click another row in the list → the panel shows that row's item and stays there (the old canvas selection does not take it back).
 
-Tests: ordinary cases and operations only; ledger rows 18 / 19 unchanged (the panel reorders one point).
+Tests: ordinary cases and operations only; ledger rows 18 / 19 stay open (triggered by J1b, stated in the panel).

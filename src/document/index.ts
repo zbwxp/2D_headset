@@ -73,6 +73,7 @@ export interface Snapshot {
   mirrorPairs: apply.Pair[]
 }
 export type Geometry = derived.Geometry
+export type Zones = derived.Zones
 
 class Cancelled extends Error {}
 
@@ -721,6 +722,7 @@ export class PoseReader {
   /** @internal */ constructor(private readonly reader: LayerReader) {}
   snapshot(): Snapshot { return this.reader.snapshot() }
   geometry(): Geometry { return this.reader.geometry() }
+  zones(): Zones { return this.reader.zones() }
 }
 
 /** The document read in one view. */
@@ -752,6 +754,8 @@ export class LayerReader {
   }
 
   geometry(): Geometry { const s = this.state(); return structuredClone(derived.derive(this.n, s.joins, s.fills)) }
+  /** Every join's transition zone in this view: desired and after the short-line limit (J1b; derived.Zones). */
+  zones(): Zones { return structuredClone(derived.zones(this.n, this.state().joins)) }
   /**
    * The exact bounds, in this view, of what the units are (docs/selection-box-plan.md §1; dot 1791735431):
    * a line by its curve's extremes (not its control points), a point by its position, a handle selected

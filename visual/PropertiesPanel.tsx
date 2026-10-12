@@ -3,14 +3,24 @@
 // continuous curve or a line). Read-only for now, with a placeholder where more properties will go.
 // Visual UI only; no visual principles yet.
 import { useState } from 'react'
-import type { Snapshot } from '../src'
+import type { Snapshot, Zones, Editor } from '../src'
+import { JoinList, type SliderHooks } from './JoinList'
 
 type Id = string
-export type Subject = { kind: 'layer' | 'group' | 'line'; id: Id }
+export type Subject = { kind: 'layer' | 'group' | 'line' | 'point'; id: Id }
 const C = { bg: '#2b2b2b', line: '#262626', text: '#ddd', dim: '#8a8a8a', key: '#9a9a9a' }
 const JOIN: Record<string, string> = { smooth: '平滑', cusp: '尖角', arc: '圆弧' }
 
-export function PropertiesPanel({ s, subject }: { s: Snapshot; subject: Subject | null }) {
+export function PropertiesPanel({ s, subject, zones = [], run, slider, toolRadius }: {
+  s: Snapshot; subject: Subject | null
+  /** The joins' zones in this view (J1b): the join lists show them. */
+  zones?: Zones
+  /** Edits through the app (the current view); without it the join lists are read-only. */
+  run?: (fn: (e: Editor) => void) => boolean
+  slider?: SliderHooks
+  /** A join set to 圆弧 here takes the Join tool's radius. */
+  toolRadius?: number
+}) {
   const [open, setOpen] = useState(true)
   const layerOf = new Map(s.points.map(p => [p.id, p.layer]))
   const lineLayer = (id: Id) => layerOf.get(s.lines.find(l => l.id === id)?.a ?? '')
@@ -24,7 +34,7 @@ export function PropertiesPanel({ s, subject }: { s: Snapshot; subject: Subject 
   }
   const fillsOf = (ids: Id[]) => s.loops.filter(l => l.filled && l.route.every(u => ids.includes(u.line)))
 
-  let title = '未选择', rows: [string, string][] = []
+  let title = '未选择', rows: [string, string][] = [], lists: { label: string; point: Id; line?: Id }[] = []
   if (subject?.kind === 'layer' && s.layers.some(l => l.id === subject.id)) {
     const ids = s.lines.filter(l => layerOf.get(l.a) === subject.id).map(l => l.id)
     title = `图层 · ${layerName(subject.id)}`
@@ -67,6 +77,15 @@ export function PropertiesPanel({ s, subject }: { s: Snapshot; subject: Subject 
       ['终点 b', end('b')],
       ['镜像联动', paired.has(l.id) ? '有' : '无'],
     ]
+    // each shared end: its point's join list, top first (J1b)
+    for (const [e, label] of [['a', '起点 a 的接法'], ['b', '终点 b 的接法']] as const) {
+      if (s.lines.some(x => x.id !== l.id && (x.a === l[e] || x.b === l[e]))) lists.push({ label, point: l[e], line: l.id })
+    }
+  } else if (subject?.kind === 'point' && s.points.some(p => p.id === subject.id)) {
+    const at = s.lines.filter(l => l.a === subject.id || l.b === subject.id)
+    title = `点 · ${subject.id}`
+    rows = [['图层', layerName(layerOf.get(subject.id))], ['相接的线', at.map(l => l.name).join('、') || '—']]
+    lists.push({ label: '接法', point: subject.id })
   }
 
   return (
@@ -77,6 +96,10 @@ export function PropertiesPanel({ s, subject }: { s: Snapshot; subject: Subject 
       {open && <div style={{ padding: '0 10px 8px' }} data-testid="properties">
         {rows.map(([k, v]) => <div key={k} style={{ display: 'flex', gap: 8, padding: '2px 0' }}>
           <span style={{ color: C.key, width: 64, flex: 'none' }}>{k}</span><span style={{ wordBreak: 'break-all' }}>{v}</span>
+        </div>)}
+        {lists.map(x => <div key={x.label + x.point}>
+          <div style={{ color: C.key, padding: '4px 0 0' }}>{x.label}</div>
+          <JoinList s={s} zones={zones} point={x.point} line={x.line} run={run} slider={slider} toolRadius={toolRadius} />
         </div>)}
         {/* more properties go here as they are settled (bowen 1791599608: a placeholder for now) */}
         <div style={{ color: C.dim, padding: '6px 0 0', fontStyle: 'italic' }}>更多属性（待定）</div>

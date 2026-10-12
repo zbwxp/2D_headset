@@ -248,7 +248,9 @@ export function App() {
   const frame = useRef<{ core: Core; text: string } | null>(null)
   frame.current = pose || moveRef ? { core, text: save(core) } : null
   const reader = posed && !(posed instanceof Error) ? posed : core.in(shown)
-  const s = reader.snapshot(), g = reader.geometry()
+  const s = reader.snapshot(), g = reader.geometry(), zones = reader.zones()
+  // the canvas's one selected line or point: the properties panel shows it (J1b)
+  const canvasSubject = s.selection.length === 1 && (s.selection[0]!.kind === 'line' || s.selection[0]!.kind === 'point') ? { kind: s.selection[0]!.kind, id: s.selection[0]!.id } : null
   // with the switch on, each visible line's ink (P1: single lines, today's round-capped look); a line whose ink a check
   // flags is still drawn and marked red (visible, reproducible — never hidden); only a line with nothing to draw is drawn
   // as today's stroke (bowen 1791801560 / 1791801629, dot 1791801801)
@@ -888,7 +890,7 @@ export function App() {
           {TOOLS.map(([t, label]) => { const on = !zoomTool && ix.tool === t; return <button key={t} style={{ fontWeight: on ? 700 : 400, background: on ? '#cde' : undefined }} onClick={() => chooseTool(t)}>{label}</button> })}
         </div>
         {ix.tool === 'join' && <div>
-          <select value={opts.joinMode} onChange={e => ix.setOptions({ joinMode: e.target.value as typeof opts.joinMode })}><option>smooth</option><option>cusp</option><option>arc</option></select>
+          <select value={opts.joinMode} onChange={e => ix.setOptions({ joinMode: e.target.value as typeof opts.joinMode })}><option>bound</option><option>smooth</option><option>cusp</option><option>arc</option></select>
           {opts.joinMode === 'arc' && <Slider label="r" value={opts.radius} identity="join-radius" accept={v => v > 0} track={null} steps={{ step: 1, long: 10, short: 0.1 }}
             fieldAttrs={{ 'data-testid': 'radius' }} {...sliderHooks} onPreview={() => {}} onCommit={v => ix.setOptions({ radius: v })} onCancel={() => {}} />}
           <div style={{ color: '#666' }}>click two lines; alt on the second: remove join</div>
@@ -1198,7 +1200,8 @@ export function App() {
           wheel or Z (drag up / down, click) zooms · right- or middle-drag pans · Esc / right-click cancels · ⌘Z / ⇧⌘Z · ⌘C ⌘X ⌘V · Delete · window.bench = {'{ core, ix, refresh, svg, log }'}
         </div>
       </div>
-      <LayersPanel key={drawing} s={s} g={g} selected={selLayers} active={drawLayer} select={selectLayers} run={run} newLayerId={() => nid('layer-')} onPick={setLabelKind} />
+      <LayersPanel key={drawing} s={s} g={g} selected={selLayers} active={drawLayer} select={selectLayers} run={run} newLayerId={() => nid('layer-')} onPick={setLabelKind}
+        zones={zones} slider={sliderHooks} toolRadius={opts.radius} canvasSubject={canvasSubject} />
     </div>
   )
 }
