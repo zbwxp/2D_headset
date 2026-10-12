@@ -205,7 +205,14 @@ export function mirrorApply(s: ApplyState, d: Doc, ch: net.Changes, source: read
     const next = rows.map(r => ({ r, l0: m.lines.get(r.lines[0])!.to, l1: m.lines.get(r.lines[1])!.to }))
     const stays = new Set(next.map(x => joins.rowKey(tp, x.l0, x.l1)))
     for (const r of old) if (!stays.has(joins.rowKey(tp, r.lines[0], r.lines[1]))) joins.removeJoin(d.joins, n, tp, r.lines[0], r.lines[1])
-    for (const { r, l0, l1 } of next) joins.setJoin(d.joins, n, tp, l0, l1, { mode: r.mode, ...(r.radius !== undefined ? { radius: r.radius } : {}) })
+    for (const { r, l0, l1 } of next) {
+      joins.setJoin(d.joins, n, tp, l0, l1, { mode: r.mode, ...(r.radius !== undefined ? { radius: r.radius } : {}) })
+      // the manual zone of this view comes along; none = automatic here (J1)
+      joins.setZoneHere(d.joins, n, tp, l0, l1, r.zone ?? null)
+    }
+    // the copied joins in the source's list order, when they are the target point's whole list (J1)
+    const here = joins.rowsAt(d.joins, n, tp)
+    if (here.length === next.length) joins.orderJoins(d.joins, tp, next.map(x => [x.l0, x.l1] as [string, string]))
     net.touch(ch, tp)
   }
   for (const x of linkJoinsOld) links.removeJoin(d.links, x.a, x.b, x.lines[0], x.lines[1])

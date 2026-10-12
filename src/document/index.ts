@@ -269,6 +269,22 @@ export class Editor {
       if (opts.mode === 'smooth') this.holdEverywhere(a, net.line(state.network, a).a === p ? 'a' : 'b')
     }
   }
+  /**
+   * Reorder a point's join list, top first (bowen drags it, 1791810865): `pairs` lists exactly that
+   * point's joins. The order is shared by every view. Only this point: a mirror counterpart keeps its
+   * own order (docs/consolidation-ledger.md).
+   */
+  joinOrder(point: Id, pairs: [Id, Id][]) {
+    joins.orderJoins(this.s.joins, point, pairs)
+    net.touch(this.tx.changes, point)
+  }
+  /**
+   * A join's manual transition-zone length in this view only (bowen 1791810585: per view, not
+   * broadcast); null sets it automatic here. Under a mirror link the counterpart's join gets the same.
+   */
+  zone(point: Id, l1: Id, l2: Id, length: number | null) {
+    for (const [p, a, b] of this.paired(apply.pairedJoins(this.s.apply, this.s.network, point, l1, l2))) joins.setZoneHere(this.s.joins, this.s.network, p, a, b, length)
+  }
   removeJoin(point: Id, l1: Id, l2: Id) {
     for (const [p, a, b] of this.paired(apply.pairedJoins(this.s.apply, this.s.network, point, l1, l2))) { joins.removeJoin(this.s.joins, this.s.network, p, a, b); net.touch(this.tx.changes, p) }
   }
@@ -806,6 +822,31 @@ export function fromV5(doc: unknown): unknown {
 }
 
 /** The document as plain data, without the selection (docs/archive-plan.md). */
+/**
+ * Format 6 → 7 (docs/ink-joins-principle.md §2.6, bowen 1791808493): binding becomes a join, so a
+ * point carrying exactly two line ends and no join gets a 'bound' join — what the two lines were
+ * (仅绑定) before; a fork gets none; each shape layer gains an empty zone table (every zone
+ * automatic). Only for a version-6 file: a version-7 drawing is opened as stored.
+ */
+export function fromV6(doc: unknown): unknown {
+  if (!doc || typeof doc !== 'object') return doc
+  const d = doc as { network?: { lines?: unknown }; joins?: { rows?: unknown } }
+  if (!d.network || !Array.isArray(d.network.lines) || !d.joins || !Array.isArray(d.joins.rows)) return doc // refused by importState as for any file
+  const ends = new Map<string, string[]>()
+  for (const l of d.network.lines as { id?: unknown; a?: unknown; b?: unknown }[]) {
+    for (const p of [l.a, l.b]) if (typeof p === 'string' && typeof l.id === 'string') ends.set(p, [...(ends.get(p) ?? []), l.id])
+  }
+  // the shape layers gain the per-view zone table (empty: every join's zone automatic)
+  const net6 = d.network as { shapes?: { layers?: unknown } }
+  const network = net6.shapes && Array.isArray(net6.shapes.layers)
+    ? { ...d.network, shapes: { ...net6.shapes, layers: (net6.shapes.layers as Record<string, unknown>[]).map(L => (L && typeof L === 'object' && !('zone' in L) ? { ...L, zone: {} } : L)) } }
+    : d.network
+  const joined = new Set((d.joins.rows as { point?: unknown }[]).map(r => r.point))
+  const added = [...ends].filter(([p, ls]) => ls.length === 2 && ls[0] !== ls[1] && !joined.has(p))
+    .map(([point, ls]) => ({ point, lines: ls[0]! < ls[1]! ? [ls[0], ls[1]] : [ls[1], ls[0]], mode: 'bound' }))
+  return { ...d, network, joins: { ...d.joins, rows: [...(d.joins.rows as unknown[]), ...added] } }
+}
+
 export function exportState(core: Core): Record<string, unknown> {
   const s = core['state']
   return structuredClone(Object.fromEntries(PARTS.map(k => [k, k === 'network' ? net.exportData(s.network) : s[k]])))
@@ -888,6 +929,12 @@ function modelOf(s: State): evaluate.Model {
         points: Object.fromEntries(net.points(n).map(p => [p.id, p.position])),
         lines: Object.fromEntries(net.lines(n).map(l => [l.id, { ha: l.ha, hb: l.hb, stroke: l.stroke }])),
         radii: Object.fromEntries(joins.rows(s.joins, n).flatMap(r => (r.radius === undefined ? [] : [[joins.rowKey(r.point, r.lines[0], r.lines[1]), r.radius]]))),
+        // every join's effective zone in this view — the manual value, else the automatic one from this view's widths —
+        // so playback blends real lengths and never an absent one as 0 (dot 1791812073, bowen 1791811981)
+        zones: Object.fromEntries(joins.rows(s.joins, n).map(r => {
+          const width = (id: Id) => net.line(n, id).stroke.width
+          return [joins.rowKey(r.point, r.lines[0], r.lines[1]), r.zone ?? joins.autoZone(width(r.lines[0]), width(r.lines[1]))]
+        })),
         // stored end strokes hold no undefined values (setEndStroke drops them); the type allows them, evaluate's does not
         ends: Object.fromEntries(net.points(n).flatMap(p => { const e = joins.endStroke(s.joins, n, p.id); return e ? [[p.id, Object.fromEntries(Object.entries(e).filter((kv): kv is [string, number | string] => kv[1] !== undefined))]] : [] })),
       }
@@ -913,6 +960,10 @@ function posedState(s: State, posed: evaluate.Posed): { state: State; layer: str
   for (const r of joins.rows(c.joins, n)) {
     const key = joins.rowKey(r.point, r.lines[0], r.lines[1])
     if (r.mode === 'arc') joins.setRadiusHere(c.joins, n, r.point, r.lines[0], r.lines[1], Object.hasOwn(posed.radii, key) ? posed.radii[key]! : NaN)
+    // a posed zone equal to the automatic length of the posed widths reads as automatic, so a view is reproduced exactly
+    const z = Object.hasOwn(posed.zones, key) ? posed.zones[key]! : undefined
+    const auto = joins.autoZone(posed.lines[r.lines[0]]!.stroke.width, posed.lines[r.lines[1]]!.stroke.width)
+    joins.setZoneHere(c.joins, n, r.point, r.lines[0], r.lines[1], z === undefined || Math.abs(z - auto) <= 1e-12 * Math.max(1, auto) ? null : z)
   }
   for (const p of net.points(n)) {
     // own properties only: a point may be called `constructor` or `toString` (dot 1791685237)

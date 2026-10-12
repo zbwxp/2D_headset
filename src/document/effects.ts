@@ -89,7 +89,11 @@ export const EFFECTS: Record<string, Effect> = {
   // joins: a smooth join holds its first-clicked handle in every view; an arc gives views without a radius one
   join: full({ reads: 'draft', intents: 'all-views', shapes: 'all-views', records: true, shared: ['joins'] }),
   removeJoin: full({ reads: 'draft', shapes: 'all-views', records: true, shared: ['joins'] }),
+  // the order of a point's join list: shared by every view, no shape written
+  joinOrder: full({ reads: 'draft', shared: ['joins'] }),
   endStroke: full({ reads: 'draft', shapes: 'edited', shared: [] }),
+  // a join's manual zone length: this view's layer only
+  zone: full({ reads: 'draft', shapes: 'edited', shared: [] }),
   // links: a link moves the second point onto the first in every view
   // a link merges the two components' responses (stage 3b package 2)
   link: full({ reads: 'settled-trial', intents: 'all-views', shapes: 'all-views', shared: ['links', 'animation'] }),

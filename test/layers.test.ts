@@ -267,7 +267,8 @@ describe('line width and locks', () => {
     expect(() => d.edit(e => e.moveHandle('bc', 'a', P(-3, 3)))).toThrow(/Locked lines would change \(ab\)/)
     // a join with ab clicked first holds ab's handle; only ca turns, so ab is unchanged
     d.edit(e => e.join('a', 'ab', 'ca', { mode: 'smooth' }))
-    expect(s(d).joins).toHaveLength(2)
+    // the triangle's corners were 'bound' when drawn (J1); the two set joins change those rows' modes
+    expect(s(d).joins.map(j => [j.point, j.mode]).sort()).toEqual([['a', 'smooth'], ['b', 'smooth'], ['c', 'bound']])
   })
   it('18 / 29b. binding onto a locked line’s shared end is allowed when nothing on it changes', () => {
     const d = doc('A'); triangle(d, 'A')
@@ -330,9 +331,11 @@ describe('line width and locks', () => {
     d.edit(e => e.join('b', 'ab', 'bc', { mode: 'smooth' }))
     d.edit(e => e.lineState('ab', { locked: true }))
     d.edit(e => e.split('bc', 0.5, 'm', 'bc1', 'bc2'))
-    expect(s(d).joins).toEqual([{ point: 'b', lines: ['ab', 'bc1'], mode: 'smooth' }])
+    const joinsOf = () => s(d).joins.map(j => [j.point, ...j.lines, j.mode]).sort()
+    // the smooth row follows the piece; the split joins its two pieces 'bound'; the triangle's other corners stay 'bound' (J1)
+    expect(joinsOf()).toEqual([['a', 'ab', 'ca', 'bound'], ['b', 'ab', 'bc1', 'smooth'], ['c', 'bc2', 'ca', 'bound'], ['m', 'bc1', 'bc2', 'bound']])
     d.edit(e => { e.split('ca', 0.5, 'n', 'ca1', 'ca2'); e.deleteLine('bc1') })
-    expect(s(d).joins).toEqual([])
+    expect(joinsOf()).toEqual([['a', 'ab', 'ca2', 'bound'], ['c', 'bc2', 'ca1', 'bound'], ['n', 'ca1', 'ca2', 'bound']])
   })
 
   it('29h. deleting a linked partner’s line ends the link; the locked end turning free is allowed (bowen 1791460893 甲)', () => {
@@ -574,7 +577,8 @@ describe('moving a group (cut and paste, Q31)', () => {
     expect(s(d).groups.map(x => [x.id, x.layer])).toEqual([[q.id, 'B'], [g.id, 'B']])
     expect(s(d).points.filter(p => ['a', 'b', 'c'].includes(p.id)).every(p => p.layer === 'B')).toBe(true)
     expect(s(d).loops.find(l => l.id === fill)).toMatchObject({ layer: 'B', color: 'red' })
-    expect(s(d).joins).toHaveLength(1)
+    // the set join and the two triangles' corners, 'bound' when drawn (J1), all follow
+    expect(s(d).joins.map(j => j.mode).sort()).toEqual(['bound', 'bound', 'bound', 'bound', 'bound', 'cusp'])
   })
 
   it('26. a group holding a locked line or a locked fill cannot be moved', () => {

@@ -69,7 +69,8 @@ describe('paste', () => {
       expect(s(d).points.find(p => p.id === id(line(d, l).a))!.layer).toBe('K')
     }
     const joins = s(d).joins.filter(j => j.point.startsWith('p1/')).map(j => [j.point, j.mode, j.radius ?? null]).sort()
-    expect(joins).toEqual([[id('a'), 'arc', 4], [id('b'), 'smooth', null], [id('c'), 'cusp', null]].sort())
+    // the eye's lines drawn on from an end carry the 'bound' join made when they were drawn (J1)
+    expect(joins).toEqual([[id('a'), 'arc', 4], [id('b'), 'smooth', null], [id('c'), 'cusp', null], [id('d'), 'bound', null]].sort())
     expect(s(d).points.find(p => p.id === id('e'))!.endStroke).toEqual({ taper: 0.5 })
     const fill = s(d).loops.find(l => l.route.some(u => u.line === id('u1')))!
     expect([fill.filled, fill.color]).toEqual([true, '#f2c94c'])

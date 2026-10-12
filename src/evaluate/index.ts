@@ -19,6 +19,8 @@ export interface ViewShape {
   readonly lines: Readonly<Record<Id, { readonly ha: Vec; readonly hb: Vec; readonly stroke: Stroke }>>
   /** Arc radius per arc row key. */
   readonly radii: Readonly<Record<string, number>>
+  /** Effective transition-zone length per join row key (manual, else automatic from this view's widths; J1). */
+  readonly zones?: Readonly<Record<string, number>>
   /** End strokes of the points that have one. */
   readonly ends: Readonly<Record<Id, EndStroke>>
 }
@@ -39,6 +41,8 @@ export interface Posed {
   points: Record<Id, Vec>
   lines: Record<Id, { ha: Vec; hb: Vec; stroke: Stroke }>
   radii: Record<string, number>
+  /** Zone lengths, blended like the radii (view-dependent values transition with the pose: bowen 1791811981). */
+  zones: Record<string, number>
   ends: Record<Id, EndStroke>
 }
 
@@ -84,6 +88,7 @@ export function evaluate(model: Model, pose: Pose): Posed {
     points: geometry.points,
     lines: Object.fromEntries(Object.entries(geometry.lines).map(([id, l]) => [id, { ...l, stroke: look.strokes[id]! }])),
     radii: geometry.radii,
+    zones: geometry.zones,
     ends: look.ends,
   }
 }
@@ -93,6 +98,7 @@ export interface Geometry {
   points: Record<Id, Vec>
   lines: Record<Id, { ha: Vec; hb: Vec }>
   radii: Record<string, number>
+  zones: Record<string, number>
 }
 
 /**
@@ -231,6 +237,7 @@ function blend(ws: readonly Weighted[], scalar: ScalarWeights, responses?: Respo
       hb: vec(v => own(v.lines, l)?.hb, `handle b of ${l}`, control(control(responses?.handles, l, `handles of ${l}`), 'b', `handle b of ${l}`)),
     }])),
     radii: Object.fromEntries(keys(v => v.radii).map(k => [k, num(v => own(v.radii, k), `radius of ${k}`)])),
+    zones: Object.fromEntries(keys(v => v.zones ?? {}).map(k => [k, num(v => own(v.zones ?? {}, k), `zone of ${k}`)])),
   }
 }
 

@@ -26,11 +26,11 @@ const close = (a: { x: number; y: number }, b: { x: number; y: number }) => { ex
 const mix = (...terms: [number, { x: number; y: number }][]) => ({ x: terms.reduce((s, [w, p]) => s + w * p.x, 0), y: terms.reduce((s, [w, p]) => s + w * p.y, 0) })
 
 describe('evaluate: the nine views and the axes', () => {
-  it('at each of the nine views it gives that view exactly: geometry, strokes and end strokes', () => {
+  it('at each of the nine views it gives that view exactly: geometry, strokes, zones and end strokes', () => {
     const m = model()
     for (const v of m.views) {
       const r = evaluate(m, { yaw: v.yaw, pitch: v.pitch })
-      expect(r).toEqual({ points: v.points, lines: v.lines, radii: v.radii, ends: v.ends })
+      expect(r).toEqual({ points: v.points, lines: v.lines, radii: v.radii, zones: v.zones ?? {}, ends: v.ends })
     }
   })
 

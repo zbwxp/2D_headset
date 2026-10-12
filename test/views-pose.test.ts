@@ -36,10 +36,16 @@ function doc() {
 function oracle(d: Core, pose: { yaw: number; pitch: number }) {
   const posed = evaluate(d.model(), pose)
   const file = JSON.parse(save(d))
-  const front = (file.document.network.shapes.layers as { key: string; points: unknown; lines: unknown; radius: unknown; end?: unknown }[]).find(l => l.key === FRONT)!
+  const front = (file.document.network.shapes.layers as { key: string; points: unknown; lines: unknown; radius: unknown; zone?: unknown; end?: unknown }[]).find(l => l.key === FRONT)!
   front.points = posed.points
   front.lines = posed.lines
   front.radius = posed.radii
+  // a posed zone equal to the automatic length of the posed widths stays automatic (J1)
+  front.zone = Object.fromEntries(Object.entries(posed.zones).filter(([k, z]) => {
+    const [, l0, l1] = JSON.parse(k) as [string, string, string], w0 = posed.lines[l0]!.stroke.width, w1 = posed.lines[l1]!.stroke.width
+    const auto = Math.max(w0, w1) ** 2 / Math.min(w0, w1)
+    return Math.abs(z - auto) > 1e-12 * Math.max(1, auto)
+  }))
   front.end = posed.ends
   return open(JSON.stringify(file)).in(FRONT)
 }

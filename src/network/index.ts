@@ -112,10 +112,17 @@ export interface Changes {
   /** Points and lines this edit created (pen, split, unbind, insert): the structural record is complete (dot 1791649528). */
   addedPoints: Id[]
   addedLines: Id[]
+  /**
+   * Pairs of lines an operation connected as one continuing line, reported in the step that
+   * connects them (docs/j1-joins-checklist.md §2, dot 1791809002): a new line from or onto a
+   * point that carried exactly one line end, a bind of two points that each carried one, a
+   * split's two pieces. The network only reports; joins decides what that means.
+   */
+  connected: { point: Id; lines: [Id, Id] }[]
 }
 
 export const emptyChanges = (): Changes => ({
-  replaced: [], deletedLines: [], collapsedLines: [], deletedPoints: [], merged: [], unbound: [], targets: [], held: [], prefer: [], touched: [], relocated: [], handleTips: [], appliedLocks: [], addedPoints: [], addedLines: [],
+  replaced: [], deletedLines: [], collapsedLines: [], deletedPoints: [], merged: [], unbound: [], targets: [], held: [], prefer: [], touched: [], relocated: [], handleTips: [], appliedLocks: [], addedPoints: [], addedLines: [], connected: [],
 })
 
 /** A new drawing with one empty shape layer, and a handle bound to it. */
@@ -799,8 +806,15 @@ export function addLine(n: NetworkState, ch: Changes, id: Id, aSpec: EndSpec, bS
   // the drawn shape in every view layer (architecture §1): the handles as drawn, the default stroke
   const shape = { ha: hIn?.ha ?? { x: d.x / 3, y: d.y / 3 }, hb: hIn?.hb ?? { x: -d.x / 3, y: -d.y / 3 }, stroke: DEFAULT_STROKE }
   for (const key of keys(n)) shapes.putLine(SH(n), key, id, shape)
+  // an existing end point that carried exactly one line end: the new line continues that line
+  const continued = [aSpec, bSpec].flatMap(spec => {
+    if (typeof spec !== 'string') return []
+    const at = linesAt(n, spec)
+    return at.length === 1 ? [{ point: spec, lines: [at[0]!.line.id, id] as [Id, Id] }] : []
+  })
   S(n).lines.push({ id, a, b, state: { ...DEFAULT_STATE } })
   ch.addedLines.push(id)
+  ch.connected.push(...continued)
 }
 
 /** Drag points to targets. These points count as directly acted on (last target per point wins). */
@@ -857,6 +871,7 @@ export function splitLine(n: NetworkState, ch: Changes, lineId: Id, t: number, m
   all.splice(all.indexOf(l), 1, { id: first, a: l.a, b: mid, state: { ...l.state } }, { id: second, a: mid, b: l.b, state: { ...l.state } })
   ch.addedLines.push(first, second)
   ch.replaced.push({ line: lineId, a: l.a, b: l.b, mid, pieces: [first, second], t })
+  ch.connected.push({ point: mid, lines: [first, second] })
 }
 
 /** Delete removes the line; an endpoint left with no line is removed at commit (removeIsolated). */
@@ -878,6 +893,9 @@ export function bind(n: NetworkState, ch: Changes, keep: Id, remove: Id) {
   const pk = rawPoint(n, keep), pr = rawPoint(n, remove)
   if (pk.layer !== pr.layer) throw new Error('Binding is within one layer; use an endpoint link across layers')
   ch.prefer.push({ lines: linesAt(n, keep).map(e => e.line.id) })
+  // two free ends (one line end at each point, two different lines) become one continuing line
+  const atKeep = linesAt(n, keep), atRemove = linesAt(n, remove)
+  const freeEnds = atKeep.length === 1 && atRemove.length === 1 && atKeep[0]!.line.id !== atRemove[0]!.line.id
   const collapsed: Id[] = []
   for (const l of S(n).lines) {
     if (l.a !== remove && l.b !== remove) continue
@@ -892,6 +910,7 @@ export function bind(n: NetworkState, ch: Changes, keep: Id, remove: Id) {
   ch.collapsedLines.push(...collapsed)
   ch.deletedPoints.push(remove)
   ch.merged.push({ keep, remove })
+  if (freeEnds) ch.connected.push({ point: keep, lines: [atKeep[0]!.line.id, atRemove[0]!.line.id] })
 }
 
 /**

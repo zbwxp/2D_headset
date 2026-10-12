@@ -90,7 +90,7 @@ describe('structural changes carry each view\'s values', () => {
     expect(radiusAt(d, SIDE, 'b')).toBe(3)
   })
 
-  it('an unbind that takes both lines moves the row with each view\'s radius; a bind drops the removed point\'s joins', () => {
+  it('an unbind that takes both lines moves the row with each view\'s radius; a bind moves the removed point\'s joins with each view\'s radius', () => {
     const d = corner()
     d.edit(e => e.line('bd', 'b', { id: 'dd', layer: 'L', position: P(20) }))
     d.edit(e => e.join('b', 'ab', 'bc', { mode: 'arc', radius: 1 }))
@@ -99,11 +99,11 @@ describe('structural changes carry each view\'s values', () => {
     expect(radiusAt(d, FRONT, 'b2')).toBe(1)
     expect(radiusAt(d, SIDE, 'b2')).toBe(3)
     expect(radiusAt(d, SIDE, 'b')).toBeUndefined()
-    // binding b2 into dd's end point b: b2 is kept, so its row stays; binding the other way drops it
+    // binding b into another point x: the removed point's row moves to x, each view's radius with it (principle §2.1)
     const e2 = corner()
     e2.edit(e => { e.line('xy', { id: 'x', layer: 'L', position: P(40) }, { id: 'y', layer: 'L', position: P(50) }); e.join('b', 'ab', 'bc', { mode: 'arc', radius: 2 }) })
     e2.edit(e => e.bind('x', 'b'))
-    for (const k of e2.views()) expect(e2.in(k).snapshot().joins).toEqual([])
+    for (const k of e2.views()) expect(e2.in(k).snapshot().joins).toEqual([{ point: 'x', lines: ['ab', 'bc'], mode: 'arc', radius: 2 }])
   })
 })
 

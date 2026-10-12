@@ -236,12 +236,12 @@ describe('graph rules added by Claude', () => {
     expect(d.snapshot().points.find(p => p.id === 'c')!.links).toEqual([])
   })
 
-  it('binding drops the removed point’s joins; the kept point’s joins stay', () => {
+  it('binding keeps the removed point’s joins: they move to the kept point, below its own (docs/ink-joins-principle.md §2.1)', () => {
     const d = graph([['pa', 'p', 'a'], ['pb', 'p', 'b'], ['qc', 'q', 'c'], ['qd', 'q', 'd']],
       { p: P(0), a: P(-5, 0), b: P(5, 1), q: P(0, 10), c: P(-5, 10), d: P(5, 11) })
     d.edit(e => { e.join('p', 'pa', 'pb', { mode: 'cusp' }); e.join('q', 'qc', 'qd', { mode: 'cusp' }) })
     d.edit(e => e.bind('p', 'q'))
-    expect(d.snapshot().joins).toEqual([{ point: 'p', lines: ['pa', 'pb'], mode: 'cusp' }])
+    expect(d.snapshot().joins).toEqual([{ point: 'p', lines: ['pa', 'pb'], mode: 'cusp' }, { point: 'p', lines: ['qc', 'qd'], mode: 'cusp' }])
   })
 
   it('a new fill goes on top; clearing a fill keeps the loop discoverable', () => {
