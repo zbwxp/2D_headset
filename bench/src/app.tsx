@@ -926,7 +926,7 @@ export function App() {
           {/* a field only (bowen 1791769257); "Set width" still applies it to the selected lines (dot 1791769298) */}
           <Slider label="width" value={width} identity="stroke-width" accept={v => v > 0} track={null} steps={{ step: 1, long: 10, short: 0.1 }}
             fieldAttrs={{ 'data-testid': 'width' }} {...sliderHooks} onPreview={() => {}} onCommit={v => setWidth(v)} onCancel={() => {}} />
-          {B('Set width', () => (selLines.length ? run(x => selLines.forEach(l => x.lineStroke(l, { ...line(l).stroke, width }))) : (note('Set width: no line is selected — select lines first, or set a line\'s width in its properties'), bump())))}
+          {B('Set width', () => (selLines.length ? run(x => selLines.forEach(l => x.lineStroke(l, { profile: line(l).stroke.profile, width }))) : (note('Set width: no line is selected — select lines first, or set a line\'s width in its properties'), bump())))}
           {B('Broadcast stroke', () => ix.broadcastStroke(), 'this view\'s width, profile and end strokes of the selected lines → every other view')}
         </div>
         {/* stage 2: shapes between views (front → others), separate from the stroke broadcast above */}
@@ -1104,7 +1104,7 @@ export function App() {
               one box, one extent (dot 1791737043, 1791737260): where the selection box is drawn (V / A) it is that box; elsewhere
               (another tool, Move picture) the same frame — core's bounds of what a transform moves — without handles */}
           {!pose && g.lines.filter(G => selLines.includes(G.id)).map(G => <path key={'halo' + G.id} d={path(G.curve)} fill="none" stroke="#2a7fff" strokeOpacity={0.3}
-            strokeWidth={line(G.id).stroke.width + 8 * px} strokeLinecap="round" />)}
+            strokeWidth={Math.max(line(G.id).stroke.width, line(G.id).stroke.widthB ?? 0) + 8 * px} strokeLinecap="round" />)}
           {!pose && !boxShown && (() => {
             const units = sel.filter(u => u.kind === 'line' || u.kind === 'point' || u.kind === 'handle'), b = units.length ? core.in(shown).selectionBounds(units) : null
             return b && <rect data-selection-outline="" x={b.min.x} y={b.min.y} width={b.max.x - b.min.x} height={b.max.y - b.min.y}
@@ -1147,7 +1147,7 @@ export function App() {
                   const d = loopsD(piece.loops)
                   return <g key={G.id}><path data-ink={l.id} d={d} fill={stroke} fillRule="nonzero" stroke="none" />{defectMark(l.id, d, inkDefects.get(l.id))}</g>
                 }
-                return <path key={G.id} d={path(G.curve)} fill="none" stroke={stroke} strokeWidth={l.stroke.width}
+                return <path key={G.id} d={path(G.curve)} fill="none" stroke={stroke} strokeWidth={(l.stroke.width + (l.stroke.widthB ?? l.stroke.width)) / 2}
                   strokeDasharray={l.state.visible ? undefined : `${4 * px} ${4 * px}`} opacity={l.state.visible ? 1 : 0.35} strokeLinecap="round" />
               })}
             </>

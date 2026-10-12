@@ -14,7 +14,7 @@ export type Id = string
 /** view: an editable view; expression: an editable expression shape; record: a hidden baseline. */
 export type LayerKind = 'view' | 'expression' | 'record'
 export const KINDS: readonly LayerKind[] = Object.freeze(['view', 'expression', 'record'])
-export interface Stroke { readonly width: number; readonly profile: string }
+export interface Stroke { readonly width: number; readonly widthB?: number; readonly profile: string }
 export interface LineShape { readonly ha: Vec; readonly hb: Vec; readonly stroke: Stroke }
 /**
  * `copyNew`: a non-view layer whose owner has declared that new geometry (a new line's new
@@ -59,7 +59,9 @@ function vecIn(v: Vec): Vec {
 }
 function strokeIn(s: Stroke): Mutable<Stroke> {
   if (!s || !(s.width > 0) || !Number.isFinite(s.width)) throw new Error('Stroke width must be a positive number')
-  return { width: s.width, profile: String(s.profile) }
+  if (s.widthB !== undefined && !(s.widthB > 0 && Number.isFinite(s.widthB))) throw new Error('Stroke end width must be a positive number')
+  // one form per content: the b-end width only when it differs (two end widths, bowen 1791818995)
+  return s.widthB !== undefined && s.widthB !== s.width ? { width: s.width, widthB: s.widthB, profile: String(s.profile) } : { width: s.width, profile: String(s.profile) }
 }
 const vecOut = (v: Vec): Vec => Object.freeze({ x: v.x, y: v.y })
 
@@ -221,7 +223,10 @@ export function restore(v: unknown, ids: { points: readonly Id[]; lines: readonl
       const width = num(k.width, `line ${id} stroke width in ${L.key}`)
       if (!(width > 0)) fail(`line ${id} has a stroke width that is not positive in ${L.key}`)
       if (typeof k.profile !== 'string') fail(`line ${id} stroke profile in ${L.key} is not text`)
-      put(lines, id, { ha: vec(s.ha, `line ${id} ha in ${L.key}`), hb: vec(s.hb, `line ${id} hb in ${L.key}`), stroke: { width, profile: k.profile } })
+      const widthB = k.widthB === undefined ? undefined : num(k.widthB, `line ${id} stroke end width in ${L.key}`)
+      if (widthB !== undefined && !(widthB > 0)) fail(`line ${id} has a stroke end width that is not positive in ${L.key}`)
+      if (widthB === width) fail(`line ${id} stores an end width equal to its width in ${L.key} (one form per content)`)
+      put(lines, id, { ha: vec(s.ha, `line ${id} ha in ${L.key}`), hb: vec(s.hb, `line ${id} hb in ${L.key}`), stroke: widthB === undefined ? { width, profile: k.profile } : { width, widthB, profile: k.profile } })
     }
     if (Object.keys(P).length !== ids.points.length) fail(`shape layer ${L.key} has positions for points that do not exist`)
     if (Object.keys(Ls).length !== ids.lines.length) fail(`shape layer ${L.key} has shapes for lines that do not exist`)

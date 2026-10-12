@@ -193,7 +193,8 @@ export function mirrorApply(s: ApplyState, d: Doc, ch: net.Changes, source: read
     const ha = reflectOffset(line.ha), hb = reflectOffset(line.hb)
     net.moveHandle(n, ch, to.to, 'a', to.reversed ? hb : ha)
     net.moveHandle(n, ch, to.to, 'b', to.reversed ? ha : hb)
-    net.setLineStroke(n, to.to, line.stroke)
+    // a reversed pair swaps a and b: the two end widths follow their ends (dot 1791819133)
+    net.setLineStroke(n, to.to, to.reversed && line.stroke.widthB !== undefined ? { ...line.stroke, width: line.stroke.widthB, widthB: line.stroke.width } : line.stroke)
     net.applyLineState(n, ch, to.to, line.state)
   }
   for (const { tp, stroke } of endData) {

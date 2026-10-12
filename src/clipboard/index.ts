@@ -72,7 +72,7 @@ export function check(v: unknown): Clip {
     const lp = d.arr(L.points, `clip shape layer ${key} points`).map((y, k) => { const P = d.obj(y, `clip shape layer ${key} point ${k}`); return { id: d.str(P.id, `clip shape layer ${key} point ${k} id`), position: d.vec(P.position, `clip shape layer ${key} point ${k} position`) } })
     const ll = d.arr(L.lines, `clip shape layer ${key} lines`).map((y, k) => {
       const S = d.obj(y, `clip shape layer ${key} line ${k}`), id = d.str(S.id, `clip shape layer ${key} line ${k} id`), sk = d.obj(S.stroke, `clip shape layer ${key} line ${id} stroke`)
-      return { id, ha: d.vec(S.ha, `clip shape layer ${key} line ${id} ha`), hb: d.vec(S.hb, `clip shape layer ${key} line ${id} hb`), stroke: { width: d.num(sk.width, `clip shape layer ${key} line ${id} stroke width`), profile: d.str(sk.profile, `clip shape layer ${key} line ${id} stroke profile`) } }
+      return { id, ha: d.vec(S.ha, `clip shape layer ${key} line ${id} ha`), hb: d.vec(S.hb, `clip shape layer ${key} line ${id} hb`), stroke: { width: d.num(sk.width, `clip shape layer ${key} line ${id} stroke width`), ...(sk.widthB === undefined ? {} : { widthB: d.num(sk.widthB, `clip shape layer ${key} line ${id} stroke end width`) }), profile: d.str(sk.profile, `clip shape layer ${key} line ${id} stroke profile`) } }
     })
     d.unique(lp.map(p => p.id), `clip shape layer ${key} point`); d.unique(ll.map(l => l.id), `clip shape layer ${key} line`)
     if (lp.length !== pointIds.size || lp.some(p => !pointIds.has(p.id))) d.fail(`clip shape layer ${key} does not hold exactly the clip's points`)

@@ -7,7 +7,7 @@ import { type Vec } from '../geometry'
 
 type Id = string
 /** A line's stroke, as a view stores it. */
-export interface Stroke { readonly width: number; readonly profile: string }
+export interface Stroke { readonly width: number; readonly widthB?: number; readonly profile: string }
 /** A point's end stroke, as a view stores it: an open dictionary. */
 export type EndStroke = Readonly<Record<string, number | string>>
 

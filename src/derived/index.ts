@@ -63,9 +63,11 @@ export function derive(n: net.NetworkState, j: joins.JoinsState, f: fills.FillsS
 /** The joins' zones in the view `n` is bound to. */
 export function zones(n: net.NetworkState, j: joins.JoinsState): Zones {
   const o = outline(n, j)
-  const width = (id: Id) => net.line(n, id).stroke.width, drawnLength = (id: Id) => arcLength(o.drawn.get(id)!)
+  // each line's width at the joint (two end widths, bowen 1791818995)
+  const width = (id: Id, point: Id) => { const l = net.line(n, id); return net.widthAt(l.stroke, l.a === point ? 'a' : 'b') }
+  const drawnLength = (id: Id) => arcLength(o.drawn.get(id)!)
   return joins.rows(j, n).map(r => {
-    const desired = r.zone ?? joins.autoZone(width(r.lines[0]), width(r.lines[1]))
+    const desired = r.zone ?? joins.autoZone(width(r.lines[0], r.point), width(r.lines[1], r.point))
     const side = Math.min(drawnLength(r.lines[0]), drawnLength(r.lines[1])) / 3
     const arc = r.mode === 'arc' ? o.arcByKey.get(arcKey(r.point, r.lines)) : undefined
     const A = arc ? arcLength(arc.curve) : 0

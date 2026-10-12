@@ -274,6 +274,45 @@ describe('smooth joins — one outline; unequal widths ease to the average at th
   })
 })
 
+describe('two end widths (bowen 1791818995): a line tapers linearly from its a-end width to its b-end width', () => {
+  const across = (loops: readonly (readonly Vec[])[], x: number) => { const ys = loops.flatMap(l => l.flatMap((a, i) => { const b = l[(i + 1) % l.length]!; return (a.x - x) * (b.x - x) <= 0 && a.x !== b.x ? [a.y + (b.y - a.y) * (x - a.x) / (b.x - a.x)] : [] })); return Math.max(...ys) - Math.min(...ys) }
+  it('one line 4 → 1: the width linear along it, round free ends of the two radii', () => {
+    const d = new Core()
+    d.edit(e => { e.layer('L'); sk(e).point('a', 'L', P(0)); sk(e).point('b', 'L', P(60)); sk(e).line('l', 'a', 'b'); e.lineStroke('l', { width: 4, widthB: 1, profile: 'uniform' } as never) })
+    const ink = build(d.geometry(), d.snapshot()), l = ink.pieces.find(p => p.source.id === 'l')!
+    for (const x of [6, 30, 54]) expect(across(l.loops, x)).toBeCloseTo(4 - 3 * x / 60, 1)
+    expect(Math.min(...l.loops.flat().map(v => v.x))).toBeCloseTo(-2, 1)
+    expect(Math.max(...l.loops.flat().map(v => v.x))).toBeCloseTo(60.5, 1)
+    expect(ink.diagnostics.every(x => x.status === 'unproven')).toBe(true)
+  })
+  it('a joint\'s easing returns to the line\'s own taper at the zone\'s exit (dot 1791819133): l0 4 → 1 meets l1 at 3', () => {
+    const d = new Core()
+    d.edit(e => {
+      e.layer('L'); sk(e).point('a', 'L', P(0)); sk(e).point('p', 'L', P(30)); sk(e).point('c', 'L', P(60))
+      sk(e).line('l0', 'a', 'p'); sk(e).line('l1', 'p', 'c')
+      e.lineStroke('l0', { width: 4, widthB: 1, profile: 'uniform' } as never); e.lineStroke('l1', { width: 3, profile: 'uniform' } as never)
+      e.join('p', 'l0', 'l1', { mode: 'bound' })
+    })
+    const l0 = build(d.geometry(), d.snapshot()).pieces.find(p => p.source.id === 'l0')!
+    // no zones given: λ = min(3 × 3, 30 / 3) = 9; beyond it the taper itself, at the joint the average 2
+    expect(across(l0.loops, 20)).toBeCloseTo(4 - 3 * 20 / 30, 1)
+    expect(across(l0.loops, 29.9)).toBeCloseTo(2, 1)
+  })
+  it('a bound chain whose widths match at the joint (2 → 4, 4 → 1) is one stroke, no easing at the joint', () => {
+    const d = new Core()
+    d.edit(e => {
+      e.layer('L'); sk(e).point('a', 'L', P(0)); sk(e).point('p', 'L', P(30)); sk(e).point('c', 'L', P(60))
+      sk(e).line('l0', 'a', 'p'); sk(e).line('l1', 'p', 'c')
+      e.lineStroke('l0', { width: 2, widthB: 4, profile: 'uniform' } as never); e.lineStroke('l1', { width: 4, widthB: 1, profile: 'uniform' } as never)
+      e.join('p', 'l0', 'l1', { mode: 'bound' })
+    })
+    const ink = build(d.geometry(), d.snapshot()), g = ink.groups[0]!
+    expect(ink.groups.length).toBe(1)
+    expect(g.loops.length).toBe(1)
+    for (const [x, w] of [[15, 3], [29, 4 - 2 / 30], [31, 4 - 3 / 30], [45, 2.5]] as const) expect(across(g.loops, x)).toBeCloseTo(w, 1)
+  })
+})
+
 describe('sharp (cusp) joins — the lines\' ink plus v103\'s tip (Slack 1791804643, dot 1791804679)', () => {
   /** Two lines meeting at p = (0, 0): l0 from (−50, 0) into p, l1 from p out at the interior angle θ (degrees). */
   const corner = (theta: number, w0: number, w1: number) => {

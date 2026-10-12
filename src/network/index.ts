@@ -31,8 +31,11 @@ export type End = 'a' | 'b'
 export interface Point { readonly id: Id; readonly layer: Id; readonly position: Vec }
 /** The state every drawable element (line, fill) carries (bowen 1791433646). */
 export interface ElementState { readonly visible: boolean; readonly locked: boolean }
-/** A line's own stroke (bowen 1791434322: width lives on each line). */
-export interface Stroke { readonly width: number; readonly profile: string }
+/** A line's own stroke (bowen 1791434322: width lives on each line): `width` at its a end (起点), `widthB` at its b
+ *  end (终点) — absent when equal (bowen 1791818995: two end widths; equal = a uniform width). */
+export interface Stroke { readonly width: number; readonly widthB?: number; readonly profile: string }
+/** A stroke's width at one end of its line. */
+export const widthAt = (s: Stroke, end: End): number => (end === 'b' && s.widthB !== undefined ? s.widthB : s.width)
 export interface Line {
   readonly id: Id; readonly a: Id; readonly b: Id; readonly ha: Vec; readonly hb: Vec
   readonly state: ElementState; readonly stroke: Stroke
@@ -850,6 +853,17 @@ export function setHandles(n: NetworkState, updates: { line: Id; end: End; offse
 
 /** Split / add point: one line becomes two lines meeting at a new point. */
 /** `read`: where the curve is read from (the edit so far as settled, docs/edit-model.md); written into `n`. */
+/** A cubic's length by 256 chords (the split's width only — the ink measures its own). */
+function chordLength(c: readonly Vec[]): number {
+  let L = 0, prev = c[0]!
+  for (let i = 1; i <= 256; i++) {
+    const t = i / 256, u = 1 - t
+    const p = { x: u * u * u * c[0]!.x + 3 * u * u * t * c[1]!.x + 3 * u * t * t * c[2]!.x + t * t * t * c[3]!.x, y: u * u * u * c[0]!.y + 3 * u * u * t * c[1]!.y + 3 * u * t * t * c[2]!.y + t * t * t * c[3]!.y }
+    L += Math.hypot(p.x - prev.x, p.y - prev.y); prev = p
+  }
+  return L
+}
+
 export function splitLine(n: NetworkState, ch: Changes, lineId: Id, t: number, mid: Id, first: Id, second: Id, read: NetworkState = n) {
   if (!(t > 0 && t < 1)) throw new Error('Split parameter must be inside the line')
   if (first === second) throw new Error('The two pieces need different ids')
@@ -857,15 +871,20 @@ export function splitLine(n: NetworkState, ch: Changes, lineId: Id, t: number, m
   // every layer splits its own curve at the same t (a proposal, Claude 1791652727): no layer's drawing changes
   const pieces = new Map(keys(n).map(key => {
     const h = of(read, key)
-    return [key, { halves: split(curve(h, lineId), t), stroke: shapeOf(h, lineId).stroke }] as const
+    const halves = split(curve(h, lineId), t), stroke = shapeOf(h, lineId).stroke
+    // two end widths (dot 1791819133): both halves take the width at the cut — linear in arc length along this layer's
+    // own curve — so the split line draws as before
+    if (stroke.widthB === undefined) return [key, { halves, strokes: [stroke, stroke] }] as const
+    const f = chordLength(halves[0]) / (chordLength(halves[0]) + chordLength(halves[1]) || 1), w = stroke.width + (stroke.widthB - stroke.width) * f
+    return [key, { halves, strokes: [{ ...stroke, widthB: w }, { ...stroke, width: w }] }] as const
   }))
   claimLine(n, first)
   claimLine(n, second)
   addPoint(n, ch, mid, rawPoint(n, l.a).layer, key => pieces.get(key)!.halves[0][3])
   shapes.removeLine(SH(n), lineId)
-  for (const [key, { halves: [c1, c2], stroke }] of pieces) {
-    shapes.putLine(SH(n), key, first, { ha: sub(c1[1], c1[0]), hb: sub(c1[2], c1[3]), stroke })
-    shapes.putLine(SH(n), key, second, { ha: sub(c2[1], c2[0]), hb: sub(c2[2], c2[3]), stroke })
+  for (const [key, { halves: [c1, c2], strokes: [s1, s2] }] of pieces) {
+    shapes.putLine(SH(n), key, first, { ha: sub(c1[1], c1[0]), hb: sub(c1[2], c1[3]), stroke: s1 })
+    shapes.putLine(SH(n), key, second, { ha: sub(c2[1], c2[0]), hb: sub(c2[2], c2[3]), stroke: s2 })
   }
   const all = S(n).lines
   all.splice(all.indexOf(l), 1, { id: first, a: l.a, b: mid, state: { ...l.state } }, { id: second, a: mid, b: l.b, state: { ...l.state } })

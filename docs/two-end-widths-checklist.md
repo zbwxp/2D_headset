@@ -10,11 +10,17 @@ uniform width, different → one end thick, one end thin (a pressure-pen stroke)
   reused, no second set — `endStroke.taper` stays the free-end stroke, not touched here).
 - `widthAt(stroke, 'a' | 'b')` in core; every reader of a line's width **at a point** uses it: the zones (derived
   `zones`, document 939 / 969 — the automatic zone from the two widths at the joint), the ink's joins.
-- Archive VERSION 8: `widthB` accepted (positive, finite); a v7 file opens unchanged (no `widthB` = uniform). Clipboard
-  carries it. Playback: strokes come whole from the dominant view, as today (`appearance`).
+- Archive stays VERSION 7 (an optional field; a file without `widthB` opens unchanged — no migration needed, so no
+  version exception to ask for): `widthB` accepted when positive, finite and different from `width`. Clipboard carries it. Playback: strokes come whole from the dominant view, as today (`appearance`).
 - `lineStroke(id, { width, widthB?, profile })` sets both; the bench's "Set width" sets a uniform width (drops `widthB`).
 
+- **Split** (dot 1791819133 / 1791819173): both halves take the width at the cut — linear in arc length along each
+  view's own curve — so the split line draws as before (`network.splitLine` copied one stroke to both halves).
+- **Mirror apply** onto a line matched reversed: the two end widths swap with their ends (`apply` swapped the handles
+  only); a coordinate-only mirror (Flip) swaps nothing.
+
 ## 2. Ink
+- A joint's easing returns to the line's own tapered width at the zone's exit (dot 1791819133), not to an end value.
 - A line's half-width along its arc length s ∈ [0, L]: **linear** from w_a / 2 to w_b / 2 (a pressure taper; easy to
   switch to a smooth curve after the look). The joins' easing and the cusp's flat ends work on top of it, from the
   width each line has **at the joint** (the S-curve blends the two lines' widths at the shared point when they differ).

@@ -936,7 +936,7 @@ function modelOf(s: State): evaluate.Model {
         // every join's effective zone in this view — the manual value, else the automatic one from this view's widths —
         // so playback blends real lengths and never an absent one as 0 (dot 1791812073, bowen 1791811981)
         zones: Object.fromEntries(joins.rows(s.joins, n).map(r => {
-          const width = (id: Id) => net.line(n, id).stroke.width
+          const width = (id: Id) => { const l = net.line(n, id); return net.widthAt(l.stroke, l.a === r.point ? 'a' : 'b') }
           return [joins.rowKey(r.point, r.lines[0], r.lines[1]), r.zone ?? joins.autoZone(width(r.lines[0]), width(r.lines[1]))]
         })),
         // stored end strokes hold no undefined values (setEndStroke drops them); the type allows them, evaluate's does not
@@ -966,7 +966,8 @@ function posedState(s: State, posed: evaluate.Posed): { state: State; layer: str
     if (r.mode === 'arc') joins.setRadiusHere(c.joins, n, r.point, r.lines[0], r.lines[1], Object.hasOwn(posed.radii, key) ? posed.radii[key]! : NaN)
     // a posed zone equal to the automatic length of the posed widths reads as automatic, so a view is reproduced exactly
     const z = Object.hasOwn(posed.zones, key) ? posed.zones[key]! : undefined
-    const auto = joins.autoZone(posed.lines[r.lines[0]]!.stroke.width, posed.lines[r.lines[1]]!.stroke.width)
+    const at = (id: Id) => net.widthAt(posed.lines[id]!.stroke, net.line(n, id).a === r.point ? 'a' : 'b')
+    const auto = joins.autoZone(at(r.lines[0]), at(r.lines[1]))
     joins.setZoneHere(c.joins, n, r.point, r.lines[0], r.lines[1], z === undefined || Math.abs(z - auto) <= 1e-12 * Math.max(1, auto) ? null : z)
   }
   for (const p of net.points(n)) {

@@ -213,7 +213,7 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId, o
                   <Rename name={l.name} fieldStyle={field} onRename={n => run(x => x.renameLine(id, n))} title="点击选中这条线（Shift 连选 · Cmd 增减）· 双击改名"
                     style={{ cursor: 'pointer', color: selLines.has(id) ? '#8fb4ff' : undefined }}
                     onClick={e => pickRows(gr.lines.map(x => ({ id: x, lines: [x] })), id, e, L.id, 'line')} />
-                  <span style={{ color: C.dim, flex: 'none', fontSize: 11 }} title="线宽 · 两端（相接方式或开放端点的笔触）">w{l.stroke.width} {ends(l).join(' ')}</span>
+                  <span style={{ color: C.dim, flex: 'none', fontSize: 11 }} title="线宽（起点→终点）· 两端（相接方式或开放端点的笔触）">w{l.stroke.width}{l.stroke.widthB === undefined ? '' : `→${l.stroke.widthB}`} {ends(l).join(' ')}</span>
                   {paired.has(id) && <Icon d={MIRROR} title="镜像联动" />}
                 </div>
               })}
