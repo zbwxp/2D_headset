@@ -130,6 +130,11 @@ rows.forEach(([deg, bend], r) => cols.forEach(([k0, k1, k], c) => {
   // the strip narrows to nothing at the cut (tangent there by design), thinner than the extractor's 1e-5 side offset, so
   // the predicate extraction left an open chain in three 1:3 cells (the known limit, outline.mjs)
   const strip = [...Wo.I.slice(0, zW + 1), ...Wn.I.slice(0, zN + 1).reverse()], removed = Math.abs(area(strip))
+  // the strip equals the ink actually removed only if no other ink covers it (dot 1791787928): points inside the strip —
+  // at each sample between the two inner edges, at 1/4, 1/2 and 3/4 of the way — tested against the final ink
+  const finalInk = inkOf(pieces)
+  let stripHits = 0, probes = 0
+  for (let i = 1; i < Math.min(zW, zN); i++) for (const w of [0.25, 0.5, 0.75]) { if (len(sub(Wo.I[i], Wn.I[i])) < 1e-4) continue; probes++; if (finalInk(add(mul(Wn.I[i], 1 - w), mul(Wo.I[i], w)))) stripHits++ }
   const rot = rr => P => { const v = sub(P, p); return add(p, [v[0] * Math.cos(rr) - v[1] * Math.sin(rr), v[0] * Math.sin(rr) + v[1] * Math.cos(rr)]) }
   const rotO = rr => P => [P[0] * Math.cos(rr) - P[1] * Math.sin(rr), P[0] * Math.sin(rr) + P[1] * Math.cos(rr)]
   const rotBad = [0.37, 0.63, 1.1, 1.9, 2.71, 4.4].flatMap(rr => [['', rot(rr)], ['O', rotO(rr)]].filter(([, fn]) => { const q = pieces.map(x => x.map(fn)), w = regionOutline(q, inkOf(q)), t = topology(w); return !(t.loops === topo.loops && t.holes === topo.holes && !w.openChains.length && !w.badVertices) }).map(([tag]) => tag + rr))
@@ -140,13 +145,13 @@ rows.forEach(([deg, bend], r) => cols.forEach(([k0, k1, k], c) => {
     `h_in(0) ${hJ.toFixed(4)}, h_in′(0) ${m0.toFixed(4)}`, `direction −E′(0)·τ_J ${dot(mul(Ep0, -1), tauJ).toFixed(4)}${dirOK ? '' : ' WRONG'}`,
     `h_in within its end values: ${within ? 'yes' : 'NO'}`, `samples outside T: ${samplesOut ? 'yes' : 'NO'}`, `segment crossings with T ${segHits}`, `folds ${folds}`,
     `J on the outline: ${onOutline(J) ? 'yes' : 'NO'}`, turnJ !== null ? `sampled turn at J ${turnJ.toFixed(3)}°` : 'J inside an outline sub-edge', `sampled turn at the cut ${turnCut.toFixed(3)}°`,
-    `hump ${hump.toFixed(3)}`, `removed ${removed.toFixed(3)} (within ℓ)`, `loops ${topo.loops}, holes ${topo.holes} (input alone ${input.loops}, ${input.holes})`, `open ${u.openChains.length}`, `bad ${u.badVertices}`, `crossings ${crossings}`,
+    `hump ${hump.toFixed(3)}`, `removed ${removed.toFixed(3)} (within ℓ)`, `strip probes covered by other ink ${stripHits}/${probes}`, `loops ${topo.loops}, holes ${topo.holes} (input alone ${input.loops}, ${input.holes})`, `open ${u.openChains.length}`, `bad ${u.badVertices}`, `crossings ${crossings}`,
     `tip ${tipReach.toFixed(1)} / ${limit}`, `rotations ${rotBad.length ? 'FAIL ' + rotBad.join(',') : 'ok ×12'}`].join(' · ')
   const marks = { loops: u.loops, openChains: u.openChains, removed: [strip], cut: [Wn.O[zN], Wn.I[zN]], J, p }
   if (deg === 2 && bend > 0 && k0 === 1 && k1 === 3) focus = { ...marks, label: `${deg}°, W bends +7, ${k0}:${k1}, k = ${k}` }
   body += drawFitted(marks, ox + 8, oy + 22, cell - 22, cell * 0.38)
   body += `<text x="${ox + 6}" y="${oy + 14}" font-size="9" fill="${covered ? '#363' : '#e00'}">${label}</text>`
-  body += readingLines(ox + 6, oy + cell * 0.38 + 40, note, { maxChars: 56, fill: /FAIL|NOT|NO\b|WRONG|OUTSIDE|open [1-9]|bad [1-9]|· crossings [1-9]|crossings with T [1-9]|folds [1-9]/.test(note) ? '#e00' : '#555' })
+  body += readingLines(ox + 6, oy + cell * 0.38 + 40, note, { maxChars: 56, fill: /FAIL|NOT|NO\b|WRONG|OUTSIDE|open [1-9]|bad [1-9]|· crossings [1-9]|crossings with T [1-9]|covered by other ink [1-9]|folds [1-9]/.test(note) ? '#e00' : '#555' })
   body += cellFrame
 }))
 function drawFitted(m, x, y, w, h) {
