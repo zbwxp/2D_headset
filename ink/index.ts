@@ -435,28 +435,33 @@ function taperedSweep(source: InkSource, curve: Cubic, pr: Profile, opts: InkOpt
  * A sharp (cusp) joint at p between a line arriving along u0 (unit, into p) and one leaving along u1 (Slack 1791804643,
  * dot 1791804679). The tip is v103's `cuspCorner` (7205381, inkJoin.ts:11–23): the quadrilateral [p, A0, p + tip, A1],
  * A_i = p + the outer offset of line i, tip = the meeting point of the two outer edges extended forward, shortened to
- * 2 × (h0 + h1) · smoothstep(θ / 30°) — twice the average width at 30° and above, shrinking to 0 at 0° (bowen
- * 1791817399 / 1791817869; v103: 5 ×) — when longer, never inside the bevel A0–A1 (straight sides, the apex kept pointed). Only that tip comes from v103 — the ink is the two lines' own ink, their ends at p drawn flat (J3-min,
+ * (h0 + h1) · (3 − smoothstep(θ / 30°)) — twice the average width at 30° and above, three times at 0° (bowen
+ * 1791817399 / 1791818040; v103: 5 ×) — when longer, never inside the bevel A0–A1 (straight sides, the apex kept pointed). Only that tip comes from v103 — the ink is the two lines' own ink, their ends at p drawn flat (J3-min,
  * `Flat`), plus this tip, not v103's whole outline.
  * - 'ease' (O3): the forward extensions do not meet — decided on both extension parameters, not on the miter's
  *   direction — or the lines run straight on with unequal widths: the widths ease to the average (as a smooth join).
- * - 'pinch' (0°, folding back): v103's pinch, the width eased to 0 at p; no tip.
+ * - folding back (0°): the limit of the tip as θ → 0 — a spike of 3 × the average width straight ahead of p, between the
+ *   lines' two outer edges (bowen 1791818040 replaces v103's pinch, which jumped from a long tip to none).
  * - 'none': straight on, equal widths.
  * - I2b — the wider line's end showing past the thinner one near the tip (h_w·cos θ > h_t) — is known and not handled
  *   yet: it is flagged on the tip, not left for the self-crossing or band checks to find.
  */
-export function cuspTip(p: Vec, u0: Vec, u1: Vec, h0: number, h1: number): { kind: 'tip'; polygon: Vec[]; h0: number; h1: number; i2b: boolean } | { kind: 'ease' | 'pinch' | 'none' } {
+export function cuspTip(p: Vec, u0: Vec, u1: Vec, h0: number, h1: number): { kind: 'tip'; polygon: Vec[]; h0: number; h1: number; i2b: boolean } | { kind: 'ease' | 'none' } {
   const dot = u0.x * u1.x + u0.y * u1.y, turn = u0.x * u1.y - u0.y * u1.x
-  if (1 + dot < 1e-10) return { kind: 'pinch' }
+  if (1 + dot < 1e-10) {
+    const n = { x: -u0.y, y: u0.x }, L = 3 * (h0 + h1)
+    return { kind: 'tip', polygon: [p, { x: p.x + n.x * h0, y: p.y + n.y * h0 }, { x: p.x + u0.x * L, y: p.y + u0.y * L }, { x: p.x - n.x * h1, y: p.y - n.y * h1 }], h0, h1, i2b: h0 !== h1 }
+  }
   if (Math.abs(turn) < 1e-10) return { kind: h0 === h1 ? 'none' : 'ease' }
   const side = turn > 0 ? -1 : 1, o0 = { x: -u0.y * side * h0, y: u0.x * side * h0 }, o1 = { x: -u1.y * side * h1, y: u1.x * side * h1 }
   // A0 + t·u0 = A1 − s·u1: both edges extended forward (t, s ≥ 0) meet; otherwise O3
   const d = sub(o1, o0), t = (d.x * u1.y - d.y * u1.x) / turn, s = (u0.x * d.y - u0.y * d.x) / turn
   if (t < 0 || s < 0) return { kind: 'ease' }
-  // the tip's length (bowen 1791817399 / 1791817869): at most 2 × the average width, shrinking below 30° to 0 at 0° by
-  // smoothstep(θ / 30°) (θ = the angle between the lines); never inside the bevel A0–A1 (no notch between flat ends)
+  // the tip's length (bowen 1791817399 / 1791818040): the natural miter, at most the average width × (3 − smoothstep(θ /
+  // 30°)) — 2 × at 30° and above (the natural tip is shorter there), growing to 3 × at 0° (θ = the angle between the
+  // lines; the tip always points out of the corner, away from the angle below 180°); never inside the bevel A0–A1
   const miter = { x: o0.x + t * u0.x, y: o0.y + t * u0.y }, ml = len(miter) || 1, m = { x: miter.x / ml, y: miter.y / ml }
-  const theta = Math.acos(Math.max(-1, Math.min(1, -dot))) * 180 / Math.PI, limit = 2 * (h0 + h1) * smoothstep(Math.min(1, theta / 30))
+  const theta = Math.acos(Math.max(-1, Math.min(1, -dot))) * 180 / Math.PI, limit = (h0 + h1) * (3 - smoothstep(Math.min(1, theta / 30)))
   const bevel = Math.max(o0.x * m.x + o0.y * m.y, o1.x * m.x + o1.y * m.y), k = Math.max(bevel, Math.min(ml, limit)) / ml
   const cosTheta = -dot, i2b = cosTheta > 0 && Math.max(h0, h1) * cosTheta > Math.min(h0, h1)
   return { kind: 'tip', polygon: [p, { x: p.x + o0.x, y: p.y + o0.y }, { x: p.x + miter.x * k, y: p.y + miter.y * k }, { x: p.x + o1.x, y: p.y + o1.y }], h0, h1, i2b }
@@ -544,8 +549,7 @@ export function createInkCache(opts: InkOptions = {}) {
           if (at && !e[at]) { e[at] = { joint: hp, length: lambda }; ends.set(l.id, e) }
         }
       }
-      // cusp joins (dot 1791804679): the tip from `cuspTip`; O3 / straight-on unequal widths ease like a smooth join, a
-      // fold-back pinches to 0 over ρ = min(1.5 × the wider full width, each line's length / 3) (v103's pinch radius)
+      // cusp joins (dot 1791804679): the tip from `cuspTip`; O3 / straight-on unequal widths ease like a smooth join
       const leaving = (id: string, point: string): { p: Vec; u: Vec } | undefined => {
         const l = visible(id), c = curveOf.get(id)
         if (!l || !c || l.a === l.b) return undefined
@@ -567,10 +571,10 @@ export function createInkCache(opts: InkOptions = {}) {
           const hp = (w0 + w1) / 4
           ease(hp, Math.min(3 * Math.max(w0, w1), length(p.id) / 3, length(q.id) / 3))
           r = cuspTip(e0.p, { x: -e0.u.x, y: -e0.u.y }, e1.u, hp, hp)
-        } else if (r.kind === 'pinch') ease(0, Math.min(1.5 * Math.max(w0, w1), length(p.id) / 3, length(q.id) / 3))
+        }
         tips.push({ j, polygon: r.kind === 'tip' ? r.polygon : undefined, width: Math.min(w0, w1), i2b: r.kind === 'tip' && r.i2b })
-        // J3-min (bowen 1791816534): both ends drawn flat at p, so no round cap shows beside the tip; a pinch keeps its 0 width
-        if (r.kind !== 'pinch') for (const l of [p, q]) flats.set(l.id, { ...flats.get(l.id), [l.a === j.point ? 'start' : 'end']: true })
+        // J3-min (bowen 1791816534): both ends drawn flat at p, so no round cap shows beside the tip
+        for (const l of [p, q]) flats.set(l.id, { ...flats.get(l.id), [l.a === j.point ? 'start' : 'end']: true })
       }
       const pieceOf = new Map<string, InkPiece>()
       for (const g of geometry.lines) {

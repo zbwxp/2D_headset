@@ -292,16 +292,17 @@ describe('sharp (cusp) joins — the lines\' ink plus v103\'s tip (Slack 1791804
     expect(ink.groups[0]!.loops.length).toBe(1)
     expect(ink.diagnostics.every(x => x.status === 'unproven')).toBe(true)
   })
-  it('the tip below 30° (bowen 1791817399 / 1791817869): 30° natural (h / sin 15°), 20° and 5° shortened to 2 × (h0 + h1) · smoothstep(θ / 30°)', () => {
+  it('the tip below 30° (bowen 1791817399 / 1791818040): 30° natural (h / sin 15°); 20°, 5°, 1° at most (h0 + h1) · (3 − smoothstep(θ / 30°)), growing to 3 × the width', () => {
     // the apex: the farthest point along the outer bisector (l0 arrives along +x, l1 leaves along (−cos θ, sin θ))
     const tipAt = (theta: number) => {
       const t = theta * Math.PI / 180, m = { x: 1 + Math.cos(t), y: -Math.sin(t) }, ml = Math.hypot(m.x, m.y)
       return Math.max(...corner(theta, 4, 4).pieces.find(p => p.source.kind === 'tip')!.loops.flat().map(v => (v.x * m.x + v.y * m.y) / ml))
     }
     const ss = (u: number) => u * u * (3 - 2 * u)
-    expect(tipAt(30)).toBeCloseTo(2 / Math.sin(15 * Math.PI / 180), 2) // ≈ 7.73 < 8 · smoothstep(1)
-    expect(tipAt(20)).toBeCloseTo(8 * ss(20 / 30), 2) // natural ≈ 11.5, shortened to ≈ 5.93
-    expect(tipAt(5)).toBeCloseTo(8 * ss(5 / 30), 2) // natural ≈ 45.9, shortened to ≈ 0.59
+    expect(tipAt(30)).toBeCloseTo(2 / Math.sin(15 * Math.PI / 180), 2) // ≈ 7.73 < 4 · (3 − 1)
+    expect(tipAt(20)).toBeCloseTo(4 * (3 - ss(20 / 30)), 2) // natural ≈ 11.5, limited to ≈ 9.04
+    expect(tipAt(5)).toBeCloseTo(4 * (3 - ss(5 / 30)), 2) // natural ≈ 45.9, limited to ≈ 11.7
+    expect(tipAt(1)).toBeCloseTo(4 * (3 - ss(1 / 30)), 2) // → 12 at 0°
     for (const theta of [1, 3, 10]) { const g = corner(theta, 4, 4).groups[0]!; expect(g.loops.length).toBe(1); expect(g.status).toBe('unproven') } // no notch, no defect
   })
   it('unequal widths at a blunt corner (2 and 12 at 150°, O3: the forward extensions do not meet): eased to 7 at the joint, then the tip', () => {
@@ -310,14 +311,11 @@ describe('sharp (cusp) joins — the lines\' ink plus v103\'s tip (Slack 1791804
     expect(tip.loops.flat().filter(v => Math.abs(Math.hypot(v.x, v.y) - 3.5) < 1e-3).length).toBe(2) // A0 and A1 at h_p = 3.5
     expect(ink.groups[0]!.loops.length).toBe(1)
   })
-  it('folding back (0°): no tip, both widths pinched to 0 at the joint', () => {
+  it('folding back (0°): the limit tip — a spike of 3 × the width ahead of p (bowen 1791818040; v103 pinched to 0)', () => {
     const ink = corner(0, 4, 4)
-    expect(ink.pieces.some(p => p.source.kind === 'tip')).toBe(false)
-    const l0 = ink.pieces.find(p => p.source.id === 'l0')!
-    expect(Math.max(...l0.loops.flat().filter(v => v.x > -0.5).map(v => Math.abs(v.y)))).toBeLessThan(0.3)
-    // away from the joint (beyond ρ = 6) the full width 4: the loops' edges crossing x = −20
-    const ys = l0.loops.flatMap(l => l.flatMap((a, i) => { const b = l[(i + 1) % l.length]!; return (a.x + 20) * (b.x + 20) <= 0 && a.x !== b.x ? [a.y + (b.y - a.y) * (-20 - a.x) / (b.x - a.x)] : [] }))
-    expect(Math.max(...ys) - Math.min(...ys)).toBeCloseTo(4, 1)
+    expect(Math.max(...ink.groups[0]!.loops.flat().map(v => v.x))).toBeCloseTo(12, 2)
+    expect(ink.groups[0]!.loops.length).toBe(1)
+    expect(ink.diagnostics.every(x => x.status === 'unproven')).toBe(true)
   })
   // J3-min (docs/j3-min-cusp-flat-checklist.md, bowen 1791816534): a cusp end is drawn flat at p — no round cap beside the tip
   it('J3-min: 3 and 2 at 100° (the 125.json eye corner): both ends drawn flat at p, the free ends still round, one outline', () => {
