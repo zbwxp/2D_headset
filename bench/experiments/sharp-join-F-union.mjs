@@ -114,7 +114,7 @@ angles.forEach((deg, r) => cols.forEach(([k0, k1, k], c) => {
 }))
 angles.forEach((deg, r) => { body += `<text x="${pad}" y="${pad + 50 + r * cell + cell / 2}" font-size="13">${deg}°</text>` })
 cols.forEach(([k0, k1, k], c) => { body += `<text x="${pad + 70 + c * cell + 6}" y="${pad + 40}" font-size="11">${k0}:${k1} · ℓ = ${k}× (thin ${W})</text>` })
-const height = pad * 2 + 50 + cell * angles.length, width = Math.max(pad * 2 + 70 + cell * cols.length, height)
+const width = pad * 2 + 70 + cell * cols.length, height = Math.max(pad * 2 + 50 + cell * angles.length, width) // square: the thumbnailer crops to a square
 writeFileSync(new URL('./F-union.svg', import.meta.url), `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="#fff"/>
 <text x="${pad}" y="${pad + 6}" font-size="12">Sharp join as a union of pieces on straight bands (experiment) — verifies the construction, not the look</text>${body}</svg>`)
 console.log('wrote F-union.svg', width, height)
