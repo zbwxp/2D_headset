@@ -1,6 +1,7 @@
 // A throwaway sample sheet (bench glue, not the product) for bowen 1791780683 / dot 1791780807, 1791780987: sharp
 // joins (尖头接笔) drawn five ways across angles and width ratios — none presumed right. Run: node sharp-join-sheet.mjs 0|1 [long]
-// (0 = widths 1:1, 1 = 1:3; long = the first sheet's longer strokes, the gap's failure sample) → sheet-<n>.svg beside it. Marks: kinks of a tip side against its stroke's outer edge,
+// (0 = widths 1:1, 1 = 1:3; long = the first sheet's longer strokes, the gap's failure sample). The 5× limit is measured
+// on the drawn tip: its farthest point from the joint (dot 1791781520), printed per cell. → sheet-<n>.svg beside it. Marks: kinks of a tip side against its stroke's outer edge,
 // enclosed gaps near the joint (rasterized at 0.25 px; a crack open to the outside is NOT caught by this check), outer / inner shoulders (a square stroke end showing).
 import { writeFileSync } from 'node:fs'
 
@@ -38,20 +39,25 @@ function tip(a, b, p, h0, h1, variant) {
   const apex = capped ? mul(miter, limit / natural) : miter
   const A = add(p, o0), B = add(p, o1), M = add(p, miter), X = add(p, apex)
   const f = v => v.map(x => x.toFixed(2)).join(',')
-  if (variant === 'trueBevel') { POLYS.push([p, A, B]); return { d: `M${f(p)} L${f(A)} L${f(B)} Z`, capped, shoulder, A, B, X: A, sideA: sub(B, A), sideB: sub(A, B), bevel: true } }
-  if (variant === 'v103' || !capped || shoulder) { POLYS.push([p, A, X, B]); return { d: `M${f(p)} L${f(A)} L${f(X)} L${f(B)} Z`, capped, shoulder, A, B, X, sideA: sub(X, A), sideB: sub(X, B) } }
+  if (variant === 'trueBevel') { POLYS.push([p, A, B]); return { d: `M${f(p)} L${f(A)} L${f(B)} Z`, capped, shoulder, A, B, X: A, sideA: sub(B, A), sideB: sub(A, B), bevel: true, tipPoly: [p, A, B], limit } }
+  if (variant === 'v103' || !capped || shoulder) { POLYS.push([p, A, X, B]); return { d: `M${f(p)} L${f(A)} L${f(X)} L${f(B)} Z`, capped, shoulder, A, B, X, sideA: sub(X, A), sideB: sub(X, B), tipPoly: [p, A, X, B], limit } }
   if (variant === 'bevel') {
-    // cut flat across the miter at the limit: each side runs along its own outer edge up to the cut
-    const m = unit(miter), sA = (limit - dot(o0, m)) / dot(a, m), sB = (limit - dot(o1, m)) / dot(mul(b, -1), m)
+    // cut flat where each side, running along its own outer edge, reaches the limit circle about the joint (dot
+    // 1791781520: one measure for every variant — the drawn ink's distance from the joint, not along the miter)
+    const sA = Math.sqrt(Math.max(0, limit * limit - h0 * h0)), sB = Math.sqrt(Math.max(0, limit * limit - h1 * h1))
     const A2 = add(A, mul(a, sA)), B2 = add(B, mul(b, -sB))
     POLYS.push([p, A, A2, B2, B])
-    return { d: `M${f(p)} L${f(A)} L${f(A2)} L${f(B2)} L${f(B)} Z`, capped, shoulder, A, B, X: A2, sideA: sub(A2, A), sideB: sub(B2, B) }
+    return { d: `M${f(p)} L${f(A)} L${f(A2)} L${f(B2)} L${f(B)} Z`, capped, shoulder, A, B, X: A2, sideA: sub(A2, A), sideB: sub(B2, B), tipPoly: [p, A, A2, B2, B], limit }
   }
   // the curved-side variant: each side leaves the stroke along that stroke's outer edge (its control point is the
   // natural miter, which lies on that edge's continuation) and bends to the shortened apex — tangent there, still pointed
+  // each side leaves its stroke along the stroke's outer edge; its control point is where that edge meets the limit
+  // circle (not the far natural miter), so the side stays inside the circle — a quadratic lies in the triangle of
+  // its three points, all inside (dot 1791781520: the drawn tip, not one named point, keeps the limit)
+  const CA = add(A, mul(a, Math.sqrt(Math.max(0, limit * limit - h0 * h0)))), CB = add(B, mul(b, -Math.sqrt(Math.max(0, limit * limit - h1 * h1))))
   const q = (P0, C, P1) => Array.from({ length: 13 }, (_, i) => { const t = i / 12, u = 1 - t; return add(add(mul(P0, u * u), mul(C, 2 * u * t)), mul(P1, t * t)) })
-  POLYS.push([p, ...q(A, M, X), ...q(X, M, B).slice(1)])
-  return { d: `M${f(p)} L${f(A)} Q${f(M)} ${f(X)} Q${f(M)} ${f(B)} Z`, capped, shoulder, A, B, X, sideA: sub(M, A), sideB: sub(M, B) }
+  POLYS.push([p, ...q(A, CA, X), ...q(X, CB, B).slice(1)])
+  return { d: `M${f(p)} L${f(A)} Q${f(CA)} ${f(X)} Q${f(CB)} ${f(B)} Z`, capped, shoulder, A, B, X, sideA: sub(CA, A), sideB: sub(CB, B), tipPoly: [p, ...q(A, CA, X), ...q(X, CB, B).slice(1)], limit }
 }
 
 const angles = [8, 20, 45, 90, 140, 170] // the interior angle between the two strokes
@@ -89,7 +95,10 @@ angles.forEach((deg, r) => {
       const kinkB = Math.acos(Math.max(-1, Math.min(1, dot(unit(t.sideB), mul(b, -1))))) * 180 / Math.PI
       const sides = t.bevel || t.shoulder ? [] : [[kinkA, t.A], [kinkB, t.B]]
       for (const [k, P] of sides) if (k > 1) body += `<circle cx="${P[0].toFixed(1)}" cy="${P[1].toFixed(1)}" r="3.2" fill="none" stroke="#e00" stroke-width="1.6"/><text x="${(P[0] + 5).toFixed(1)}" y="${(P[1] - 5).toFixed(1)}" font-size="10" fill="#e00">${k.toFixed(0)}°</text>`
-      if (t.capped) body += `<text x="${ox + 8}" y="${oy + cell - 20}" font-size="11" fill="#06c">capped at 5× avg width</text>`
+      // the reach: the farthest point of the drawn tip from the joint (sampled), against the limit 5 × average width
+      const reach = Math.max(...t.tipPoly.map(P => len(sub(P, p))))
+      const over = reach > t.limit + 1e-6
+      body += `<text x="${ox + 8}" y="${oy + cell - 20}" font-size="10" fill="${over ? '#e00' : '#06c'}">reach ${reach.toFixed(2)} / limit ${t.limit.toFixed(0)}${over ? ' OVER' : ''}</text>`
       if (t.shoulder) body += `<text x="${ox + 8}" y="${oy + cell - 34}" font-size="10" fill="#c60">outer shoulder</text>`
     }
     {
@@ -124,6 +133,6 @@ ratios.forEach(([k0, k1], ci) => variants.forEach((v, vi) => {
 }))
 const height = pad * 2 + 60 + cell * angles.length, width = Math.max(pad * 2 + 90 + cell * 5, height)
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="#fff"/>
-<text x="${pad}" y="${pad + 8}" font-size="14" fill="#111">Sharp join v3 — red circle: a tip side kinks against its stroke edge (deg) · top-left: enclosed gap · orange: a square stroke end shows (inner / outer shoulder) · *C changes widths near the joint (relaxes "widths unchanged")</text>${body}</svg>`
+<text x="${pad}" y="${pad + 8}" font-size="14" fill="#111">Sharp join v3 — red circle: a tip side kinks against its stroke edge (deg) · top-left: enclosed gap · blue/red: the drawn tip's farthest distance from the joint vs 5× avg width · orange: a square stroke end shows (inner / outer shoulder) · *C changes widths near the joint (relaxes "widths unchanged")</text>${body}</svg>`
 writeFileSync(new URL(`./sheet-${process.argv[2] ?? 0}${process.argv[3] === 'long' ? '-long' : ''}.svg`, import.meta.url), svg)
 console.log('wrote sheet.svg', width, height)
