@@ -145,6 +145,17 @@ describe('the join list in the properties panel', () => {
     await t.press(50, 0) // l1, a line of that curve: a new pick wins over the curve the list showed
     expect(t.title()).toMatch(/属性 线 · /)
   })
+  it('the line\'s width is set in its properties (bowen 1791814093): Enter commits, this view only; the left Set width with nothing selected says so', async () => {
+    const t = await setup()
+    await t.pick('line', 'l2')
+    const field = t.host.querySelector('[data-line-width="l2"]') as HTMLInputElement
+    await act(async () => { setValue(field, '6'); key('Enter', field) })
+    expect(bench().core.snapshot().lines.find(l => l.id === 'l2')!.stroke.width).toBe(6)
+    expect(bench().core.in('view:90,0').snapshot().lines.find(l => l.id === 'l2')!.stroke.width).toBe(1)
+    await act(async () => { bench().edit(e => e.select([])); bench().refresh() })
+    await act(async () => { ([...t.host.querySelectorAll('button')].find(b => b.textContent === 'Set width') as HTMLButtonElement).click() })
+    expect(t.host.textContent).toContain('Set width: no line is selected')
+  })
   it('a new width updates the automatic zone; the Join tool offers bound', async () => {
     const t = await setup()
     await t.pick('line', 'l1')

@@ -925,7 +925,7 @@ export function App() {
           {/* a field only (bowen 1791769257); "Set width" still applies it to the selected lines (dot 1791769298) */}
           <Slider label="width" value={width} identity="stroke-width" accept={v => v > 0} track={null} steps={{ step: 1, long: 10, short: 0.1 }}
             fieldAttrs={{ 'data-testid': 'width' }} {...sliderHooks} onPreview={() => {}} onCommit={v => setWidth(v)} onCancel={() => {}} />
-          {B('Set width', () => run(x => selLines.forEach(l => x.lineStroke(l, { ...line(l).stroke, width }))))}
+          {B('Set width', () => (selLines.length ? run(x => selLines.forEach(l => x.lineStroke(l, { ...line(l).stroke, width }))) : (note('Set width: no line is selected — select lines first, or set a line\'s width in its properties'), bump())))}
           {B('Broadcast stroke', () => ix.broadcastStroke(), 'this view\'s width, profile and end strokes of the selected lines → every other view')}
         </div>
         {/* stage 2: shapes between views (front → others), separate from the stroke broadcast above */}
