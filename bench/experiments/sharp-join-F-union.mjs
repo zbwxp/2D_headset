@@ -2,8 +2,8 @@
 // join's zone built as a UNION of pieces on straight bands, the outline taken as the union's exposed boundary — never a
 // hand-written vertex order. Pieces: each stroke's kept body (outside its zone) and free-end cap, T's end piece, W's end
 // piece (trimmed to T's side of T's outer-edge line in I2b-i), the outer tip (O1 / O2). Classified I1 / I2 first, then
-// I2a / I2b. Checks on the exposed boundary of all pieces together: exposed segments crossing; exposed square-end
-// corners. Verifies the construction only — not the look. Run: node sharp-join-F-union.mjs → F-union.svg beside it.
+// I2a / I2b. The outline is extracted as the union's boundary (seams dropped, loops assembled) and drawn alone; checks
+// on it: the number of loops, vertices not joining exactly two sub-edges, crossings, square-end corners on it. Verifies the construction only — not the look. Run: node sharp-join-F-union.mjs → F-union.svg beside it.
 import { writeFileSync } from 'node:fs'
 
 const add = (a, b) => [a[0] + b[0], a[1] + b[1]], sub = (a, b) => [a[0] - b[0], a[1] - b[1]], mul = (a, k) => [a[0] * k, a[1] * k]
@@ -26,28 +26,61 @@ function clipHalf(poly, P0, dir, keep) {
   for (let i = 0; i < poly.length; i++) { const P = poly[i], Q = poly[(i + 1) % poly.length], sp = sideOf(P), sq = sideOf(Q); if (sp >= 0) out.push(P); if ((sp >= 0) !== (sq >= 0)) out.push(add(P, mul(sub(Q, P), sp / (sp - sq)))) }
   return out
 }
+/** Inside a polygon by the even-odd rule (no boundary tolerance; used at points just off an edge). */
+function insideEO(P, poly) { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [xi, yi] = poly[i], [xj, yj] = poly[j]; if ((yi > P[1]) !== (yj > P[1]) && P[0] < (xj - xi) * (P[1] - yi) / (yj - yi) + xi) c = !c } return c }
 /**
- * The exposed boundary of a union of polygons. Each edge is split exactly where it crosses any other polygon's edge
- * (the union's own corners), and a sub-edge is kept where its midpoint is inside no other polygon — so no kept piece
- * straddles a corner of the union (a first version split edges at a fixed step, and pieces straddling a corner were
- * reported as crossings).
+ * The union's outline (dot 1791783571). Each edge of each polygon is split at every point where another polygon's edge
+ * crosses it or another polygon's vertex lies on it (collinear overlaps included). A sub-edge is on the outline iff
+ * exactly one of its two sides has ink — tested at points just off its midpoint on either side, against all polygons —
+ * so internal seams (ink on both sides) drop out. Kept sub-edges are oriented with ink on their left, duplicates merged,
+ * and assembled into loops; every vertex must join exactly two sub-edges.
+ * (Two earlier versions: a fixed-step split straddled the union's corners; a midpoint "inside another polygon" test kept
+ * seams shared by two pieces, as their midpoint lies on the other piece's boundary, not strictly inside.)
  */
-function exposed(polys) {
-  const segs = []
+function unionOutline(polys) {
   const edges = polys.map(poly => poly.map((A, i) => [A, poly[(i + 1) % poly.length]]))
+  const raw = []
   polys.forEach((poly, k) => {
     for (const [A, B] of edges[k]) {
-      const d = sub(B, A), ts = [0, 1]
-      edges.forEach((es, j) => { if (j === k) return; for (const [C, D] of es) { const e = sub(D, C), den = cross(d, e); if (Math.abs(den) < 1e-12) continue; const w = sub(C, A), t = cross(w, e) / den, u = cross(w, d) / den; if (t > 1e-9 && t < 1 - 1e-9 && u >= -1e-9 && u <= 1 + 1e-9) ts.push(t) } })
+      const d = sub(B, A), L2 = dot(d, d), ts = [0, 1]
+      if (L2 < 1e-18) continue
+      edges.forEach((es, j) => {
+        if (j === k) return
+        for (const [C, D] of es) {
+          const e = sub(D, C), den = cross(d, e), w = sub(C, A)
+          if (Math.abs(den) > 1e-12) { const t = cross(w, e) / den, u = cross(w, d) / den; if (t > 1e-9 && t < 1 - 1e-9 && u >= -1e-9 && u <= 1 + 1e-9) ts.push(t) }
+          for (const V of [C, D]) { const t = dot(sub(V, A), d) / L2; if (t > 1e-9 && t < 1 - 1e-9 && len(sub(V, add(A, mul(d, t)))) < 1e-7) ts.push(t) }
+        }
+      })
       ts.sort((x, y) => x - y)
+      const n = mul([-d[1], d[0]], 1 / Math.sqrt(L2)) // the edge's left normal
       for (let m = 0; m + 1 < ts.length; m++) {
         if (ts[m + 1] - ts[m] < 1e-9) continue
-        const P = add(A, mul(d, ts[m])), Q = add(A, mul(d, ts[m + 1])), mid = mul(add(P, Q), 0.5)
-        if (!polys.some((other, j) => j !== k && strictlyInside(mid, other))) segs.push([P, Q])
+        const P = add(A, mul(d, ts[m])), Q = add(A, mul(d, ts[m + 1])), mid = mul(add(P, Q), 0.5), eps = 1e-5
+        const left = polys.some(q => insideEO(add(mid, mul(n, eps)), q)), right = polys.some(q => insideEO(sub(mid, mul(n, eps)), q))
+        if (left === right) continue // ink on both sides (a seam) or on neither
+        raw.push(left ? [P, Q] : [Q, P]) // oriented: ink on the left
       }
     }
   })
-  return segs
+  const key = P => `${P[0].toFixed(6)},${P[1].toFixed(6)}`
+  const seen = new Set(), segs = []
+  for (const [P, Q] of raw) { const kk = key(P) + '>' + key(Q); if (!seen.has(kk)) { seen.add(kk); segs.push([P, Q]) } }
+  // assemble loops: each vertex must have exactly one outgoing and one incoming sub-edge
+  const out = new Map(), inn = new Map()
+  for (const sgm of segs) { const a = key(sgm[0]), b = key(sgm[1]); (out.get(a) ?? out.set(a, []).get(a)).push(sgm); inn.set(b, (inn.get(b) ?? 0) + 1) }
+  let badVertices = 0
+  for (const [v, list] of out) if (list.length !== 1 || inn.get(v) !== 1) badVertices++
+  for (const [v] of inn) if (!out.has(v)) badVertices++
+  const used = new Set(), loops = []
+  for (const sgm of segs) {
+    if (used.has(sgm)) continue
+    const loop = []
+    let cur = sgm
+    while (cur && !used.has(cur)) { used.add(cur); loop.push(cur[0]); const next = out.get(key(cur[1])); cur = next && next.length === 1 ? next[0] : null }
+    loops.push(loop)
+  }
+  return { segs, loops, badVertices }
 }
 const segCross = (P1, P2, P3, P4) => { const d1 = sub(P2, P1), d2 = sub(P4, P3), den = cross(d1, d2); if (Math.abs(den) < 1e-12) return false; const w = sub(P3, P1), s = cross(w, d2) / den, t = cross(w, d1) / den; return s > 1e-9 && s < 1 - 1e-9 && t > 1e-9 && t < 1 - 1e-9 }
 const circle = (c, r, n = 32) => Array.from({ length: n }, (_, i) => add(c, [Math.cos(i / n * 2 * Math.PI) * r, Math.sin(i / n * 2 * Math.PI) * r]))
@@ -97,19 +130,19 @@ angles.forEach((deg, r) => cols.forEach(([k0, k1, k], c) => {
   }
   const fdrawn = !cls.includes('ii')
   if (fdrawn) {
-    const segs = exposed(pieces)
+    const { segs, loops, badVertices } = unionOutline(pieces)
     let crossings = 0
     for (let i = 0; i < segs.length; i++) for (let j = i + 1; j < segs.length; j++) if (segCross(segs[i][0], segs[i][1], segs[j][0], segs[j][1])) crossings++
-    // an exposed square-end corner: a corner point lying on an exposed segment
-    const onExposed = P => segs.some(([S0, S1]) => { const d = sub(S1, S0), t = Math.max(0, Math.min(1, dot(sub(P, S0), d) / (dot(d, d) || 1))); return len(sub(P, add(S0, mul(d, t)))) < 1e-6 })
-    const shown = corners.filter(([, P]) => onExposed(P)).map(([n]) => n)
-    note = `${note}${note ? ' · ' : ''}exposed crossings ${crossings} · square-end corners shown: ${shown.length ? shown.join(', ') : 'none'}`
-    for (const q of pieces) body += `<path d="M${q.map(f).join(' L')} Z" fill="#111"/>`
+    const onOutline = P => segs.some(([S0, S1]) => { const d = sub(S1, S0), t = Math.max(0, Math.min(1, dot(sub(P, S0), d) / (dot(d, d) || 1))); return len(sub(P, add(S0, mul(d, t)))) < 1e-6 })
+    const shown = corners.filter(([, P]) => onOutline(P)).map(([n]) => n)
+    note = `${note}${note ? ' · ' : ''}loops ${loops.length} · bad vertices ${badVertices} · crossings ${crossings} · square-end corners shown: ${shown.length ? shown.join(', ') : 'none'}`
+    // drawn from the extracted outline alone (one path, its loops), not from the pieces — seams must not show
+    body += `<path d="${loops.map(l => 'M' + l.map(f).join(' L') + ' Z').join(' ')}" fill="#111" fill-rule="nonzero"/>`
   } else {
     for (const q of [band(start0, p, o0), band(p, end1, o1), circle(start0, h0), circle(end1, h1)]) body += `<path d="M${q.map(f).join(' L')} Z" fill="#111" opacity="0.35"/>`
   }
   body += `<text x="${ox + 6}" y="${oy + 14}" font-size="10" fill="${fdrawn ? '#363' : '#a50'}">${cls}</text>`
-  body += `<text x="${ox + 6}" y="${oy + cell - 22}" font-size="8" fill="${/crossings [1-9]|shown: [A-Z]/.test(note) ? '#e00' : '#555'}">${note}</text>`
+  body += `<text x="${ox + 6}" y="${oy + cell - 22}" font-size="8" fill="${/crossings [1-9]|shown: [A-Z]|bad vertices [1-9]|loops ([02-9]|1\d)/.test(note) ? '#e00' : '#555'}">${note}</text>`
   body += `<rect x="${ox}" y="${oy}" width="${cell - 6}" height="${cell - 6}" fill="none" stroke="#ddd"/>`
 }))
 angles.forEach((deg, r) => { body += `<text x="${pad}" y="${pad + 50 + r * cell + cell / 2}" font-size="13">${deg}°</text>` })
