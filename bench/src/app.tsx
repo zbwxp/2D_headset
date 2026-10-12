@@ -256,7 +256,7 @@ export function App() {
   // with the switch on, each visible line's ink (P1: single lines, today's round-capped look); a line whose ink a check
   // flags is still drawn and marked red (visible, reproducible — never hidden); only a line with nothing to draw is drawn
   // as today's stroke (bowen 1791801560 / 1791801629, dot 1791801801)
-  const ink = inkOn ? inkCache.current.build(g, s) : null, inkOf = new Map((ink?.pieces ?? []).map(p => [p.source.id, p] as const))
+  const ink = inkOn ? inkCache.current.build(g, { ...s, zones }) : null, inkOf = new Map((ink?.pieces ?? []).map(p => [p.source.id, p] as const))
   const inkDefects = new Map((ink?.diagnostics ?? []).filter(d => d.status === 'defect').map(d => [d.source.id, d.reason ?? ''] as const))
   // one visibility rule for the playback drag's picking, its point marks and its ghost, computed once
   // per frame (dot 1791697776; docs/stage3b-pkg5-problems.md): the visible lines and the points they end at

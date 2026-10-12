@@ -292,8 +292,8 @@ describe('sharp (cusp) joins — the lines\' ink plus v103\'s tip (Slack 1791804
     expect(ink.groups[0]!.loops.length).toBe(1)
     expect(ink.diagnostics.every(x => x.status === 'unproven')).toBe(true)
   })
-  it('a very sharp corner (5°): the tip is shortened to 5 × (h0 + h1) = 20 (its miter would be ≈ 45.9)', () => {
-    expect(far(corner(5, 4, 4).pieces.find(p => p.source.kind === 'tip')!.loops)).toBeCloseTo(20, 2)
+  it('a very sharp corner (5°): the tip is shortened to 2 × (h0 + h1) = 8, twice the width (bowen 1791817399; its miter would be ≈ 45.9)', () => {
+    expect(far(corner(5, 4, 4).pieces.find(p => p.source.kind === 'tip')!.loops)).toBeCloseTo(8, 2)
   })
   it('unequal widths at a blunt corner (2 and 12 at 150°, O3: the forward extensions do not meet): eased to 7 at the joint, then the tip', () => {
     expect(cuspTip(P(0), P(1), { x: -Math.cos(150 * Math.PI / 180), y: Math.sin(150 * Math.PI / 180) }, 1, 6).kind).toBe('ease')
@@ -336,6 +336,29 @@ describe('sharp (cusp) joins — the lines\' ink plus v103\'s tip (Slack 1791804
     const passing = Array.from({ length: 200 }, (_, i) => bez(c, i / 400)).filter(v => v.x > 0.2 && Math.abs(v.y) < 1.5)
     expect(passing.length).toBeGreaterThan(0)
     expect(passing.every(inside)).toBe(true)
+  })
+  it('bound joins blend unequal widths like smooth ones (bowen 1791817201): one outline, the average at p, over half the zone', () => {
+    const d = new Core(), t = 100 * Math.PI / 180
+    d.edit(e => {
+      e.layer('L')
+      sk(e).point('a', 'L', P(-50)); sk(e).point('p', 'L', P(0)); sk(e).point('c', 'L', P(-50 * Math.cos(t), 50 * Math.sin(t)))
+      sk(e).line('l0', 'a', 'p'); sk(e).line('l1', 'p', 'c')
+      e.lineStroke('l0', { width: 4, profile: 'uniform' } as never); e.lineStroke('l1', { width: 2, profile: 'uniform' } as never)
+      e.join('p', 'l0', 'l1', { mode: 'bound' })
+    })
+    // l0's half-width across x = −s: the loops' edges crossing that vertical line
+    const half = (loops: readonly (readonly Vec[])[], x: number) => { const ys = loops.flatMap(l => l.flatMap((a, i) => { const b = l[(i + 1) % l.length]!; return (a.x - x) * (b.x - x) <= 0 && a.x !== b.x ? [a.y + (b.y - a.y) * (x - a.x) / (b.x - a.x)] : [] })); return (Math.max(...ys) - Math.min(...ys)) / 2 }
+    const s = d.snapshot(), zones = d.in('view:0,0').zones()
+    expect(zones[0]!.limited).toBeCloseTo(8, 6) // auto: 4² / 2
+    const ink = build(d.geometry(), { ...s, zones }), l0 = ink.pieces.find(p => p.source.id === 'l0')!
+    expect(ink.groups.length).toBe(1)
+    expect(ink.groups[0]!.loops.length).toBe(1)
+    expect(half(l0.loops, -0.02)).toBeCloseTo(1.5, 1) // the average of 2 and 1 at the joint
+    expect(half(l0.loops, -4.5)).toBeCloseTo(2, 2) // full width beyond λ = 8 / 2
+    // a manual zone of 2: λ = 1
+    d.edit(e => e.zone('p', 'l0', 'l1', 2))
+    const l0b = build(d.geometry(), { ...d.snapshot(), zones: d.in('view:0,0').zones() }).pieces.find(p => p.source.id === 'l0')!
+    expect(half(l0b.loops, -1.2)).toBeCloseTo(2, 2)
   })
   it('J3-min: a smooth join is not cut (its round end stays, paused J2)', () => {
     const d = new Core(), t = 100 * Math.PI / 180

@@ -21,8 +21,10 @@ export interface InkInput {
 }
 export interface InkLines {
   readonly lines: readonly { readonly id: string; readonly a: string; readonly b: string; readonly stroke: { readonly width: number }; readonly state: { readonly visible: boolean } }[]
-  /** The joins; smooth ones join their lines' ink and ease unequal widths (cusp: a later step). */
+  /** The joins; smooth and bound ones join their lines' ink and ease unequal widths, cusp ones add a tip. */
   readonly joins?: readonly { readonly point: string; readonly lines: readonly [string, string]; readonly mode: string }[]
+  /** The joins' zones of this view (core `zones()`): a smooth / bound join eases over half its 限长后长度 each side. */
+  readonly zones?: readonly { readonly point: string; readonly lines: readonly [string, string]; readonly limited: number }[]
 }
 
 /**
@@ -433,8 +435,9 @@ function taperedSweep(source: InkSource, curve: Cubic, pr: Profile, opts: InkOpt
  * A sharp (cusp) joint at p between a line arriving along u0 (unit, into p) and one leaving along u1 (Slack 1791804643,
  * dot 1791804679). The tip is v103's `cuspCorner` (7205381, inkJoin.ts:11–23): the quadrilateral [p, A0, p + tip, A1],
  * A_i = p + the outer offset of line i, tip = the meeting point of the two outer edges extended forward, shortened to
- * 5 × (h0 + h1) when longer (straight sides, the apex kept pointed). Only that tip and its limit come from v103 — the
- * ink is the two lines' own round-capped ink plus this tip, not v103's whole outline: a round end may show.
+ * 2 × (h0 + h1) — twice the average width, bowen 1791817399 (v103: 5 ×) — when longer (straight sides, the apex kept
+ * pointed). Only that tip comes from v103 — the ink is the two lines' own ink, their ends at p drawn flat (J3-min,
+ * `Flat`), plus this tip, not v103's whole outline.
  * - 'ease' (O3): the forward extensions do not meet — decided on both extension parameters, not on the miter's
  *   direction — or the lines run straight on with unequal widths: the widths ease to the average (as a smooth join).
  * - 'pinch' (0°, folding back): v103's pinch, the width eased to 0 at p; no tip.
@@ -450,7 +453,7 @@ export function cuspTip(p: Vec, u0: Vec, u1: Vec, h0: number, h1: number): { kin
   // A0 + t·u0 = A1 − s·u1: both edges extended forward (t, s ≥ 0) meet; otherwise O3
   const d = sub(o1, o0), t = (d.x * u1.y - d.y * u1.x) / turn, s = (u0.x * d.y - u0.y * d.x) / turn
   if (t < 0 || s < 0) return { kind: 'ease' }
-  const miter = { x: o0.x + t * u0.x, y: o0.y + t * u0.y }, limit = 5 * (h0 + h1), k = Math.min(1, limit / (len(miter) || 1))
+  const miter = { x: o0.x + t * u0.x, y: o0.y + t * u0.y }, limit = 2 * (h0 + h1), k = Math.min(1, limit / (len(miter) || 1))
   const cosTheta = -dot, i2b = cosTheta > 0 && Math.max(h0, h1) * cosTheta > Math.min(h0, h1)
   return { kind: 'tip', polygon: [p, { x: p.x + o0.x, y: p.y + o0.y }, { x: p.x + miter.x * k, y: p.y + miter.y * k }, { x: p.x + o1.x, y: p.y + o1.y }], h0, h1, i2b }
 }
@@ -515,20 +518,23 @@ export function createInkCache(opts: InkOptions = {}) {
         diagnostics.push(e.diagnostic)
         return e.piece
       }
-      // smooth joins between visible lines (Slack 1791804157, dot 1791804198): unequal widths ease at the joint to the
-      // average, h(s) = h_p + (h_i − h_p)·σ(s/λ), s measured from the joint's end of each line, λ = min(3 × the wider
-      // full width, each line's length / 3) — the same λ on both sides. The rule enters the line's cache key, so a
-      // neighbour's new width or visibility rebuilds this line too. Several smooth joins at one end: the first rules
-      // the easing (all of them join the group).
+      // smooth and bound joins between visible lines (Slack 1791804157, dot 1791804198; bound since bowen 1791817201):
+      // unequal widths ease at the joint to the average, h(s) = h_p + (h_i − h_p)·σ(s/λ), s measured from the joint's
+      // end of each line, λ = half the zone's 限长后长度 when the view's zones are given (default wider² / narrower,
+      // manual per view; already ≤ each line's length / 3), else min(3 × the wider full width, each line's length / 3)
+      // — the same λ on both sides. The rule enters the line's cache key, so a neighbour's new width or visibility
+      // rebuilds this line too. Several such joins at one end: the first rules the easing (all of them join the group).
       const visible = (id: string) => { const l = byId.get(id); return l && l.state.visible ? l : undefined }
       const curveOf = new Map(geometry.lines.map(g => [g.id, g.curve] as const)), lengthOf = new Map<string, number>()
       const length = (id: string) => lengthOf.get(id) ?? lengthOf.set(id, ((ps: Vec[]) => ps.slice(1).reduce((t, p, i) => t + len(sub(p, ps[i]!)), 0))(flatten(curveOf.get(id)!, 0.01).points)).get(id)!
-      const smooth = (snapshot.joins ?? []).filter(j => j.mode === 'smooth' && visible(j.lines[0]) && visible(j.lines[1]) && curveOf.has(j.lines[0]) && curveOf.has(j.lines[1]))
+      const smooth = (snapshot.joins ?? []).filter(j => (j.mode === 'smooth' || j.mode === 'bound') && visible(j.lines[0]) && visible(j.lines[1]) && curveOf.has(j.lines[0]) && curveOf.has(j.lines[1]))
       const ends = new Map<string, { start?: { joint: number; length: number }; end?: { joint: number; length: number } }>()
       for (const j of smooth) {
         const [p, q] = j.lines.map(id => visible(id)!), hp = (p.stroke.width + q.stroke.width) / 4
         if (p.stroke.width === q.stroke.width) continue
-        const lambda = Math.min(3 * Math.max(p.stroke.width, q.stroke.width), length(p.id) / 3, length(q.id) / 3)
+        const zone = snapshot.zones?.find(z => z.point === j.point && z.lines[0] === j.lines[0] && z.lines[1] === j.lines[1])
+        const lambda = zone ? zone.limited / 2 : Math.min(3 * Math.max(p.stroke.width, q.stroke.width), length(p.id) / 3, length(q.id) / 3)
+        if (!(lambda > 0)) continue
         for (const l of [p, q]) {
           const at = l.a === j.point ? 'start' : l.b === j.point ? 'end' : undefined, e = ends.get(l.id) ?? {}
           if (at && !e[at]) { e[at] = { joint: hp, length: lambda }; ends.set(l.id, e) }
