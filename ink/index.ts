@@ -106,6 +106,20 @@ function curveDistance(p: Vec, poly: readonly Vec[]): number {
 }
 
 /**
+ * Signed distance from p to the convex hull of two discs (centres a, b; radii ra, rb) — the stroke of a segment whose
+ * width changes linearly along it (iq's uneven capsule, exact). Equal radii: the distance to the segment − r. When one
+ * disc holds the other, the hull is the larger disc.
+ */
+export function capsuleDistance(p: Vec, a: Vec, b: Vec, ra: number, rb: number): number {
+  const d = sub(b, a), L = len(d)
+  if (L <= Math.abs(ra - rb)) return Math.min(len(sub(p, a)) - ra, len(sub(p, b)) - rb)
+  const ux = d.x / L, uy = d.y / L, q = sub(p, a), along = q.x * ux + q.y * uy, across = Math.abs(q.x * -uy + q.y * ux)
+  const k = (ra - rb) / L, c = Math.sqrt(1 - k * k), proj = along * c - across * k
+  if (proj > 0 && proj < L * c) return along * k + across * c - ra
+  return proj <= 0 ? len(q) - ra : len(sub(p, b)) - rb
+}
+
+/**
  * The largest |distance to the true centre curve − h| over every vertex of the loops (the curve flattened to ε/16 for
  * the distance, so a vertex passes when this is ≤ ε − ε/16). For a zero-length line, the distance to its point.
  * The work is proportional to the line's length / (h + ε) and the vertex count, never to its bounding box (dot
@@ -115,13 +129,22 @@ function curveDistance(p: Vec, poly: readonly Vec[]): number {
 export function vertexBand(loops: readonly (readonly Vec[])[], curve: Cubic | null, point: Vec, h: number, eps: number, budget = 200_000): number | null {
   const fine = curve ? flatten(curve, eps / 16).points : [point]
   if (fine.length < 2) { let w = 0; for (const l of loops) for (const v of l) w = Math.max(w, Math.abs(len(sub(v, fine[0]!)) - h)); return w }
-  // a grid of the curve's segments (cell r = h + ε), each segment entered in the cells of points spaced ≤ r along it:
-  // a vertex within r of a segment is within 1.5 r of one of those points, so the cells within 2 of the vertex's cell
-  // are searched; a vertex with no segment there is measured against all (it fails the band anyway)
-  const r = h + eps, key = (i: number, j: number) => i * 73856093 ^ j * 19349663, grid = new Map<number, number[]>()
+  return band(loops, fine, fine.map(() => h), eps, budget)
+}
+
+/**
+ * The band against a reference polyline whose radius changes along it (per point): the largest |signed distance to the
+ * union of the segments' capsules| over every vertex — 0 on the reference boundary. Constant radii give `vertexBand`.
+ */
+export function band(loops: readonly (readonly Vec[])[], pts: readonly Vec[], radii: readonly number[], eps: number, budget = 200_000): number | null {
+  // a grid of the segments (cell r = the largest radius + ε), each segment entered in the cells of points spaced ≤ r
+  // along it: a vertex within r of a segment is within 1.5 r of one of those points, so the cells within 2 of the
+  // vertex's cell are searched; a vertex with no segment there is measured against all (it fails the band anyway)
+  const r = Math.max(...radii) + eps, key = (i: number, j: number) => i * 73856093 ^ j * 19349663, grid = new Map<number, number[]>()
+  const dist = (v: Vec, k: number) => capsuleDistance(v, pts[k]!, pts[k + 1]!, radii[k]!, radii[k + 1]!)
   let work = 0
-  for (let k = 0; k + 1 < fine.length; k++) {
-    const a = fine[k]!, b = fine[k + 1]!, n = Math.max(1, Math.ceil(len(sub(b, a)) / r))
+  for (let k = 0; k + 1 < pts.length; k++) {
+    const a = pts[k]!, b = pts[k + 1]!, n = Math.max(1, Math.ceil(len(sub(b, a)) / r))
     if ((work += n + 1) > budget) return null
     let last = NaN
     for (let i = 0; i <= n; i++) {
@@ -136,10 +159,10 @@ export function vertexBand(loops: readonly (readonly Vec[])[], curve: Cubic | nu
   for (const l of loops) for (const v of l) {
     let best = Infinity
     const ci = Math.floor(v.x / r), cj = Math.floor(v.y / r)
-    for (let i = ci - 2; i <= ci + 2; i++) for (let j = cj - 2; j <= cj + 2; j++) for (const k of grid.get(key(i, j)) ?? []) { work++; best = Math.min(best, segmentDistance(v, fine[k]!, fine[k + 1]!)) }
-    if (best > r) { work += fine.length; best = curveDistance(v, fine) }
+    for (let i = ci - 2; i <= ci + 2; i++) for (let j = cj - 2; j <= cj + 2; j++) for (const k of grid.get(key(i, j)) ?? []) { work++; best = Math.min(best, dist(v, k)) }
+    if (best === Infinity) { work += pts.length; for (let k = 0; k + 1 < pts.length; k++) best = Math.min(best, dist(v, k)) }
     if (work > budget) return null
-    worst = Math.max(worst, Math.abs(best - h))
+    worst = Math.max(worst, Math.abs(best))
   }
   return worst
 }
@@ -204,12 +227,38 @@ function disc(c: Vec, h: number, tol: number): Vec[] {
   return Array.from({ length: n }, (_, i) => ({ x: c.x + h * Math.cos(2 * Math.PI * i / n), y: c.y + h * Math.sin(2 * Math.PI * i / n) }))
 }
 
+const smoothstep = (u: number) => u * u * (3 - 2 * u)
+const hullOf = (ps: Vec[]): Vec[] => {
+  const q = [...ps].sort((a, b) => a.x - b.x || a.y - b.y), cross = (o: Vec, a: Vec, b: Vec) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
+  const lower: Vec[] = [], upper: Vec[] = []
+  for (const p of q) { while (lower.length >= 2 && cross(lower[lower.length - 2]!, lower[lower.length - 1]!, p) <= 0) lower.pop(); lower.push(p) }
+  for (const p of q.reverse()) { while (upper.length >= 2 && cross(upper[upper.length - 2]!, upper[upper.length - 1]!, p) <= 0) upper.pop(); upper.push(p) }
+  return [...lower.slice(0, -1), ...upper.slice(0, -1)]
+}
+/**
+ * A polyline's points with the half-width h(u) = h0 + (h1 − h0)·smoothstep(u) at each, u the fraction of its length,
+ * split so that between two points h is within `tol` of its linear interpolation (|h″| ≤ 6|h1 − h0|, so the
+ * interpolation error over a step δu is ≤ δu²·6|h1 − h0|/8).
+ */
+function tapered(points: readonly Vec[], h0: number, h1: number, tol: number): { pts: Vec[]; radii: number[] } {
+  const L = points.slice(1).reduce((t, p, i) => t + len(sub(p, points[i]!)), 0), du = Math.sqrt(8 * tol / (6 * Math.abs(h1 - h0)))
+  const pts: Vec[] = [points[0]!], radii = [h0]
+  let at = 0
+  for (let i = 0; i + 1 < points.length; i++) {
+    const a = points[i]!, b = points[i + 1]!, l = len(sub(b, a)), n = L > 0 ? Math.max(1, Math.ceil(l / L / du)) : 1
+    for (let j = 1; j <= n; j++) { pts.push(lerp(a, b, j / n)); radii.push(h0 + (h1 - h0) * smoothstep(L > 0 ? Math.min(1, (at + l * j / n) / L) : 1)) }
+    at += l
+  }
+  return { pts, radii }
+}
+
 /** One line's ink and diagnostic. */
 export function lineInk(id: string, curve: Cubic, width: number, opts: InkOptions = {}) { return sweep({ kind: 'line', id }, curve, width, opts) }
 
 /** A centre curve swept by a disc of the given width: a line's ink, or an arc's at its lines' width. */
-export function sweep(source: InkSource, curve: Cubic, width: number, opts: InkOptions = {}): { piece?: InkPiece; diagnostic: InkDiagnostic } {
-  const h = width / 2
+export function sweep(source: InkSource, curve: Cubic, widths: number | readonly [number, number], opts: InkOptions = {}): { piece?: InkPiece; diagnostic: InkDiagnostic } {
+  if (typeof widths !== 'number' && widths[0] !== widths[1]) return taperedSweep(source, curve, widths, opts)
+  const width = typeof widths === 'number' ? widths : widths[0], h = width / 2
   if (!(h > 0) || !Number.isFinite(h)) return { diagnostic: { source, status: 'fallback', reason: 'width not usable' } }
   const eps = Math.min(opts.max ?? 0.05, Math.max(opts.min ?? 1e-4, (opts.relative ?? 0.01) * width))
   const flat = flatten(curve, eps / 2)
@@ -260,6 +309,40 @@ export function sweep(source: InkSource, curve: Cubic, width: number, opts: InkO
 }
 
 /**
+ * An arc between lines of different widths (Slack 1791803733, dot 1791803768): the region swept by a disc whose half-width eases
+ * from the start's to the end's with u = the arc length accumulated along the flattened arc (not the Bézier parameter),
+ * by smoothstep — slope 0 at both ends, so locally the ink meets each line's edges tangentially (a larger disc nearby
+ * may still cover the joint: no claim of "no step" for every input). A piecewise approximation of that sweep — the
+ * union of the convex hulls of consecutive discs — so the status stays 'unproven'. ε from the narrower
+ * width, split as flattening ε/4, the easing's interpolation ε/4, the discs' polygons ε/4, rounding ε/8. Checked by the
+ * output checks and the band against a finer reference (flattening and interpolation each ≤ ε/16).
+ */
+function taperedSweep(source: InkSource, curve: Cubic, widths: readonly [number, number], opts: InkOptions): { piece?: InkPiece; diagnostic: InkDiagnostic } {
+  const [h0, h1] = [widths[0] / 2, widths[1] / 2], width = Math.min(widths[0], widths[1])
+  if (!(width > 0) || !Number.isFinite(h0) || !Number.isFinite(h1)) return { diagnostic: { source, status: 'fallback', reason: 'width not usable' } }
+  const eps = Math.min(opts.max ?? 0.05, Math.max(opts.min ?? 1e-4, (opts.relative ?? 0.01) * width))
+  const flat = flatten(curve, eps / 4), t = tapered(flat.points, h0, h1, eps / 4)
+  const maxAbs = Math.max(...t.pts.map(p => Math.max(Math.abs(p.x), Math.abs(p.y)))) + Math.max(h0, h1)
+  const s = Math.min(Math.pow(2, Math.floor(Math.log2(2 ** 50 / Math.max(1, maxAbs)))), Math.pow(2, Math.ceil(Math.log2(4 * Math.SQRT2 / eps))))
+  const toI = (p: Vec): Point64 => ({ x: Math.round(p.x * s), y: Math.round(p.y * s) })
+  const hulls = t.pts.length < 2 ? [disc(t.pts[0]!, Math.max(h0, h1), eps / 4)]
+    : t.pts.slice(1).map((b, i) => hullOf([...disc(t.pts[i]!, t.radii[i]!, eps / 4), ...disc(b, t.radii[i + 1]!, eps / 4)]))
+  const paths = union(hulls.map(h => h.map(toI)), FillRule.NonZero)
+  if (!paths.length) return { diagnostic: { source, status: 'fallback', reason: 'the library returned no outline' } }
+  const loops = paths.map(p => p.map(q => ({ x: q.x / s, y: q.y / s })))
+  const defect = outputDefect(paths)
+  const ref = tapered(flatten(curve, eps / 16).points, h0, h1, eps / 16)
+  const bandError = ref.pts.length < 2 ? 0 : band(loops, ref.pts, ref.radii, eps)
+  const ok = bandError === null ? 'incomplete' as const : bandError <= eps - eps / 8
+  const evidence: InkEvidence = { epsilon: eps, flattening: { bound: flat.bound, floorHit: flat.floorHit }, arcTolerance: eps / 4, scale: s, inputRounding: Math.SQRT2 / (2 * s), bandError, checks: { simple: !defect, band: ok, area: 'n/a' } }
+  const piece: InkPiece = { source, loops, scale: s }
+  if (defect) return { piece, diagnostic: { source, status: 'defect', reason: defect, evidence } }
+  if (ok === false) return { piece, diagnostic: { source, status: 'defect', reason: `an output vertex is ${bandError!.toExponential(2)} off the tapered stroke's edge (ε ${eps.toExponential(2)})`, evidence } }
+  if (ok === 'incomplete') return { piece, diagnostic: { source, status: 'unproven', reason: 'diagnosis incomplete: the vertex band check stopped at its work limit', evidence } }
+  return { piece, diagnostic: { source, status: 'unproven', evidence } }
+}
+
+/**
  * The union of pieces as one outline, on one integer grid: the finest of the pieces' grids (each piece is exact on it —
  * the grids are powers of two), coarsened only if the coordinates would leave the library's range. Checked like a
  * single line's output (§2b); a defect is reported and the union drawn all the same.
@@ -284,8 +367,7 @@ export function build(geometry: InkInput, snapshot: InkLines, opts: InkOptions =
  * changed rebuilds none. Entries for what is gone are dropped on the next build.
  *
  * An arc is inked when either of its lines is visible, at its lines' width ("按圆弧两端对应的原线取宽度", dot
- * 1791802438). Equal widths are the step done now; where they differ the arc is drawn at the narrower width and
- * marked — easing the width along the arc is the next step.
+ * 1791802438); where the widths differ, the width eases along the arc from one line's to the other's (`taperedSweep`).
  */
 export function createInkCache(opts: InkOptions = {}) {
   const memo = new Map<string, { key: string; piece?: InkPiece; diagnostic: InkDiagnostic }>()
@@ -294,17 +376,13 @@ export function createInkCache(opts: InkOptions = {}) {
     build(geometry: InkInput, snapshot: InkLines): Ink {
       const byId = new Map(snapshot.lines.map(l => [l.id, l] as const)), seen = new Set<string>()
       const pieces: InkPiece[] = [], diagnostics: InkDiagnostic[] = []
-      const one = (source: InkSource, curve: Cubic, width: number, unequal = false) => {
+      const one = (source: InkSource, curve: Cubic, width: number | readonly [number, number]) => {
         const at = JSON.stringify([source.kind, source.id])
         seen.add(at)
-        const key = JSON.stringify([curve, width, unequal])
+        const key = JSON.stringify([curve, width])
         let e = memo.get(at)
         if (!e || e.key !== key) {
-          const r = sweep(source, curve, width, opts)
-          const diagnostic = unequal && r.diagnostic.status !== 'defect' && r.diagnostic.status !== 'fallback'
-            ? { ...r.diagnostic, status: 'unproven' as const, reason: "the arc's lines differ in width: drawn at the narrower one until the width eases along the arc (next step)" }
-            : r.diagnostic
-          e = { key, piece: r.piece, diagnostic }
+          e = { key, ...sweep(source, curve, width, opts) }
           memo.set(at, e)
         }
         if (e.piece) pieces.push(e.piece)
@@ -323,10 +401,11 @@ export function createInkCache(opts: InkOptions = {}) {
       const find = (p: InkPiece): InkPiece => { const q = parent.get(p) ?? p; if (q === p) return p; const r = find(q); parent.set(p, r); return r }
       const join = (a: InkPiece, b: InkPiece) => { const ra = find(a), rb = find(b); if (ra !== rb) parent.set(rb, ra) }
       for (const a of geometry.arcs) {
-        const ls = a.lines.map(id => byId.get(id)).filter(l => l && l.state.visible)
-        if (!ls.length) continue
-        const widths = ls.map(l => l!.stroke.width), width = Math.min(...widths)
-        const p = one({ kind: 'arc', id: a.key, lines: [a.lines[0], a.lines[1]] }, a.curve, width, widths.some(w => w !== width))
+        // the arc runs from lines[0]'s end to lines[1]'s (derived); a hidden line lends no width — the arc keeps the other's
+        const [l0, l1] = a.lines.map(id => byId.get(id)).map(l => l && l.state.visible ? l : undefined)
+        if (!l0 && !l1) continue
+        const w0 = (l0 ?? l1)!.stroke.width, w1 = (l1 ?? l0)!.stroke.width
+        const p = one({ kind: 'arc', id: a.key, lines: [a.lines[0], a.lines[1]] }, a.curve, w0 === w1 ? w0 : [w0, w1])
         if (!p) continue
         for (const id of a.lines) { const q = pieceOf.get(id); if (q) join(p, q) }
       }

@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs'
 import { union, FillRule } from 'clipper2-ts'
 import { Core, type Vec } from '../../src'
 import { sk } from '../../test/sketch'
-import { build, createInkCache, flatten, lineInk, outputDefect, segmentDistance, vertexBand, type Cubic } from '..'
+import { band, build, createInkCache, flatten, lineInk, outputDefect, segmentDistance, vertexBand, type Cubic } from '..'
 
 const P = (x: number, y = 0): Vec => ({ x, y })
 const line = (a: Vec, b: Vec): Cubic => [a, { x: a.x + (b.x - a.x) / 3, y: a.y + (b.y - a.y) / 3 }, { x: a.x + 2 * (b.x - a.x) / 3, y: a.y + 2 * (b.y - a.y) / 3 }, b]
@@ -173,12 +173,34 @@ describe('arc joins — the arc inked at its lines\' width, the lines and the ar
     const again = cache.build(d.geometry(), d.snapshot())
     expect(again.groups[0]).toBe(w8.groups[0])
   })
-  it('unequal widths: drawn at the narrower width, and marked for the next step', () => {
+  it('unequal widths: the width eases along the arc — one loop, each end as wide as its line, the band within ε', () => {
     const d = doc()
     d.edit(e => e.lineStroke('bc', { width: 8, profile: 'uniform' } as never))
-    const ink = build(d.geometry(), d.snapshot()), arc = ink.diagnostics.find(x => x.source.kind === 'arc')!
-    expect(arc.status).toBe('unproven')
-    expect(arc.reason).toMatch(/differ in width/)
+    const g = d.geometry(), ink = build(g, d.snapshot()), arc = ink.pieces.find(p => p.source.kind === 'arc')!
+    const dg = ink.diagnostics.find(x => x.source.kind === 'arc')!
+    expect(dg.status).toBe('unproven')
+    expect(dg.evidence!.checks).toMatchObject({ simple: true, band: true })
+    expect(ink.groups[0]!.loops.length).toBe(1)
+    // across the arc's ends, normal to its direction: the ink is 4 wide at the start (ab) and 8 wide at the end (bc)
+    const c = g.arcs[0]!.curve, across = (p: Vec, t: Vec) => {
+      const n = { x: -t.y / Math.hypot(t.x, t.y), y: t.x / Math.hypot(t.x, t.y) }
+      const off = arc.loops[0]!.map(v => (v.x - p.x) * n.x + (v.y - p.y) * n.y).filter((_, i) => Math.abs((arc.loops[0]![i]!.x - p.x) * n.y - (arc.loops[0]![i]!.y - p.y) * n.x) < 0.3)
+      return Math.max(...off) - Math.min(...off)
+    }
+    expect(Math.abs(across(c[0], { x: c[1].x - c[0].x, y: c[1].y - c[0].y }) - 4)).toBeLessThan(0.2)
+    expect(Math.abs(across(c[3], { x: c[3].x - c[2].x, y: c[3].y - c[2].y }) - 8)).toBeLessThan(0.2)
+    // an everyday edit: a new width at one end → a new arc piece, the other line's piece reused
+    const cache = createInkCache(), before = cache.build(d.geometry(), d.snapshot())
+    d.edit(e => e.lineStroke('bc', { width: 6, profile: 'uniform' } as never))
+    const after = cache.build(d.geometry(), d.snapshot()), of = (i: typeof after, k: string) => i.pieces.find(p => p.source.kind === k && (k === 'arc' || p.source.id === 'ab'))
+    expect(of(after, 'arc')).not.toBe(of(before, 'arc'))
+    expect(of(after, 'line')).toBe(of(before, 'line'))
+  })
+  it('the band against a tapered reference catches a vertex moved off by 2ε', () => {
+    // one segment, radii 2 → 4 over length 50: the hull's edge is the tangent line, across = (2 + 25·0.04)/√(1 − 0.04²) at the middle
+    const pts = [P(0), P(50)], radii = [2, 4], eps = 0.04, y = 3 / Math.sqrt(1 - 0.04 ** 2)
+    expect(band([[P(25, y), P(25, -y), P(-2, 0), P(54, 0)]], pts, radii, eps)).toBeLessThanOrEqual(1e-9)
+    expect(band([[P(25, y + 2 * eps)]], pts, radii, eps)).toBeGreaterThan(eps)
   })
   it('a hidden line leaves the arc and the other line; both hidden — no arc ink', () => {
     const d = doc()
