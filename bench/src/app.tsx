@@ -253,7 +253,7 @@ export function App() {
   // flags is still drawn and marked red (visible, reproducible — never hidden); only a line with nothing to draw is drawn
   // as today's stroke (bowen 1791801560 / 1791801629, dot 1791801801)
   const ink = inkOn ? inkCache.current.build(g, s) : null, inkOf = new Map((ink?.pieces ?? []).map(p => [p.source.id, p] as const))
-  const inkDefects = new Map((ink?.diagnostics ?? []).filter(d => d.status === 'defect').map(d => [d.line, d.reason ?? ''] as const))
+  const inkDefects = new Map((ink?.diagnostics ?? []).filter(d => d.status === 'defect').map(d => [d.source.id, d.reason ?? ''] as const))
   // one visibility rule for the playback drag's picking, its point marks and its ghost, computed once
   // per frame (dot 1791697776; docs/stage3b-pkg5-problems.md): the visible lines and the points they end at
   const shownLines = s.lines.filter(l => l.state.visible), shownEnds = new Set(shownLines.flatMap(l => [l.a, l.b]))
@@ -1104,20 +1104,49 @@ export function App() {
             return b && <rect data-selection-outline="" x={b.min.x} y={b.min.y} width={b.max.x - b.min.x} height={b.max.y - b.min.y}
               fill="none" stroke="#2a7fff" strokeWidth={px} strokeDasharray={`${3 * px} ${2 * px}`} pointerEvents="none" />
           })()}
-          {g.lines.map(G => {
-            const l = line(G.id), on = selLines.includes(l.id), picked = pv.pick?.kind === 'line' && pv.pick.id === l.id
-            // while posing, no edit marks: neither selection nor picks (dot 1791686247)
-            const stroke = pose ? (l.state.locked ? '#933' : '#111') : cutLines.has(l.id) ? '#bbb' : picked ? '#f80' : pv.mirrorSource.includes(l.id) ? '#a3c' : on ? '#06f' : l.state.locked ? '#933' : '#111'
-            const piece = l.state.visible ? inkOf.get(l.id) : undefined
-            if (piece) {
-              const d = piece.loops.map(q => 'M' + q.map(v => `${v.x} ${v.y}`).join(' L') + ' Z').join(' '), why = inkDefects.get(l.id)
-              return <g key={G.id}><path data-ink={l.id} d={d} fill={stroke} fillRule="nonzero" stroke="none" />
-                {why !== undefined && <path data-ink-defect={l.id} d={d} fill="none" stroke="#e00" strokeWidth={1.5 * px} strokeDasharray={`${3 * px} ${2 * px}`}><title>{why}</title></path>}</g>
+          {(() => {
+            const paintOf = (id: string) => {
+              const l = line(id), on = selLines.includes(l.id), picked = pv.pick?.kind === 'line' && pv.pick.id === l.id
+              // while posing, no edit marks: neither selection nor picks (dot 1791686247)
+              return pose ? (l.state.locked ? '#933' : '#111') : cutLines.has(l.id) ? '#bbb' : picked ? '#f80' : pv.mirrorSource.includes(l.id) ? '#a3c' : on ? '#06f' : l.state.locked ? '#933' : '#111'
             }
-            return <path key={G.id} d={path(G.curve)} fill="none" stroke={stroke} strokeWidth={l.stroke.width}
-              strokeDasharray={l.state.visible ? undefined : `${4 * px} ${4 * px}`} opacity={l.state.visible ? 1 : 0.35} strokeLinecap="round" />
-          })}
-          {g.arcs.map(a => <path key={a.key} d={path(a.curve)} fill="none" stroke="#a50" strokeWidth={2} />)}
+            const loopsD = (loops: readonly (readonly { x: number; y: number }[])[]) => loops.map(q => 'M' + q.map(v => `${v.x} ${v.y}`).join(' L') + ' Z').join(' ')
+            const defectMark = (key: string, d: string, why: string | undefined) => why !== undefined &&
+              <path key={'defect' + key} data-ink-defect={key} d={d} fill="none" stroke="#e00" strokeWidth={1.5 * px} strokeDasharray={`${3 * px} ${2 * px}`}><title>{why}</title></path>
+            // pieces joined by arcs: one filled path when their lines share a paint (no hairline seam, dot 1791802438); otherwise each line
+            // in its own paint and the arc in the base colour under them — the state shows in the halo (a recorded limit); the shape is the
+            // same either way, so selection never changes a join's shape
+            const uniform = new Map<string, { group: NonNullable<typeof ink>['groups'][number]; paint: string; first: boolean }>(), arcsAlone: NonNullable<typeof ink>['pieces'][number][] = []
+            for (const gr of ink?.groups ?? []) {
+              const paints = new Set(gr.pieces.flatMap(p => p.source.kind === 'line' ? [paintOf(p.source.id)] : []))
+              if (paints.size === 1) { let first = true; for (const G of g.lines) if (gr.pieces.some(p => p.source.kind === 'line' && p.source.id === G.id)) { uniform.set(G.id, { group: gr, paint: [...paints][0]!, first }); first = false } }
+              else arcsAlone.push(...gr.pieces.filter(p => p.source.kind === 'arc'))
+            }
+            for (const p of ink?.pieces ?? []) if (p.source.kind === 'arc' && !(ink?.groups ?? []).some(gr => gr.pieces.includes(p))) arcsAlone.push(p)
+            return <>
+              {arcsAlone.map(p => { const d = loopsD(p.loops); return <g key={p.source.id}><path data-ink={p.source.id} d={d} fill="#111" stroke="none" />{defectMark(p.source.id, d, inkDefects.get(p.source.id))}</g> })}
+              {g.lines.map(G => {
+                const l = line(G.id), stroke = paintOf(G.id)
+                const u = uniform.get(G.id)
+                if (u) {
+                  if (!u.first) return null
+                  const d = loopsD(u.group.loops), key = u.group.pieces.map(p => p.source.id).join(' ')
+                  return <g key={G.id}><path data-ink-group={key} d={d} fill={u.paint} fillRule="nonzero" stroke="none" />
+                    {defectMark(key, d, u.group.status === 'defect' ? u.group.reason : undefined)}
+                    {u.group.pieces.map(p => defectMark(p.source.id, loopsD(p.loops), inkDefects.get(p.source.id)))}</g>
+                }
+                const piece = l.state.visible ? inkOf.get(l.id) : undefined
+                if (piece) {
+                  const d = loopsD(piece.loops)
+                  return <g key={G.id}><path data-ink={l.id} d={d} fill={stroke} fillRule="nonzero" stroke="none" />{defectMark(l.id, d, inkDefects.get(l.id))}</g>
+                }
+                return <path key={G.id} d={path(G.curve)} fill="none" stroke={stroke} strokeWidth={l.stroke.width}
+                  strokeDasharray={l.state.visible ? undefined : `${4 * px} ${4 * px}`} opacity={l.state.visible ? 1 : 0.35} strokeLinecap="round" />
+              })}
+            </>
+          })()}
+          {/* the arcs' debug centre line, only while the ink switch is off (with it on, the arc is inked) */}
+          {!ink && g.arcs.map(a => <path key={a.key} d={path(a.curve)} fill="none" stroke="#a50" strokeWidth={2} />)}
           {/* the pending mark (stage 2): an orange dot on each line whose front differs from the baseline */}
           {!pose && g.lines.filter(G => pending.includes(G.id)).map(G => { const m = mid(G.curve); return <circle key={'pending' + G.id} data-pending={G.id} cx={m.x} cy={m.y} r={4 * px} fill="#f80" stroke="#fff" strokeWidth={px} /> })}
           {/* playback on a line: the pickable points, and the drag's ghost at start + displacement (stage 3b package 5) */}

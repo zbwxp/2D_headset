@@ -134,6 +134,61 @@ describe('build — over a document', () => {
   })
 })
 
+describe('arc joins — the arc inked at its lines\' width, the lines and the arc one outline (dot 1791802438)', () => {
+  const doc = () => {
+    const d = new Core()
+    d.edit(e => {
+      e.layer('L')
+      sk(e).point('a', 'L', P(0)); sk(e).point('b', 'L', P(50)); sk(e).point('c', 'L', P(50, 40))
+      sk(e).line('ab', 'a', 'b'); sk(e).line('bc', 'b', 'c')
+      e.lineStroke('ab', { width: 4, profile: 'uniform' } as never); e.lineStroke('bc', { width: 4, profile: 'uniform' } as never)
+      e.join('b', 'ab', 'bc', { mode: 'arc', radius: 10 })
+    })
+    return d
+  }
+  it('equal widths: an arc piece at that width, and one group whose union is one loop — the swept region of the whole turn', () => {
+    const d = doc(), before = JSON.stringify([d.snapshot(), d.geometry()])
+    const ink = build(d.geometry(), d.snapshot())
+    const arc = ink.pieces.find(p => p.source.kind === 'arc')!
+    expect(arc.source).toMatchObject({ lines: ['ab', 'bc'] })
+    expect(ink.groups.length).toBe(1)
+    const gr = ink.groups[0]!
+    expect(gr.pieces.length).toBe(3)
+    expect(gr.status).toBe('unproven')
+    expect(gr.loops.length).toBe(1)
+    // the turn's centre line has length L = 40 + 30 + 10·π/2; its sweep (no fold: radius 10 > h 2) is L·2h + πh², within
+    // the outline's perimeter × ε (ε = 1 % of the width)
+    const L = 40 + 30 + 10 * Math.PI / 2
+    expect(Math.abs(Math.abs(area(gr.loops[0]!)) - (L * 4 + Math.PI * 4))).toBeLessThan((2 * L + 4 * Math.PI) * 0.04)
+    expect(JSON.stringify([d.snapshot(), d.geometry()])).toBe(before)
+  })
+  it('the arc follows a changed radius and width; the unchanged pieces are reused', () => {
+    const d = doc(), cache = createInkCache(), first = cache.build(d.geometry(), d.snapshot())
+    d.edit(e => e.join('b', 'ab', 'bc', { mode: 'arc', radius: 20 }))
+    const r20 = cache.build(d.geometry(), d.snapshot())
+    expect(r20.groups[0]!.loops).not.toEqual(first.groups[0]!.loops)
+    d.edit(e => { e.lineStroke('ab', { width: 8, profile: 'uniform' } as never); e.lineStroke('bc', { width: 8, profile: 'uniform' } as never) })
+    const w8 = cache.build(d.geometry(), d.snapshot()), L = 30 + 20 + 20 * Math.PI / 2
+    expect(Math.abs(Math.abs(area(w8.groups[0]!.loops[0]!)) - (L * 8 + Math.PI * 16))).toBeLessThan((2 * L + 8 * Math.PI) * 0.08)
+    const again = cache.build(d.geometry(), d.snapshot())
+    expect(again.groups[0]).toBe(w8.groups[0])
+  })
+  it('unequal widths: drawn at the narrower width, and marked for the next step', () => {
+    const d = doc()
+    d.edit(e => e.lineStroke('bc', { width: 8, profile: 'uniform' } as never))
+    const ink = build(d.geometry(), d.snapshot()), arc = ink.diagnostics.find(x => x.source.kind === 'arc')!
+    expect(arc.status).toBe('unproven')
+    expect(arc.reason).toMatch(/differ in width/)
+  })
+  it('a hidden line leaves the arc and the other line; both hidden — no arc ink', () => {
+    const d = doc()
+    d.edit(e => e.lineState('bc', { visible: false }))
+    expect(build(d.geometry(), d.snapshot()).pieces.map(p => p.source.kind).sort()).toEqual(['arc', 'line'])
+    d.edit(e => e.lineState('ab', { visible: false }))
+    expect(build(d.geometry(), d.snapshot()).pieces).toEqual([])
+  })
+})
+
 describe('the upstream defects, reproduced on the pinned clipper2-ts, are caught by the output checks (dot 1791800973)', () => {
   const fx = (n: string) => JSON.parse(readFileSync(new URL(`./fixtures/upstream-${n}.json`, import.meta.url), 'utf8'))
   it('Clipper2 #1085 (clipper2-ts #30): a union with a zero-width bridge', () => {

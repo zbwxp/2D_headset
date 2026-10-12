@@ -9,21 +9,31 @@
 // be reproduced, and the caller marks it; never hidden by an automatic fallback: bowen 1791801560 / 1791801629, dot
 // 1791801801), 'fallback' (nothing to draw — no usable width, or the library returned no outline — the caller draws
 // today's stroke so the line is never blank). The evidence is kept per kind of error (dot 1791801420).
-import { inflatePaths, JoinType, EndType, type Paths64, type Point64 } from 'clipper2-ts'
+import { inflatePaths, union, JoinType, EndType, FillRule, type Paths64, type Point64 } from 'clipper2-ts'
 
 export interface Vec { readonly x: number; readonly y: number }
 export type Cubic = readonly [Vec, Vec, Vec, Vec]
 
-/** What `build` reads: a view's drawn centre lines and its lines' stroke and visibility. */
+/** What `build` reads: a view's drawn centre lines and arcs, and its lines' stroke and visibility. */
 export interface InkInput {
   readonly lines: readonly { readonly id: string; readonly curve: Cubic }[]
+  readonly arcs: readonly { readonly key: string; readonly lines: readonly [string, string]; readonly curve: Cubic }[]
 }
 export interface InkLines {
   readonly lines: readonly { readonly id: string; readonly stroke: { readonly width: number }; readonly state: { readonly visible: boolean } }[]
 }
 
-/** One line's ink: closed loops in drawing units — outer loops and holes, in opposite orientations. */
-export interface InkPiece { readonly source: { readonly kind: 'line'; readonly id: string }; readonly loops: readonly (readonly Vec[])[] }
+/** What a piece of ink is drawn for: a line, or an arc join's arc (which belongs to both its lines). */
+export type InkSource = { readonly kind: 'line'; readonly id: string } | { readonly kind: 'arc'; readonly id: string; readonly lines: readonly [string, string] }
+/** One piece of ink: closed loops in drawing units — outer loops and holes, in opposite orientations — exactly on the
+ *  integer grid of `scale` (units per drawing unit, a power of two). */
+export interface InkPiece { readonly source: InkSource; readonly loops: readonly (readonly Vec[])[]; readonly scale: number }
+/**
+ * Pieces joined by arcs — a line, its arc, the next line… — and their union as one outline: drawn as one filled path
+ * when they share a paint, so no hairline seam shows between them (dot 1791802438). The union is the same set as the
+ * pieces together, so drawing it or the pieces gives the same shape — selection never changes a join's shape.
+ */
+export interface InkGroup { readonly pieces: readonly InkPiece[]; readonly loops: readonly (readonly Vec[])[]; readonly status: 'unproven' | 'defect'; readonly reason?: string }
 
 export type InkStatus = 'verified' | 'unproven' | 'defect' | 'fallback'
 export interface InkEvidence {
@@ -42,8 +52,8 @@ export interface InkEvidence {
   /** The output checks (§2b): loops simple, no bridge; the vertex band; the area check where it applies. */
   readonly checks: { readonly simple: boolean; readonly band: boolean | 'incomplete'; readonly area: boolean | 'n/a' }
 }
-export interface InkDiagnostic { readonly line: string; readonly status: InkStatus; readonly reason?: string; readonly evidence?: InkEvidence }
-export interface Ink { readonly pieces: readonly InkPiece[]; readonly diagnostics: readonly InkDiagnostic[] }
+export interface InkDiagnostic { readonly source: InkSource; readonly status: InkStatus; readonly reason?: string; readonly evidence?: InkEvidence }
+export interface Ink { readonly pieces: readonly InkPiece[]; readonly diagnostics: readonly InkDiagnostic[]; readonly groups: readonly InkGroup[] }
 
 export interface InkOptions {
   /** ε = clamp(relative × full width, min, max) per line. */
@@ -195,9 +205,12 @@ function disc(c: Vec, h: number, tol: number): Vec[] {
 }
 
 /** One line's ink and diagnostic. */
-export function lineInk(id: string, curve: Cubic, width: number, opts: InkOptions = {}): { piece?: InkPiece; diagnostic: InkDiagnostic } {
+export function lineInk(id: string, curve: Cubic, width: number, opts: InkOptions = {}) { return sweep({ kind: 'line', id }, curve, width, opts) }
+
+/** A centre curve swept by a disc of the given width: a line's ink, or an arc's at its lines' width. */
+export function sweep(source: InkSource, curve: Cubic, width: number, opts: InkOptions = {}): { piece?: InkPiece; diagnostic: InkDiagnostic } {
   const h = width / 2
-  if (!(h > 0) || !Number.isFinite(h)) return { diagnostic: { line: id, status: 'fallback', reason: 'width not usable' } }
+  if (!(h > 0) || !Number.isFinite(h)) return { diagnostic: { source, status: 'fallback', reason: 'width not usable' } }
   const eps = Math.min(opts.max ?? 0.05, Math.max(opts.min ?? 1e-4, (opts.relative ?? 0.01) * width))
   const flat = flatten(curve, eps / 2)
   const pts = flat.points
@@ -212,7 +225,7 @@ export function lineInk(id: string, curve: Cubic, width: number, opts: InkOption
   const zeroLength = path.length === 1
   if (zeroLength) paths = [disc(curve[0], h, eps / 4).map(toI)]
   else paths = inflatePaths([path], h * s, JoinType.Round, EndType.Round, 2, arcTolerance * s)
-  if (!paths.length) return { diagnostic: { line: id, status: 'fallback', reason: 'the library returned no outline' } }
+  if (!paths.length) return { diagnostic: { source, status: 'fallback', reason: 'the library returned no outline' } }
   const loops = paths.map(p => p.map(q => ({ x: q.x / s, y: q.y / s })))
   const defect = outputDefect(paths)
   // the vertex band: every output vertex within [h − ε, h + ε] of the true centre curve (measured against a finer
@@ -236,53 +249,101 @@ export function lineInk(id: string, curve: Cubic, width: number, opts: InkOption
     }
   }
   const evidence: InkEvidence = { epsilon: eps, flattening: { bound: flat.bound, floorHit: flat.floorHit }, arcTolerance, scale: s, inputRounding, bandError, checks: { simple: !defect, band, area } }
-  const piece: InkPiece = { source: { kind: 'line', id }, loops }
-  if (defect) return { piece, diagnostic: { line: id, status: 'defect', reason: defect, evidence } }
-  if (band === false) return { piece, diagnostic: { line: id, status: 'defect', reason: `an output vertex is ${bandError!.toExponential(2)} off the stroke's edge (ε ${eps.toExponential(2)})`, evidence } }
-  if (area === false) return { piece, diagnostic: { line: id, status: 'defect', reason: 'the area differs from the stroke area', evidence } }
+  const piece: InkPiece = { source, loops, scale: s }
+  if (defect) return { piece, diagnostic: { source, status: 'defect', reason: defect, evidence } }
+  if (band === false) return { piece, diagnostic: { source, status: 'defect', reason: `an output vertex is ${bandError!.toExponential(2)} off the stroke's edge (ε ${eps.toExponential(2)})`, evidence } }
+  if (area === false) return { piece, diagnostic: { source, status: 'defect', reason: 'the area differs from the stroke area', evidence } }
   // the arc approximation is a configuration, not a bound (dot 1791801420): only the zero-length disc, built by us, is bounded
-  if (band === 'incomplete') return { piece, diagnostic: { line: id, status: 'unproven', reason: 'diagnosis incomplete: the vertex band check stopped at its work limit', evidence } }
+  if (band === 'incomplete') return { piece, diagnostic: { source, status: 'unproven', reason: 'diagnosis incomplete: the vertex band check stopped at its work limit', evidence } }
   const verified = zeroLength && !flat.floorHit
-  return { piece, diagnostic: { line: id, status: verified ? 'verified' : 'unproven', evidence } }
-}
-
-/** The ink of a view: every visible line's piece (hidden lines have none — their decoration is drawn from the centre line). */
-export function build(geometry: InkInput, snapshot: InkLines, opts: InkOptions = {}): Ink {
-  const byId = new Map(snapshot.lines.map(l => [l.id, l] as const))
-  const pieces: InkPiece[] = [], diagnostics: InkDiagnostic[] = []
-  for (const g of geometry.lines) {
-    const l = byId.get(g.id)
-    if (!l || !l.state.visible) continue
-    const r = lineInk(g.id, g.curve, l.stroke.width, opts)
-    if (r.piece) pieces.push(r.piece)
-    diagnostics.push(r.diagnostic)
-  }
-  return { pieces, diagnostics }
+  return { piece, diagnostic: { source, status: verified ? 'verified' : 'unproven', evidence } }
 }
 
 /**
- * A cache of line ink, owned by its caller (one per canvas): a line is rebuilt only when its curve or width changed,
- * so an edit rebuilds the edited lines and a re-render with nothing changed rebuilds none. Entries for lines that are
- * gone are dropped on the next build.
+ * The union of pieces as one outline, on one integer grid: the finest of the pieces' grids (each piece is exact on it —
+ * the grids are powers of two), coarsened only if the coordinates would leave the library's range. Checked like a
+ * single line's output (§2b); a defect is reported and the union drawn all the same.
+ */
+export function merge(pieces: readonly InkPiece[]): Omit<InkGroup, 'pieces'> {
+  const maxAbs = Math.max(1, ...pieces.flatMap(p => p.loops.flatMap(l => l.map(v => Math.max(Math.abs(v.x), Math.abs(v.y))))))
+  const s = Math.min(Math.max(...pieces.map(p => p.scale)), Math.pow(2, Math.floor(Math.log2(2 ** 50 / maxAbs))))
+  const out = union(pieces.flatMap(p => p.loops.map(l => l.map(v => ({ x: Math.round(v.x * s), y: Math.round(v.y * s) })))), FillRule.NonZero)
+  const loops = out.map(p => p.map(q => ({ x: q.x / s, y: q.y / s }))), defect = out.length ? outputDefect(out) : 'the union is empty'
+  return defect ? { loops, status: 'defect', reason: defect } : { loops, status: 'unproven' }
+}
+
+/** The ink of a view: every visible line's piece (hidden lines have none — their decoration is drawn from the centre
+ *  line), each arc's piece, and the groups the arcs join. */
+export function build(geometry: InkInput, snapshot: InkLines, opts: InkOptions = {}): Ink {
+  return createInkCache(opts).build(geometry, snapshot)
+}
+
+/**
+ * A cache of ink, owned by its caller (one per canvas): a piece is rebuilt only when its curve or width changed, a
+ * group's union only when one of its pieces did, so an edit rebuilds what it touched and a re-render with nothing
+ * changed rebuilds none. Entries for what is gone are dropped on the next build.
+ *
+ * An arc is inked when either of its lines is visible, at its lines' width ("按圆弧两端对应的原线取宽度", dot
+ * 1791802438). Equal widths are the step done now; where they differ the arc is drawn at the narrower width and
+ * marked — easing the width along the arc is the next step.
  */
 export function createInkCache(opts: InkOptions = {}) {
   const memo = new Map<string, { key: string; piece?: InkPiece; diagnostic: InkDiagnostic }>()
+  const groupMemo = new Map<string, InkGroup>()
   return {
     build(geometry: InkInput, snapshot: InkLines): Ink {
       const byId = new Map(snapshot.lines.map(l => [l.id, l] as const)), seen = new Set<string>()
       const pieces: InkPiece[] = [], diagnostics: InkDiagnostic[] = []
+      const one = (source: InkSource, curve: Cubic, width: number, unequal = false) => {
+        const at = JSON.stringify([source.kind, source.id])
+        seen.add(at)
+        const key = JSON.stringify([curve, width, unequal])
+        let e = memo.get(at)
+        if (!e || e.key !== key) {
+          const r = sweep(source, curve, width, opts)
+          const diagnostic = unequal && r.diagnostic.status !== 'defect' && r.diagnostic.status !== 'fallback'
+            ? { ...r.diagnostic, status: 'unproven' as const, reason: "the arc's lines differ in width: drawn at the narrower one until the width eases along the arc (next step)" }
+            : r.diagnostic
+          e = { key, piece: r.piece, diagnostic }
+          memo.set(at, e)
+        }
+        if (e.piece) pieces.push(e.piece)
+        diagnostics.push(e.diagnostic)
+        return e.piece
+      }
+      const pieceOf = new Map<string, InkPiece>()
       for (const g of geometry.lines) {
         const l = byId.get(g.id)
         if (!l || !l.state.visible) continue
-        seen.add(g.id)
-        const key = JSON.stringify([g.curve, l.stroke.width])
-        let e = memo.get(g.id)
-        if (!e || e.key !== key) { e = { key, ...lineInk(g.id, g.curve, l.stroke.width, opts) }; memo.set(g.id, e) }
-        if (e.piece) pieces.push(e.piece)
-        diagnostics.push(e.diagnostic)
+        const p = one({ kind: 'line', id: g.id }, g.curve, l.stroke.width)
+        if (p) pieceOf.set(g.id, p)
+      }
+      // groups: the lines an arc joins, through as many arcs as connect them (union–find over the pieces)
+      const parent = new Map<InkPiece, InkPiece>()
+      const find = (p: InkPiece): InkPiece => { const q = parent.get(p) ?? p; if (q === p) return p; const r = find(q); parent.set(p, r); return r }
+      const join = (a: InkPiece, b: InkPiece) => { const ra = find(a), rb = find(b); if (ra !== rb) parent.set(rb, ra) }
+      for (const a of geometry.arcs) {
+        const ls = a.lines.map(id => byId.get(id)).filter(l => l && l.state.visible)
+        if (!ls.length) continue
+        const widths = ls.map(l => l!.stroke.width), width = Math.min(...widths)
+        const p = one({ kind: 'arc', id: a.key, lines: [a.lines[0], a.lines[1]] }, a.curve, width, widths.some(w => w !== width))
+        if (!p) continue
+        for (const id of a.lines) { const q = pieceOf.get(id); if (q) join(p, q) }
+      }
+      const members = new Map<InkPiece, InkPiece[]>()
+      for (const p of pieces) { const r = find(p); (members.get(r) ?? members.set(r, []).get(r)!).push(p) }
+      const groups: InkGroup[] = [], live = new Set<string>()
+      for (const ps of members.values()) {
+        if (ps.length < 2) continue
+        const key = JSON.stringify(ps.map(p => [p.source.kind, p.source.id]))
+        live.add(key)
+        let gr = groupMemo.get(key)
+        if (!gr || gr.pieces.length !== ps.length || gr.pieces.some((p, i) => p !== ps[i])) { gr = { pieces: ps, ...merge(ps) }; groupMemo.set(key, gr) }
+        groups.push(gr)
       }
       for (const id of [...memo.keys()]) if (!seen.has(id)) memo.delete(id)
-      return { pieces, diagnostics }
+      for (const k of [...groupMemo.keys()]) if (!live.has(k)) groupMemo.delete(k)
+      return { pieces, diagnostics, groups }
     },
   }
 }

@@ -143,6 +143,9 @@ After P2, bowen sees the correct variants that differ only in look (O2 style, h_
   - all-positive Bernstein coefficients exclude a zero on an interval, but an interval that is left small after subdivision does **not** prove a true zero there — the true-zero decision needs its own test (e.g. a sign change of a coordinate of C′ or an exact root of a factor), else the interval stays "not verified";
   - the one-sided limit directions carry the sign of their parameter side (the direction approached from below vs left from above), so "agree" is decided with that sign;
   - O3-w away from 180° still has a corner tip — only the 180° easing has none.
+- **Arc joins, equal widths (principle: Slack 1791802402; passed by dot 1791802438).** An arc is part of the line (v103, appearance.ts:83): derived already trims both lines and inserts the arc's centre line; the arc is swept like a line, at its lines' width, and the lines and arcs an arc joins form a group whose union is one outline (`merge`). Inked when either of its lines is visible. **Recorded limits:**
+  - **paint:** a group whose lines share a paint is drawn as its one outline (no hairline seam); when they differ (e.g. one line selected) each line keeps its paint, the arc is drawn in the base colour under them and the state shows in the halo — the selected line's round end shows as a half-disc over the arc. The shape is the same either way: selection never changes a join's shape. To be settled with the cusp's mixed-colour question.
+  - **unequal widths:** drawn at the narrower width and marked 'unproven' with the reason; easing the width along the arc (v103's smoothstep, own offset) is the next step.
 
 ## 9. Changes from the first version (dot 1791788545, 1791788609)
 
