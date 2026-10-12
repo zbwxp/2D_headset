@@ -51,7 +51,7 @@ angles.forEach((deg, r) => cols.forEach(([k0, k1, k], c) => {
   label += ' — experimental variant: trim widened to R1'
   // T = the thinner (dT: from T's free end towards p), W = the wider (dW: from p along W away from the joint)
   const tIs0 = h0 <= h1, dT = tIs0 ? a : mul(b, -1), oT = tIs0 ? o0 : o1, dW = tIs0 ? b : mul(a, -1), oW = tIs0 ? o1 : o0
-  const lenT = Lb, lenW = Lb, applies = d1 < lenW && d1 < lenT
+  const lenT = Lb, lenW = Lb
   const quad = (P0, C, P1) => Array.from({ length: 24 }, (_, i) => { const t = (i + 1) / 24, u = 1 - t; return add(add(mul(P0, u * u), mul(C, 2 * u * t)), mul(P1, t * t)) })
   const tip = outerCls === 'O1' ? [p, A, M, B] : (() => { const X = add(p, mul(sub(M, p), limit / len(sub(M, p)))); return [p, A, ...quad(A, add(A, mul(a, Math.sqrt(limit * limit - h0 * h0))), X), ...quad(X, add(B, mul(b, -Math.sqrt(limit * limit - h1 * h1))), B)] })()
   const band = (P0, P1, o) => [add(P0, o), add(P1, o), sub(P1, o), sub(P0, o)]
@@ -82,13 +82,16 @@ angles.forEach((deg, r) => cols.forEach(([k0, k1, k], c) => {
   const xm = meet(Ecut, unit(oW), Tc, dT), X = add(Ecut, mul(unit(oW), xm.s)), alongCut = len(sub(X, Ecut))
   const wedge = Math.abs(area([Ecut, R1, X])), wedgeFormula = 0.5 * (d1 - ell) ** 2 * Math.tan(th)
   // the new cut across W at R1 (from R1 to W's outer edge there) must lie on the kept side (T's side) entirely
+  // applicability (dot 1791786787): d1 is a distance along W; whether R1 still lies beside T is R1 projected on T's own
+  // direction, measured from T's free end (0 … lenT) — not d1 against T's length. The margin left on T is reported.
+  const tOnT = dot(sub(R1, Tfree), dT), applies = d1 < lenW && tOnT >= 0 && tOnT <= lenT
   const Rout = add(WR1, oW), cutKept = insideEO(mul(add(R1, Rout), 0.5), HT) && insideEO(sub(Rout, mul(unit(oW), 1e-6)), HT)
   const rot = rr => P => { const v = sub(P, p); return add(p, [v[0] * Math.cos(rr) - v[1] * Math.sin(rr), v[0] * Math.sin(rr) + v[1] * Math.cos(rr)]) }
   const rotO = rr => P => [P[0] * Math.cos(rr) - P[1] * Math.sin(rr), P[0] * Math.sin(rr) + P[1] * Math.cos(rr)]
   const rotBad = [0.37, 0.63, 1.1, 1.9, 2.71, 4.4].flatMap(rr => [['', rot(rr)], ['O', rotO(rr)]].filter(([, fn]) => { const w = region(mapSpec(spec, fn)), t = topology(w); return !(t.loops === topo.loops && t.holes === topo.holes && !w.openChains.length && !w.badVertices) }).map(([tag]) => tag + rr))
   const tipReach = Math.max(...tip.slice(1).map(P => len(sub(P, p))))
   // readings: one short item per line group (dot 1791786738: long readings spilled into the next cell)
-  note = [applies ? '' : 'NOT APPLICABLE (R1 beyond a stroke)', `d1 ${d1.toFixed(1)} vs ℓ ${ell}`, `beyond the cut: stretch ${(d1 - ell).toFixed(1)}`,
+  note = [applies ? '' : 'NOT APPLICABLE (R1 beyond a stroke)', `d1 ${d1.toFixed(1)} vs ℓ ${ell}`, `beyond the cut: stretch ${(d1 - ell).toFixed(1)}`, `R1 on T at ${tOnT.toFixed(2)} of ${lenT.toFixed(2)} from T's free end`,
     `largest change ${hCut.toFixed(3)} normal to T's edge`, `(${alongCut.toFixed(3)} along the cut)`, `removed area ${wedge.toFixed(3)}`, `(½(d1−ℓ)²tanθ = ${wedgeFormula.toFixed(3)})`,
     `new cut at R1 on the kept side: ${cutKept ? 'yes' : 'NO'}`, `loops ${topo.loops}, holes ${topo.holes} (input alone ${input.loops}, ${input.holes})`,
     `open ${openChains.length}`, `bad ${badVertices}`, `touch ${touchVertices}`, `crossings ${crossings}`, `C_W on the outline: ${onOutline(CW) ? 'YES' : 'no'}`,
