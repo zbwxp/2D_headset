@@ -16,7 +16,7 @@ Principle: `docs/ink-joins-principle.md` §2 (6544641; dot 1791811126 cleared J1
 
 ## 3. The join list (principle §2.2)
 - The rows keep an explicit order — the stored array; a point's list = its rows in array order, top first. `sortRows` (src/joins/index.ts:35) is removed from every write; `restore` accepts the stored order (pairs still sorted within a row, no repeats) instead of requiring sorted rows.
-- **New on top:** `setJoin` of a pair with no row inserts it before the point's first row; setting a pair that has a row changes its mode in place (its position stays — bowen asked new joins on top, not re-set ones; flagged for dot).
+- **New on top:** `setJoin` of a pair with no row inserts it before the point's first row; setting a pair that has a row changes its mode in place and keeps its position — consistent with explicit drag ordering (dot 1791811393).
 - **Reorder:** `orderJoins(point, keys)` — the point's rows in the given order (keys = row keys; must be exactly that point's rows); the document's `joinOrder(point, pairs)`; an edit like any other (undo, every view).
 - **Reading:** `rowsAt(point)` returns the list top first (as stored); a new `governing(point, line)` = the topmost row at `point` containing `line`, or none.
 - **The smooth solve does not depend on the list:** it iterates a sorted copy of the rows, so its result is the same whatever the order (the reason for the old canonical sort, src/joins/index.ts:35).
@@ -26,7 +26,7 @@ Principle: `docs/ink-joins-principle.md` §2 (6544641; dot 1791811126 cleared J1
 - A row whose line collapsed is dropped (as today).
 
 ## 5. Per-view zone length (principle §2.4, §4)
-- A slot 'zone' per shape layer under the row key, like 'radius': absent = automatic; a number = the manual length in that view. `setZoneHere(point, l1, l2, length | null)` writes the current view only; `JoinRow.zone?: number` in `rows` / `rowsAt`. Every place that moves, re-keys or drops 'radius' does the same for 'zone' (update, insert, removeJoin, setJoin's mode change).
+- A slot 'zone' per shape layer under the row key, like 'radius': absent = automatic; a number = the manual length in that view. `setZoneHere(point, l1, l2, length | null)` writes the current view only; `JoinRow.zone?: number` in `rows` / `rowsAt`. 'zone' follows 'radius' wherever a row is moved, re-keyed or copied (update, insert), but **not on a mode change**: the zone belongs to every mode, so changing bound ↔ smooth / cusp / arc keeps each view's manual length; it is dropped only with the join (removeJoin, a row dropped by topology) or cleared by setting it automatic (dot 1791811393). 'radius' keeps its rule (dropped when the mode leaves arc).
 
 ## 6. Archive (principle §2.6)
 - `VERSION = 7` (src/archive/index.ts:17), the list order and the 'zone' slots saved as stored.
