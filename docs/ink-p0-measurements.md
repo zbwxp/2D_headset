@@ -6,7 +6,7 @@ bowen 1791790281 allowed downloading the candidates into a scratch folder outsid
 
 | Fixture | What it reproduces | clipper2-ts | clipper2-wasm |
 |---|---|---|---|
-| F1 cap sliver | a 32-gon cap centred on a body's end edge — the 5e-6 sliver that gave our extractor open chains | **with consistently oriented inputs:** 1 path, area 1496.185802 vs 1496.186013 expected (the difference is my approximate expectation, half the 32-gon) | same |
+| F1 cap sliver | a 32-gon cap centred on a body's end edge — the 5e-6 sliver that gave our extractor open chains | **with consistently oriented inputs:** 1 path, area 1496.185802 vs 1496.186013 — the expectation is exact (a centred 32-gon is halved by a line through its centre, dot 1791790632); the gap is **quantization**, see the scale study below | same |
 | F1, inputs oriented oppositely | — | 2 paths, area short by half the disc: **NonZero cancels a clockwise piece against a counter-clockwise one** — not a library fault | same |
 | F2 narrowing strip at the cut | Wo − Wn, the strip thinning to nothing at the cut (tangent) — our extractor's second failure | 1 path, area 68.209218 vs 68.209224 (trapezoid sum), diff −5.6e-6 | (difference not run on wasm) |
 | F3 touch at a point | two arms meeting only at p (0°) | 2 paths, area 30 exactly | same |
@@ -14,7 +14,9 @@ bowen 1791790281 allowed downloading the candidates into a scratch folder outsid
 
 **Scope (dot 1791790569):** these fixtures passing supports the comparison of the candidates; it is not a general guarantee of correctness on every input.
 
-**Contract found:** every piece passed to a union must be oriented the same way (or the fill rule chosen to match); the module normalises orientation before each call.
+**F1 scale study (`p0c.mjs`; areas compared exactly in integers with BigInt):** the union's area against the true one: 6.4e-2 / −8.7e-4 / −2.1e-4 / 2.4e-5 / 5.1e-6 / 7.5e-6 / 2.6e-9 at s = 10² … 10⁸; against the exact union of the **rounded** inputs (A0′ + A1′ − A∩′, all in integers): 0 / −6.0e-3 / −6.0e-4 / −5.6e-5 / −6.5e-6 / −5.5e-7 / −6.1e-8 — about 6 / s, the rounding of the new crossing vertices of cap and body. So the gap is input rounding plus the rounding of new vertices, both shrinking with s; one fixture, not a general bound.
+
+**Contract found (refined, dot 1791790632):** independent solid pieces passed to a union are oriented the same way; a result with holes that goes into another operation keeps its outer loops and its holes in **opposite** orientations — holes are never turned into solids by normalising. The adapter normalises solids only and passes structured results (outer + holes) through as they are.
 
 ## 2. Rounding of new intersection points
 
@@ -24,7 +26,8 @@ Two bands crossing at 200 angles (crossing sine from 0.100 up).
 - **Against the true crossing** (unrounded inputs): worst 2.6 / 5.6 / 4.1 / 3.6 / 3.4 grid units at s = 10² … 10⁶. This is the **input rounding** (≤ 0.5 unit per vertex) moved along a shallow crossing: about 0.5 / sin φ grid units, 5.0 at sin φ = 0.1 — and sharp joins at small angles cross at exactly such shallow angles.
 - **Status:** the 0.5 / sin φ term is an explanation that fits this measurement (one family of crossings, 200 angles), not a proven bound; the budget below is a working estimate for P1 to test, not a guarantee (dot 1791790569).
 - **Not a budget guarantee — an item to verify (dot 1791790593):** (0.5 / sin φ + 0.5) / s is an empirical order of magnitude from this one family of crossings. It does not account for the perturbation of several endpoints of both edges, nor for their change of direction, so it **cannot certify** any choice of s for any range of φ (the earlier sentence "s = 10⁸ covers crossings down to sin φ ≈ 2·10⁻⁶" is withdrawn). What it does tell P1: shallow crossings magnify input rounding, so s should be large (coordinates × s below 2⁵³).
-- **What P1 must do instead:** claim an error as verified only with a checkable conservative bound, or with an **a-posteriori check per case** (e.g. each output vertex compared against the exact crossing of the unrounded edges it came from, and each piece's area / topology against the unclipped input); where neither holds, the result carries the plan's **not verified** status.
+- **A counterexample to that term (dot 1791790659):** at s = 1, the edges (−1000, 0.49) → (1000, 0.49) and (−1000, −100.49) → (1000, 99.51) cross at (9.8, 0.49); with rounded endpoints they cross at (0, 0) — 9.812 grid units away, where the term gives about 5.525. It is kept as a fixture for P1.
+- **What P1 must do instead:** claim an error as verified only with a checkable conservative bound, or with an **a-posteriori check of the complete boolean result** — not only of the output vertices, since a vanished sliver or hole leaves no vertex to check (dot 1791790659): e.g. the area and topology of each result against the exact operation on the unrounded inputs, and each output vertex against the exact crossing it stands for; where neither holds, the result carries the plan's **not verified** status.
 
 ## 3. Region collapse (grid units)
 
@@ -36,13 +39,15 @@ Two bands crossing at 200 angles (crossing sine from 0.100 up).
 
 A drawing of 300 lines, each outline 2 × 120 vertices plus two 17-vertex caps (~275 vertices), consistently oriented; "per-line" = one union per line (all 300 per frame), "2-line groups" = 150 unions of two lines' pieces.
 
+Re-run after freeing the WebAssembly clip list (the first run leaked an empty `Paths64` per call, dot 1791790632):
+
 | s | clipper2-ts per-line / groups (ms per frame) | clipper2-wasm per-line / groups |
 |---|---|---|
-| 10⁴ | 17.9 / 21.6 | 13.8 / 16.3 |
-| 10⁶ | 18.7 / 21.7 | 13.0 / 15.8 |
-| 10⁸ | 25.7 / 28.2 (BigInt intermediates) | 13.9 / 16.2 |
+| 10⁴ | 19.0 / 22.0 | 13.8 / 16.1 |
+| 10⁶ | 18.5 / 21.7 | 13.2 / 15.4 |
+| 10⁸ | 26.3 / 28.4 (BigInt intermediates) | 14.4 / 16.3 |
 
-- clipper2-wasm loads asynchronously: import + instantiate **6.4–7.6 ms** once.
+- **clipper2-wasm loading, named by what was measured (dot 1791790632):** in a fresh Node process with the files in the OS cache, the dynamic `import()` took 2.3–2.4 ms and the **first** factory call (instantiating the module) 4.1–4.2 ms; a second factory call 1.4–1.5 ms. (The earlier "6.4–7.6 ms" was import + first factory call together, in the same setting.) A browser's cold start — fetching and compiling the .wasm — was **not** measured.
 - At 60 frames per second (16.7 ms) a union of **every** line every frame does not fit with clipper2-ts and barely with clipper2-wasm. The plan's structure avoids that: a plain line with no join and no self-overlap needs no boolean operation (its outline is drawn as built); only join groups (and self-overlapping offsets) go through the library, and editing rebuilds only what changed. Playback rebuilds every frame, so P1 measures `ink.build` in the browser on a real drawing before the switch can come on.
 
 ## 5. Proposal for the dependency decision (bowen's, after dot's review)

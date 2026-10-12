@@ -20,7 +20,8 @@ const tsOp = (ct, subj, clip, s) => fromTs(C2.booleanOp(ct, toTs(subj, s), toTs(
 const W = await Clipper2ZFactory()
 function wasmPaths(polys, s) { const ps = new W.Paths64(); for (const p of polys) { const a = new BigInt64Array(p.length * 3); p.forEach(([x, y], i) => { a[3 * i] = BigInt(Math.round(x * s)); a[3 * i + 1] = BigInt(Math.round(y * s)) }); const path = new W.Path64(); path.assign(a); ps.push_back(path); path.delete() } return ps }
 function wasmRead(ps, s) { const out = []; for (let i = 0; i < ps.size(); i++) { const v = ps.get(i).view(), pts = []; for (let j = 0; j < v.length; j += 3) pts.push([Number(v[j]) / s, Number(v[j + 1]) / s]); out.push(pts) } return out }
-const wUnion = (polys, s) => { const a = wasmPaths(polys, s), r = W.Union64(a, new W.Paths64(), W.FillRule.NonZero); const o = wasmRead(r, s); a.delete(); r.delete(); return o }
+const EMPTY = new W.Paths64() // one empty clip list, reused and never leaked (dot 1791790632)
+const wUnion = (polys, s) => { const a = wasmPaths(polys, s), r = W.Union64(a, EMPTY, W.FillRule.NonZero); const o = wasmRead(r, s); a.delete(); r.delete(); return o }
 
 const report = (name, out, expect) => { const A = out.reduce((t, l) => t + areaF(l), 0); console.log(`  ${name}: paths ${out.length}, area ${A.toFixed(6)}${expect !== undefined ? ` (expected ${expect.toFixed(6)}, diff ${(A - expect).toExponential(2)})` : ''}`) }
 
