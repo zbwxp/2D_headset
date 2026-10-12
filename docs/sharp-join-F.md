@@ -25,11 +25,16 @@ The joint region is one closed outline, in this order:
 
 E0o → **outer join path** → E1o → cut across S1 → E1i → **inner join path**, backwards → E0i → cut across S0 → E0o.
 
-Each stroke outside its zone is closed by the same cut segment, so the joint region and the strokes share their cuts exactly: no gap and no overlap is possible along them by construction. The two join paths are what each class below defines.
+Each stroke outside its zone is closed by the same cut segment, so the joint region and the strokes **meet at the same seam** (no gap along it). That alone does not rule out an overlap (dot 1791782262): "no overlap" also needs the two regions to lie on opposite sides of each cut and the joint region's closed outline not to cross itself — checked per case (the curved-stroke sheet counts the outline's self-crossings), not assumed from the closing order. The two join paths are what each class below defines.
 
 ## 4. The meeting points, by class
 
-All meeting points are computed **on the actual offset curves inside the zones** — not on straight lines through p (the first two F attempts used a straight line from the inner to the outer meeting point and clipped whole strokes by it; that is the error dot 1791781594 named).
+Three different things meet here, kept apart (dot 1791782262):
+- each stroke's **offset curves** (its outer and inner edge, at its own width, from its centre line);
+- the **forward extension** of an outer edge at the joint: the straight line along the stroke's end tangent from A (or B) — new ink, not part of the offset curve;
+- the **inner meeting point Q**: where the two actual inner offset curves cross, located on each stroke by its **centre-line arc length** from p.
+
+So M is computed on the forward extensions, Q on the actual inner offset curves — never on straight lines through p (the first two F attempts used a straight line from the inner to the outer meeting point and clipped whole strokes by it; that is the error dot 1791781594 named).
 
 **Outer join path** (from S0's outer edge to S1's outer edge):
 - **O1 — the outer edges, each extended forward, meet:** extended *forward* along their end tangents beyond A = p + o0 and B = p + o1 (neither folding back past its own corner), the two outer edges meet at M on the outer side. With straight edges both forward extensions meet iff θ < 180° − arccos(1/r) (r = 1: always below 180°; 2: 120°; 3: 109.5°; 4: 104.5°). This is the condition **for this experiment's forward-extension construction** only — not for every F-like construction (dot 1791781802). Path (rebuilt ink): S0's outer edge to A, the extension A → M, M → B, S1's outer edge.
@@ -40,7 +45,7 @@ All meeting points are computed **on the actual offset curves inside the zones**
 
 **Inner join path** (from S0's inner edge to S1's inner edge):
 - **I1 — the inner edges cross inside both zones:** the two inner offset curves cross at Q within arc length ℓ of p on both strokes. Path: S0's inner edge from E0i to Q, then S1's inner edge from Q to E1i. Nothing of either stroke's inner corner shows (no inner shoulder).
-- **I2 — the inner edges do not cross inside the zones:** with straight edges, Q lies at a distance (h_w + h_t·cos θ) / sin θ **along the thin stroke's direction**, measured from the thin stroke's inner corner at p (dot 1791781802: this is the along-stroke distance — compared with ℓ, which is also along-stroke, directly; a straight-line distance from p would also count the half width). At 1:3: 3 thin half widths at 90°, 5.2 at 45°, 11.5 at 20°, about 29 at 8° — at small angles it is beyond a local zone. This experiment does not cover it ("not covered: Q beyond the zone"); what is drawn there (keep the inner shoulder, ease the widths, or a longer zone) — **bowen**.
+- **I2 — the inner edges do not cross inside the zones:** with straight edges, Q lies at a distance (h_w + h_t·cos θ) / sin θ **along the thin stroke's direction**, measured from the thin stroke's inner corner at p (dot 1791781802: this is the along-stroke distance — compared with ℓ, which is also along-stroke, directly; a straight-line distance from p would also count the half width). **This formula holds for straight bands only** (dot 1791782262); on real curves Q is found on the inner offset curves and placed by the centre-line arc length of the sample it lies on, which is what is compared with ℓ. At 1:3: 3 thin half widths at 90°, 5.2 at 45°, 11.5 at 20°, about 29 at 8° — at small angles it is beyond a local zone. This experiment does not cover it ("not covered: Q beyond the zone"); what is drawn there (keep the inner shoulder, ease the widths, or a longer zone) — **bowen**.
 - **I3 — the inner edges cross only outside the zones on one stroke:** treated as I2.
 
 ## 5. Failure inputs kept (dot 1791781680)
