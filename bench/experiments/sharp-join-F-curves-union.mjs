@@ -76,7 +76,7 @@ angles.forEach((deg, r) => cols.forEach(([k0, k1, k], c) => {
   const quad = (P0, C, P1) => Array.from({ length: 24 }, (_, i) => { const t = (i + 1) / 24, u = 1 - t; return add(add(mul(P0, u * u), mul(C, 2 * u * t)), mul(P1, t * t)) })
   const X = outerCls === 'O2' ? add(p, mul(sub(M, p), limit / len(sub(M, p)))) : null
   const tipMid = outerCls === 'O1' ? [M] : outerCls === 'O2' ? [...quad(A, add(A, mul(a, Math.sqrt(limit * limit - h0 * h0))), X), ...quad(X, add(B, mul(b, -Math.sqrt(limit * limit - h1 * h1))), B).slice(0, -1)] : []
-  let cls, spec = null, note = '', o3 = null
+  let cls, spec = null, note = '', o3 = null, qInfo = null
   if (outerCls === 'straight') { cls = '180°, equal widths: straight on'; spec = { plain: [...kept, endOf(s0, z0), endOf(s1, z1)], trims: [] } }
   else if (outerCls === 'O3') {
     // the bridged zone (experiment, as sharp-join-O3): cubics E0o → E1o and E0i → E1i leaving / arriving along the edges
@@ -92,6 +92,11 @@ angles.forEach((deg, r) => cols.forEach(([k0, k1, k], c) => {
     // I1: the actual inner edges cross within both zones (the crossing nearest the joint along S0)
     let Q = null, q0 = -1, q1 = -1
     for (let i = s0.N - 1; i >= z0 && !Q; i--) for (let j = s1.N - 1; j >= z1; j--) { const x = crossAt(s0.I[i], s0.I[i + 1], s1.I[j], s1.I[j + 1]); if (x) { Q = x; q0 = i; q1 = j; break } }
+    // every crossing of the two inner edges within the zones is counted; the one used is the nearest the joint along
+    // S0, and it is checked on the final outline below (dot 1791785208: never take the first one as right unchecked)
+    let qCount = 0
+    for (let i = z0; i < s0.N; i++) for (let j = z1; j < s1.N; j++) if (crossAt(s0.I[i], s0.I[i + 1], s1.I[j], s1.I[j + 1])) qCount++
+    qInfo = Q ? { Q, qCount } : null
     if (Q) {
       cls = `${outerCls} × I1`
       spec = { plain: [...kept, [...s0.O.slice(z0), ...tipMid, ...s1.O.slice(z1).reverse(), ...s1.I.slice(z1, q1 + 1), Q, ...s0.I.slice(z0, q0 + 1).reverse()]], trims: [] }
@@ -132,15 +137,16 @@ angles.forEach((deg, r) => cols.forEach(([k0, k1, k], c) => {
     const rotO = rr => P => [P[0] * Math.cos(rr) - P[1] * Math.sin(rr), P[0] * Math.sin(rr) + P[1] * Math.cos(rr)]
     const rotBad = [0.37, 0.63, 1.1, 1.9, 2.71, 4.4].flatMap(rr => [['', rot(rr)], ['O', rotO(rr)]].filter(([, fn]) => { const u = region(mapSpec(spec, fn)); return !same(u) }).map(([tag]) => tag + rr))
     // the tip's reach: the farthest outline point from p, against 5× the average width (only where there is a tip)
+    const qNote = qInfo ? ` · inner edges cross ${qInfo.qCount}×, Q = the nearest the joint along S0${onOutline(qInfo.Q) ? ', on the outline' : ' — NOT ON THE OUTLINE'}` : ''
     const tipReach = outerCls.startsWith('O') && outerCls !== 'O3' ? Math.max(...[A, ...tipMid, B].map(P => len(sub(P, p)))) : null
-    note = `${note}${note ? ' · ' : ''}loops ${topo.loops}, holes ${topo.holes} (input alone ${input.loops}, ${input.holes})${topo.loops !== input.loops || topo.holes !== input.holes ? ' DIFFERS' : ''} · open ${openChains.length} · bad ${badVertices} · crossings ${crossings}${o3 ? '' : ` · corners shown: ${shown.length ? shown.join(', ') : 'none'}`}${tipReach !== null ? ` · tip ${tipReach.toFixed(1)} / ${limit}${tipReach > limit + 1e-6 ? ' OVER' : ''}` : ''}${o3 ? ' · ' + o3 : ''} · rotations ${rotBad.length ? 'FAIL ' + rotBad.join(',') : 'ok ×12 (same loops / holes)'}`
+    note = `${note}${note ? ' · ' : ''}loops ${topo.loops}, holes ${topo.holes} (input alone ${input.loops}, ${input.holes})${topo.loops !== input.loops || topo.holes !== input.holes ? ' DIFFERS' : ''} · open ${openChains.length} · bad ${badVertices} · crossings ${crossings}${o3 ? '' : ` · corners shown: ${shown.length ? shown.join(', ') : 'none'}`}${tipReach !== null ? ` · tip ${tipReach.toFixed(1)} / ${limit}${tipReach > limit + 1e-6 ? ' OVER' : ''}` : ''}${o3 ? ' · ' + o3 : ''} · rotations ${rotBad.length ? 'FAIL ' + rotBad.join(',') : 'ok ×12 (same loops / holes)'}${qNote}`
     body += `<path d="${loops.map(l => 'M' + l.map(f).join(' L') + ' Z').join(' ')}" fill="#111"/>`
     for (const ch of openChains) body += `<path d="M${ch.map(f).join(' L')}" fill="none" stroke="#e00"/>`
   } else {
     for (const q of [...kept, endOf(s0, z0), endOf(s1, z1)]) body += `<path d="M${q.map(f).join(' L')} Z" fill="#111" opacity="0.35"/>`
   }
   body += `</g></g><text x="${ox + 6}" y="${oy + 14}" font-size="9" fill="${spec ? '#363' : '#a50'}">${cls}</text>`
-  body += readingLines(ox + 6, oy + cell - 66, note, { maxChars: 58, fill: /FAIL|OUTSIDE|OVER|DIFFERS|open [1-9]|bad [1-9]|crossings [1-9]|shown: C|folds [1-9]|folds \d+\/[1-9]/.test(note) ? '#e00' : '#555' })
+  body += readingLines(ox + 6, oy + cell - 66, note, { maxChars: 58, fill: /FAIL|OUTSIDE|OVER|DIFFERS|NOT ON|open [1-9]|bad [1-9]|crossings [1-9]|shown: C|folds [1-9]|folds \d+\/[1-9]/.test(note) ? '#e00' : '#555' })
   body += `<rect x="${ox}" y="${oy}" width="${cell - 6}" height="${cell - 6}" fill="none" stroke="#ddd"/>`
 }))
 angles.forEach((deg, r) => { body += `<text x="${pad}" y="${pad + 50 + r * cell + cell / 2}" font-size="13">${deg}°</text>` })
