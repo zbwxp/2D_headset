@@ -117,6 +117,24 @@ After P2, bowen sees the correct variants that differ only in look (O2 style, h_
 - **P0 (now):** permission to download `clipper2-ts` and `clipper2-wasm` into a scratch folder to measure them — nothing installed in the project.
 - **Later (after P2):** the O2 tip style, h_p, k.
 
+## 10. Contracts to settle before any P1 code (dot 1791788918)
+
+**10.1 Error.**
+- **Termination:** an interval is split until its whole-interval bound (§5) is ≤ ε_flat, or until its parameter length reaches a floor (a depth limit, fixed); an interval stopped by the floor without meeting the bound is reported in the diagnostics ("precision not reached", with the bound reached) and drawn at that resolution — never an endless recursion, never silent.
+- **Degenerate derivatives:** where the centre line's speed |C′| is bounded below by a δ > 0 on the interval, the curvature and its derivative are bounded as usual; where it is not (a cusp or a collapsed handle inside a line), the interval is split down to the floor around that parameter and the offset there is closed with a round join of the local width (as an SVG stroke would draw it); the diagnostic notes it. Ends with no usable tangent are §6's degenerate input.
+- **The budget:** ε = ε_flat + ε_round with ε_round ≤ ε/4; integer coordinates at scale s round each vertex by at most √2 / (2s) drawing units, so s ≥ 2√2 / ε. Each union (one join group, or one line's pieces) uses **one s for all its pieces**, chosen from the smallest ε among them, so the pieces share a grid; separate unions may differ.
+
+**10.2 Inputs and the division of ink.**
+- **No internal field:** the public `Geometry.lines` carries `{ id, key, curve }` only (src/derived/index.ts:17–22); there is no trim range. A line's end is **eligible** for a cusp at point p iff the snapshot shows the line ends at p (its `a` or `b` is p) and **no `arc` row at p includes that line** (an arc trims both its lines at p, src/derived/index.ts:60–93). This uses only the snapshot's join rows and line ends, no geometry comparison.
+- **Each line's own ink** is its stroke **between its zone cuts**: a joined end has no cap — the line's piece stops at the cut, the join group's piece starts there, and both use the same cut vertices; a free end has its round cap. Never the whole line under a join on top.
+- **Both ends of one line** are allocated together before any piece is built: each end's zone length is the §6 cap applied to the pair, the two zones kept apart by the margin, so the line's middle piece is defined once.
+- **Drawing without seams or double colour:** pieces that are painted the same are unioned into **one path per paint** before drawing (no anti-aliasing seam along shared cuts, no double alpha where pieces overlap); the source of every part is kept beside it for the diagnostics (Clipper's Z values on vertices, or our own map).
+- **Paint follows the line, as today** (bench/src/app.tsx:1100–1102): normal `#111`, selected `#06f`, picked `#f80`, mirror source `#a3c`, cut `#bbb`, locked `#933`; while posing only locked / normal. When a join group's two lines have different paints, the group's piece is **split by a fixed seam** — from the inner meeting point (Q, or J, or the inner corner) through p to the tip's apex — and each half takes its line's paint; with equal paints the halves are unioned with the rest of that paint (no seam).
+
+**10.3 Display that stays.**
+- **Hidden lines** (`visible: false`) are drawn today as a dashed centre line at opacity 0.35 (bench/src/app.tsx:1102). They take no part in ink or joins (their partner keeps its plain end, §2), and **that editing decoration stays exactly as today** — drawn from the centre line, not from ink.
+- Arcs keep their own path, colour and width (bench/src/app.tsx:1104); halos and ghosts as in §2.
+
 ## 9. Changes from the first version (dot 1791788545, 1791788609)
 
 1. Joins sit behind an experimental switch until every reachable boundary, including the fallback (B9), passes (§4).
