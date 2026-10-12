@@ -105,19 +105,30 @@ export function regionOutline(polys, ink) {
   for (const [a, b] of raw) { const kk = a + '>' + b; if (!seen.has(kk)) { seen.add(kk); segIds.push([a, b]) } }
   const out = new Map(), inn = new Map()
   for (const sg of segIds) { (out.get(sg[0]) ?? out.set(sg[0], []).get(sg[0])).push(sg); inn.set(sg[1], (inn.get(sg[1]) ?? 0) + 1) }
-  let badVertices = 0
-  for (const [v, list] of out) if (list.length !== 1 || inn.get(v) !== 1) badVertices++
+  // a vertex is bad if its in and out counts differ; a TOUCH vertex has k > 1 in and k out — regions meeting at one
+  // point (dot 1791785710: e.g. two zero-width arms touching only at the joint). It is not an error: the walk pairs
+  // each incoming sub-edge with the outgoing one met first turning clockwise from the way it came (ink stays on the
+  // left), so the touching regions come out as separate loops sharing that vertex — the representation of a point contact
+  let badVertices = 0, touchVertices = 0
+  for (const [v, list] of out) { const k = inn.get(v) ?? 0; if (list.length !== k) badVertices++; else if (k > 1) touchVertices++ }
   for (const [v] of inn) if (!out.has(v)) badVertices++
-  // chains: a loop counts only if it comes back to its start; an open chain is reported, never drawn as closed
+  const nextOf = sg => {
+    const list = out.get(sg[1]); if (!list) return null
+    if (list.length === 1) return list[0]
+    const V = verts[sg[1]], back = sub(verts[sg[0]], V)
+    const ccw = e => { const d = sub(verts[e[1]], V), t = Math.atan2(cross(back, d), dot(back, d)); return t <= 0 ? t + 2 * Math.PI : t }
+    return list.reduce((best, e) => (best === null || ccw(e) > ccw(best) ? e : best), null)
+  }
+  // chains: a loop counts only if it comes back to its starting sub-edge; an open chain is reported, never drawn closed
   const used = new Set(), loops = [], openChains = []
   for (const sg of segIds) {
     if (used.has(sg)) continue
     const chain = [sg[0]]
     let cur = sg, closed = false
-    while (cur && !used.has(cur)) { used.add(cur); const next = out.get(cur[1]); if (cur[1] === chain[0]) { closed = true; break } chain.push(cur[1]); cur = next && next.length === 1 ? next[0] : null }
+    for (;;) { used.add(cur); const next = nextOf(cur); if (next === sg) { closed = true; break } if (!next || used.has(next)) break; chain.push(cur[1]); cur = next }
     ;(closed ? loops : openChains).push(chain.map(i => verts[i]))
   }
-  return { segs: segIds.map(([a, b]) => [verts[a], verts[b]]), loops, openChains, badVertices }
+  return { segs: segIds.map(([a, b]) => [verts[a], verts[b]]), loops, openChains, badVertices, touchVertices }
 }
 export const segCross = (P1, P2, P3, P4) => { const d1 = sub(P2, P1), d2 = sub(P4, P3), den = cross(d1, d2); if (Math.abs(den) < 1e-12) return false; const w = sub(P3, P1), s = cross(w, d2) / den, t = cross(w, d1) / den; return s > 1e-9 && s < 1 - 1e-9 && t > 1e-9 && t < 1 - 1e-9 }
 export const circle = (c, r, n = 32) => Array.from({ length: n }, (_, i) => add(c, [Math.cos(i / n * 2 * Math.PI) * r, Math.sin(i / n * 2 * Math.PI) * r]))
