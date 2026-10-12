@@ -20,7 +20,8 @@ const crossAt = (P1, P2, P3, P4) => { const d1 = sub(P2, P1), d2 = sub(P4, P3), 
 const smooth = x => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x) } // v103 appearance.ts:15 (clamped: 1 for x ≥ 1)
 /**
  * A stroke sampled from its free end (0) to the joint (N), its half width a function of the arc length s from the joint.
- * A sample is inserted on the curve exactly at arc length `cut` (dot 1791785288: the cut must be AT ℓ, so the width there
+ * A sample is inserted on the curve at arc length `cut` as measured along this sampled polyline (not the analytic arc
+ * length: up to ~1e-5 apart here, dot 1791785591) (dot 1791785288: the cut must be AT ℓ, so the width there
  * is exactly the stroke's own with zero slope — not the nearest sample); its index is returned as z.
  */
 function sampled(c, hOf, sideSign, cut, N = 150) {
