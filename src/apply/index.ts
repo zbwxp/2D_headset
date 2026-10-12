@@ -210,7 +210,7 @@ export function mirrorApply(s: ApplyState, d: Doc, ch: net.Changes, source: read
       // the manual zone of this view comes along; none = automatic here (J1)
       joins.setZoneHere(d.joins, n, tp, l0, l1, r.zone ?? null)
     }
-    // the copied joins in the source's list order, when they are the target point's whole list (J1)
+    // the copied joins in the source's list order, only when they are the target point's whole list (J1; a partial apply may not keep it: ledger row 19)
     const here = joins.rowsAt(d.joins, n, tp)
     if (here.length === next.length) joins.orderJoins(d.joins, tp, next.map(x => [x.l0, x.l1] as [string, string]))
     net.touch(ch, tp)
