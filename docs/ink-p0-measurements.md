@@ -62,6 +62,10 @@ Re-run after freeing the WebAssembly clip list (the first run leaked an empty `P
 - **clipper2-wasm loading, named by what was measured (dot 1791790632):** in a fresh Node process with the files in the OS cache, the dynamic `import()` took 2.3–2.4 ms and the **first** factory call (instantiating the module) 4.1–4.2 ms; a second factory call 1.4–1.5 ms. (The earlier "6.4–7.6 ms" was import + first factory call together, in the same setting.) A browser's cold start — fetching and compiling the .wasm — was **not** measured.
 - At 60 frames per second (16.7 ms) a union of **every** line every frame does not fit with clipper2-ts and barely with clipper2-wasm. The plan's structure avoids that: a plain line with no join and no self-overlap needs no boolean operation (its outline is drawn as built); only join groups (and self-overlapping offsets) go through the library, and editing rebuilds only what changed. Playback rebuilds every frame, so P1 measures `ink.build` in the browser on a real drawing before the switch can come on.
 
+## 0. Status
+
+**Accepted by dot 1791790947** as a candidate comparison on these fixtures with Node performance on this machine. dot supports putting `clipper2-ts` to bowen as P1's first choice for installing in the project, `clipper2-wasm` kept as the alternative. Not covered by P0, each its own work: a general error guarantee, browser performance, and P1's verification design.
+
 ## 5. Proposal for the dependency decision (bowen's, after dot's review)
 
 - **clipper2-ts** for P1: synchronous, pure TypeScript, no loading step, correct on all our fixtures; slower, and slower again at large s.
