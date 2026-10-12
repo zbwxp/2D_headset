@@ -190,6 +190,9 @@ export function App() {
   // moving by keyboard (docs/move-plan.md): the picture's sessions run here, the selection's in interaction;
   // a key run holds the one gesture slot as `KEYS`, so a canvas press meanwhile is ignored and every cancel path ends it
   const KEYS = -1
+  /** A slider's thumb key run (docs/slider-plan.md): its own slot id; every rule for a key run applies to it too (dot 1791771773). */
+  const SLIDER_KEYS = -2
+  const isKeyRun = (g: null | { id: number }) => g?.id === KEYS || g?.id === SLIDER_KEYS
   const picMover = useRef(createMover()).current
   /** The picture's arrows: 1 drawing unit, Shift 10, Option / Ctrl 0.1 — this caller's sizes (bowen 1791769146). */
   const PICTURE_STEPS = { step: 1, long: 10, short: 0.1 }
@@ -369,7 +372,7 @@ export function App() {
     finally { bump() }
   }
   /** The panel changed the selected layers; the selection elsewhere simply goes inert (docs/layer-scope-plan.md §3). */
-  const selectLayers = (ids: Id[], current: Id) => { if (gesture.current?.id === KEYS) gesture.current.cancel('a layer scope change'); setLayers(ids); setLayer(current) }
+  const selectLayers = (ids: Id[], current: Id) => { if (isKeyRun(gesture.current)) gesture.current!.cancel('a layer scope change'); setLayers(ids); setLayer(current) }
   const toDoc = (e: { clientX: number; clientY: number }) => {
     const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(svg.current!.getScreenCTM()!.inverse())
     return P(p.x, p.y)
@@ -702,7 +705,6 @@ export function App() {
    * runs as `SLIDER_KEYS`, not `KEYS`, which the editing and picture runs own); typing is the one **open field**, ended
    * — as leaving it would — before any other input begins (dot 1791770098).
    */
-  const SLIDER_KEYS = -2
   const openField = useRef<null | { end(): void }>(null)
   const endOpenField = () => { const f = openField.current; openField.current = null; f?.end() }
   const sliderHooks = {
@@ -744,12 +746,12 @@ export function App() {
       const typing = e.isComposing || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable
         || (t.tagName === 'INPUT' && !['button', 'checkbox', 'radio', 'file', 'range', 'color', 'submit', 'reset'].includes((t as HTMLInputElement).type))
       // an input method taking the keys ends a key run: its held key's repeats are not this run's after (dot 1791770081)
-      if (typing) { if (e.isComposing && gesture.current?.id === KEYS) gesture.current.cancel('an input method'); return }
+      if (typing) { if (e.isComposing && isKeyRun(gesture.current)) gesture.current!.cancel('an input method'); return }
       // an arrow on any focused field or slider is that control's own (a slider steps with it), never a move;
       // a key run already running still ends only by its own paths (dot 1791734673)
       if (isArrow(e.key) && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA' || t.getAttribute?.('role') === 'slider')) return
       // undo / redo during a key run (the selection's or the picture's) end the run, write nothing and undo nothing earlier (dot 1791734673)
-      if (gesture.current?.id === KEYS && e.key.toLowerCase() === 'z' && (e.metaKey || e.ctrlKey)) { gesture.current.cancel(e.shiftKey ? 'redo' : 'undo'); e.preventDefault(); return }
+      if (isKeyRun(gesture.current) && e.key.toLowerCase() === 'z' && (e.metaKey || e.ctrlKey)) { gesture.current!.cancel(e.shiftKey ? 'redo' : 'undo'); e.preventDefault(); return }
       // a plain Z is the viewport's zoom, in every mode (bowen 1791727452); ⌘Z / Ctrl-Z stays undo
       // a key held down repeats: only its first press toggles (dot 1791731833)
       if (e.key.toLowerCase() === 'z' && !e.metaKey && !e.ctrlKey && !e.altKey) { if (!e.repeat) toggleZoom(); e.preventDefault(); return }
@@ -776,12 +778,12 @@ export function App() {
       if ((e.key === 'Shift' || e.key === 'Alt') && hoverAt.current) { hoverAt.current.mods = mods(e); rehover.current() }
       if (!isArrow(e.key)) return; ix.keyUp(e.key); picMover.keyUp(e.key); poseMover.keyUp(e.key) }
     // a key run ends on leaving the window, and when focus moves inside the page to a field or a slider
-    const blur = () => { if (gesture.current?.id === KEYS) gesture.current.cancel('leaving the window') }
+    const blur = () => { if (isKeyRun(gesture.current)) gesture.current!.cancel('leaving the window') }
     const focus = (e: FocusEvent) => {
       const t = e.target as HTMLElement | null
-      if (gesture.current?.id === KEYS && t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) gesture.current.cancel('focus moving to a field')
+      if (isKeyRun(gesture.current) && t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) gesture.current!.cancel('focus moving to a field')
     }
-    const composing = () => { if (gesture.current?.id === KEYS) gesture.current.cancel('an input method') }
+    const composing = () => { if (isKeyRun(gesture.current)) gesture.current!.cancel('an input method') }
     window.addEventListener('keydown', key); window.addEventListener('keyup', up); window.addEventListener('blur', blur); document.addEventListener('focusin', focus); document.addEventListener('compositionstart', composing)
     return () => { window.removeEventListener('keydown', key); window.removeEventListener('keyup', up); window.removeEventListener('blur', blur); document.removeEventListener('focusin', focus); document.removeEventListener('compositionstart', composing) }
   }, [ix])
@@ -893,7 +895,7 @@ export function App() {
         </div>
         <b>Edit</b>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-          {B('Undo', () => (gesture.current?.id === KEYS ? gesture.current.cancel('undo') : ix.undo()))}{B('Redo', () => (gesture.current?.id === KEYS ? gesture.current.cancel('redo') : ix.redo()))}
+          {B('Undo', () => (isKeyRun(gesture.current) ? gesture.current!.cancel('undo') : ix.undo()))}{B('Redo', () => (isKeyRun(gesture.current) ? gesture.current!.cancel('redo') : ix.redo()))}
           {B('Delete', () => ix.deleteSelection())}
           {B('Cut', () => ix.cut(), '⌘X: grey until pasted; Esc cancels')}{B('Copy', () => ix.copy(), '⌘C')}{B('Paste', () => ix.paste(), '⌘V: into the current layer')}
           {B('Flip', () => run(x => x.flip(sel)))}

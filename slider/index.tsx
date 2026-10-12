@@ -43,17 +43,23 @@ export function Slider(props: SliderProps) {
   const mover = useRef(createMover()).current
   const [shown, setShown] = useState<number | null>(null) // the running session's value
   const [text, setText] = useState<string | null>(null) // the field's text while it is open
-  const last = useRef<number | null>(null) // the last value previewed: its echo through `value` is not an outside change
+  // what `value` may come back as without being an outside change (dot 1791771918): the session's start, its last
+  // preview, and this slider's own last write (its echo is acknowledged once, then forgotten)
+  const last = useRef<number | null>(null)
+  const sessionStart = useRef<number | null>(null)
+  const committed = useRef<number | null>(null)
   const field = useRef<null | { start: number; typed: number | null; end(): void }>(null)
   const drag = useRef<null | { off(): void }>(null)
   const bar = useRef<HTMLDivElement | null>(null)
+  const keyEnding = useRef(false) // a thumb run's last key up is under way
   const scale = props.scale ?? 'linear'
 
   const toTrack = (v: number) => (p.current.scale === 'log' ? Math.log10(v) : v)
   const fromTrack = (t: number) => (p.current.scale === 'log' ? 10 ** t : t)
   const ok = (v: number) => Number.isFinite(v) && p.current.accept(v)
   const show = (v: number, input: Input) => { last.current = v; setShown(v); p.current.onPreview(v, input) }
-  const reset = () => { last.current = null; setShown(null); setText(null) }
+  const reset = () => { last.current = null; sessionStart.current = null; setShown(null); setText(null) }
+  const writeValue = (v: number, input: Input) => { committed.current = v; p.current.onCommit(v, input) }
 
   /** A run of steps (keys): the offset applied is kept, a step `accept` refuses is not taken — no dead travel. */
   const stepper = (start: number, input: Input) => {
@@ -81,27 +87,31 @@ export function Slider(props: SliderProps) {
     const v = f.typed
     reset()
     p.current.onField(null)
-    if (write && v !== null && v !== f.start) p.current.onCommit(v, 'typing')
+    if (write && v !== null && v !== f.start) writeValue(v, 'typing')
     else p.current.onCancel('typing')
   }
   const openField = () => {
     if (field.current) return field.current
     const f = { start: p.current.value, typed: null as number | null, end: () => closeField(true) }
     field.current = f
+    sessionStart.current = f.start
     p.current.onField({ end: f.end })
     return f
   }
   const type = (t: string) => {
+    if (mover.running && !field.current) return // a slide or a thumb run is running: one input at a time (dot 1791771994)
     const f = openField()
     setText(t)
     const v = parse(t)
     if (ok(v)) { f.typed = v; show(v, 'typing') } else f.typed = null // invalid at the end: cancelled (dot 1791769298)
   }
   const fieldKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return // an input method's keys are its own (dot 1791771773)
     if (e.key === 'Enter') { closeField(true); return }
     if (e.key === 'Escape') { if (field.current) { e.stopPropagation(); closeField(false) } return }
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return // ← / → move the caret
     e.preventDefault()
+    if (mover.running && !field.current) return // the thumb's session runs: the field waits
     const f = openField()
     const base = f.typed ?? (shown ?? p.current.value)
     let s: ReturnType<typeof stepper> | null = null
@@ -116,17 +126,17 @@ export function Slider(props: SliderProps) {
 
   // ---- a session holding the app's slot: a thumb key run or a slide ----
   const cancelSession = () => mover.cancel()
-  const held = (input: 'drag' | 'keys', start: number, getValue: () => number, onCancelled?: () => boolean): Target & { pointerId?: number } => {
+  const held = (input: 'drag' | 'keys', from: { start: number }, getValue: () => number, onCancelled?: () => boolean): Target & { pointerId?: number } => {
     const done = (write: boolean) => {
-      const v = getValue()
+      const v = getValue(), start = from.start
       drag.current?.off(); drag.current = null
       reset()
       p.current.onEnd(cancelSession)
-      if (write && v !== start) p.current.onCommit(v, input)
+      if (write && v !== start) writeValue(v, input)
       else p.current.onCancel(input)
     }
     return {
-      begin: () => p.current.onStart({ input, cancel: cancelSession }),
+      begin: () => { const ok = p.current.onStart({ input, cancel: cancelSession }); if (ok) sessionStart.current = from.start; return ok },
       preview: () => {},
       commit: () => done(true),
       cancel: () => done(!!onCancelled?.()),
@@ -134,6 +144,7 @@ export function Slider(props: SliderProps) {
   }
 
   const thumbKey = (e: React.KeyboardEvent) => {
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return
     if (e.key === 'Escape') { if (mover.running) { e.stopPropagation(); e.preventDefault(); mover.cancel() } return }
     if (!isArrow(e.key)) return
     // the thumb keeps its keys from the app's handlers (dot 1791769582 §4)
@@ -142,11 +153,13 @@ export function Slider(props: SliderProps) {
     mover.keyDown(() => {
       const start = p.current.value
       s = stepper(start, 'keys')
-      const t = held('keys', start, () => s!.value)
+      const t = held('keys', { start }, () => s!.value, () => keyEnding.current)
       return { ...t, preview: o => s!.step(o) }
     }, { key: e.key, repeat: e.repeat, shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey }, p.current.steps)
   }
-  const thumbKeyUp = (e: React.KeyboardEvent) => { if (isArrow(e.key)) { e.stopPropagation(); mover.keyUp(e.key) } }
+  // the last key up ends the run as its own ending: move/ calls a net-zero raw offset a cancel, but refused steps are
+  // not taken, so the applied move may differ (opacity 1: ↑ refused, ↓ 0.99) — it is written (dot 1791771773)
+  const thumbKeyUp = (e: React.KeyboardEvent) => { if (isArrow(e.key)) { e.stopPropagation(); keyEnding.current = true; try { mover.keyUp(e.key) } finally { keyEnding.current = false } } }
 
   /** The track value at a pointer's x, snapped to the single step, within the track. */
   const atX = (x: number) => {
@@ -159,20 +172,23 @@ export function Slider(props: SliderProps) {
     if (e.button !== 0 || mover.running || drag.current) return // a second pointer is ignored and never ends the first
     const tr = p.current.track!, r = bar.current!.getBoundingClientRect()
     const onThumb = (e.target as HTMLElement).hasAttribute('data-thumb')
-    const start = p.current.value
+    const from = { start: p.current.value }
     // on the thumb the grab offset is kept; on the bar the thumb jumps there first — a change of its own
-    const thumbX = r.left + ((toTrack(shown ?? start) - tr[0]) / (tr[1] - tr[0])) * r.width
+    const thumbX = r.left + ((toTrack(shown ?? from.start) - tr[0]) / (tr[1] - tr[0])) * r.width
     const grab = onThumb ? e.clientX - thumbX : 0
-    let value = start, releasing = false
+    let value = from.start, releasing = false
     const jumped = !onThumb
     const at = (o: Vec) => { const v = atX(e.clientX - grab + o.x); if (ok(v)) value = v; return value }
-    const base = held('drag', start, () => value, () => releasing && jumped && value !== start)
+    const base = held('drag', from, () => value, () => releasing && jumped && value !== from.start)
     const target: Target = { ...base, preview: o => show(at(o), 'drag'), commit: o => { at(o); base.commit(o) } }
     const id = e.pointerId
-    if (!mover.press({ ...target, begin: () => p.current.onStart({ input: 'drag', pointerId: id, cancel: cancelSession }) }, { x: e.clientX, y: 0 })) return
+    // the app may end this slider's own open field first (its value written): the slide starts from that value
+    const begin = () => { const ok = p.current.onStart({ input: 'drag', pointerId: id, cancel: cancelSession }); if (ok) { if (committed.current !== null) from.start = committed.current; sessionStart.current = from.start } return ok }
+    if (!mover.press({ ...target, begin }, { x: e.clientX, y: 0 })) return
     if (jumped) show(at({ x: 0, y: 0 }), 'drag')
     const move = (ev: PointerEvent) => { if (ev.pointerId !== id) return; if ((ev.buttons & 1) === 0) { up(ev); return } mover.drag({ x: ev.clientX, y: 0 }) }
-    const up = (ev: PointerEvent) => { if (ev.pointerId !== id) return; releasing = true; mover.release({ x: ev.clientX, y: 0 }); releasing = false }
+    // the release decides: the value at the release point, also when it is back where the press was (dot 1791771918)
+    const up = (ev: PointerEvent) => { if (ev.pointerId !== id) return; at({ x: ev.clientX - e.clientX, y: 0 }); releasing = true; mover.release({ x: ev.clientX, y: 0 }); releasing = false }
     const cancel = (ev: PointerEvent) => { if (ev.pointerId === id) mover.cancel() }
     const blur = () => mover.cancel()
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', cancel); window.addEventListener('blur', blur)
@@ -183,7 +199,12 @@ export function Slider(props: SliderProps) {
   const cancelAll = () => { if (field.current) closeField(false); if (mover.running) mover.cancel() }
   const first = useRef(true)
   useEffect(() => { if (first.current) { first.current = false; return } cancelAll() }, [props.identity, props.version]) // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if ((field.current || mover.running) && last.current !== null && props.value !== last.current) cancelAll() }, [props.value]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (props.value === committed.current) { committed.current = null; return } // this slider's own write coming back
+    // before any preview the session's start is the expected value; after one, only that preview is (dot 1791772141)
+    const expected = last.current !== null ? last.current : sessionStart.current
+    if ((field.current || mover.running) && props.value !== expected) cancelAll()
+  }, [props.value]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => { if (field.current) closeField(false); if (mover.running) mover.cancel(); drag.current?.off() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const value = shown ?? props.value

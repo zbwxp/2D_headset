@@ -101,14 +101,15 @@ describe('the picture\'s sliders', () => {
     expect([t.pic().scale, save(bench().core) === text]).toEqual([s1, true])
   })
 
-  it('undo during a held run cancels it: the preview withdrawn, the later key-up writes nothing', async () => {
+  it('after a run ended by Undo, the next Undo undoes as usual (the run wrote nothing to undo)', async () => {
     const t = await setup()
     await act(async () => { setValue(t.field('x'), '10'); kd(t.field('x'), 'Enter') })
     await act(async () => { t.thumb('angle').focus(); kd(t.thumb('angle'), 'ArrowRight') })
-    await act(async () => { t.button('Undo').click() }) // x back to 0 underneath
-    const undone = save(bench().core)
+    await act(async () => { t.button('Undo').click() }) // ends the run only
     await act(async () => { ku(t.thumb('angle'), 'ArrowRight') })
-    expect([save(bench().core) === undone, t.pic().angle, t.pic().x]).toEqual([true, 0, 0])
+    expect([t.pic().x, t.pic().angle]).toEqual([10, 0])
+    await act(async () => { t.button('Undo').click() })
+    expect([t.pic().x, t.pic().angle]).toEqual([0, 0])
   })
 
   it('an open field ends by its own ending before another slider begins — its own typed value written, then the new slide — in both event orders, for the same picture and another', async () => {
@@ -127,6 +128,26 @@ describe('the picture\'s sliders', () => {
       await act(async () => { s.release() })
       const p = t.pic(other.i)
       expect([order, other.i, t.pic(0).x, (p as unknown as Record<string, number>)[other.k]]).toEqual([order, other.i, 25, 50])
+    }
+  })
+})
+
+describe('a thumb key run is a key run: blur, ⌘Z and the Undo / Redo buttons end it and undo nothing earlier (dot 1791771773)', () => {
+  it('each ends the run with nothing written; the late key up writes nothing; the earlier history is intact', async () => {
+    for (const how of ['blur', '⌘Z', 'Undo button', 'Redo button'] as const) {
+      const t = await setup()
+      await act(async () => { setValue(t.field('x'), '10'); kd(t.field('x'), 'Enter') }) // an earlier step to keep
+      const kept = save(bench().core), depth = t.undos()
+      await act(async () => { t.thumb('angle').focus(); kd(t.thumb('angle'), 'ArrowRight'); kd(t.thumb('angle'), 'ArrowRight', { repeat: true }) })
+      expect([how, Number(t.thumb('angle').getAttribute('aria-valuenow'))]).toEqual([how, 2]) // the run is running: previewing 2
+      await act(async () => {
+        if (how === 'blur') window.dispatchEvent(new Event('blur'))
+        else if (how === '⌘Z') kd(t.thumb('angle'), 'z', { metaKey: true })
+        else t.button(how === 'Undo button' ? 'Undo' : 'Redo').click()
+      })
+      await act(async () => { kd(t.thumb('angle'), 'ArrowRight', { repeat: true }); ku(t.thumb('angle'), 'ArrowRight') })
+      expect([how, save(bench().core) === kept, t.undos(), t.pic().x, t.pic().angle]).toEqual([how, true, depth, 10, 0])
+      await act(async () => { for (const r of roots.splice(0)) r.unmount() }) // one App on the page: an earlier one's keys would act too
     }
   })
 })

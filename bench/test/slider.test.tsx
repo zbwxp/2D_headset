@@ -140,6 +140,20 @@ describe('keys on the thumb — a move/ key run', () => {
     await t.key(t.thumb(), 'ArrowUp'); await t.key(t.thumb(), 'ArrowUp', { repeat: true }); await t.key(t.thumb(), 'ArrowDown')
     expect(t.log.filter(x => x.startsWith('preview'))).toEqual(['preview 99 keys'])
   })
+  it('a refused step then a taken one: at 100, ↑ refused, ↓ 99 — the last key up writes 99 though the raw offset is zero (dot 1791771773)', async () => {
+    const t = await mount({ value: 100 })
+    await t.key(t.thumb(), 'ArrowUp'); await t.key(t.thumb(), 'ArrowDown')
+    await t.up(t.thumb(), 'ArrowUp'); await t.up(t.thumb(), 'ArrowDown')
+    expect(t.writes()).toEqual(['commit 99 keys'])
+  })
+  it('an input method\'s keys are its own: Enter, Esc and ↑ while composing neither write, cancel nor step (dot 1791771773)', async () => {
+    const t = await mount()
+    await t.type('33')
+    await t.key(t.field(), 'ArrowUp', { isComposing: true }); await t.key(t.field(), 'Enter', { isComposing: true }); await t.key(t.field(), 'Escape', { isComposing: true })
+    expect([t.field().value, t.writes(), t.log.filter(x => x.startsWith('cancel'))]).toEqual(['33', [], []])
+    await t.key(t.thumb(), 'ArrowRight', { isComposing: true })
+    expect(t.log.filter(x => x.endsWith('keys'))).toEqual([])
+  })
   it('the value keeps its own decimals; a run back and forth is exactly its start: no write', async () => {
     const t = await mount({ value: 0.25 })
     await t.key(t.thumb(), 'ArrowRight', { altKey: true })
@@ -189,6 +203,28 @@ describe('sliding — a move/ drag session', () => {
     await act(async () => { t.bar().dispatchEvent(pe('pointerdown', 60.4, 1)); window.dispatchEvent(pe('pointerup', 60.4, 0)) })
     expect(t.writes()).toEqual(['commit 60.5 drag'])
   })
+  it('the release decides: pressed on the bar at 40, dragged to 80, back to 40 — 40 is written; on the thumb, back to the start — nothing (dot 1791771918)', async () => {
+    const t = await mount({ value: 50 })
+    await act(async () => { t.bar().dispatchEvent(pe('pointerdown', 40, 1)); window.dispatchEvent(pe('pointermove', 80, 1)); window.dispatchEvent(pe('pointerup', 40, 0)) }) // released back at 40, no move there first
+    expect(t.writes()).toEqual(['commit 40 drag'])
+    await act(async () => { t.thumb().dispatchEvent(pe('pointerdown', 40, 1)); window.dispatchEvent(pe('pointermove', 70, 1)); window.dispatchEvent(pe('pointerup', 40, 0)) })
+    expect([t.writes(), t.log.at(-1)]).toEqual([['commit 40 drag'], 'cancel drag'])
+  })
+  it('its own field, then its own bar: the field\'s 25 written, then the slide — pointerdown before blur and blur first (dot 1791771918)', async () => {
+    for (const order of ['press first', 'blur first'] as const) {
+      const t = await mount({ value: 10 })
+      await t.type('25')
+      if (order === 'press first') {
+        await act(async () => { t.bar().dispatchEvent(pe('pointerdown', 60, 1)) }) // the app ends the open field at the press (here: the test's end)
+        await act(async () => { t.open()?.end() }); await t.blur()
+      } else {
+        await t.blur()
+        await act(async () => { t.bar().dispatchEvent(pe('pointerdown', 60, 1)) })
+      }
+      await act(async () => { window.dispatchEvent(pe('pointermove', 70, 1)); window.dispatchEvent(pe('pointerup', 70, 0)) })
+      expect([order, t.writes()]).toEqual([order, ['commit 25 typing', 'commit 70 drag']])
+    }
+  })
   it('a click on the bar with no drag writes the jump once (dot 1791769272 §5)', async () => {
     const t = await mount({ value: 50 })
     await act(async () => { t.bar().dispatchEvent(pe('pointerdown', 20, 1)); window.dispatchEvent(pe('pointerup', 20, 0)) })
@@ -227,6 +263,45 @@ describe('outside changes and unmounting (dot 1791769272 §2, 1791769582 §1)', 
     await t.set(40) // from outside
     await t.up(t.thumb(), 'ArrowRight')
     expect([t.writes(), t.log.at(-1), t.field().value]).toEqual([[], 'cancel keys', '40'])
+  })
+  it('the thumb pressed, not moved: a value changed from outside to 30 cancels the slide; the release at 20 writes nothing (dot 1791771994)', async () => {
+    const t = await mount({ value: 10 })
+    await act(async () => { t.thumb().dispatchEvent(pe('pointerdown', 10, 1)) })
+    await t.set(30)
+    await act(async () => { window.dispatchEvent(pe('pointerup', 20, 0)) })
+    expect([t.writes(), t.field().value]).toEqual([[], '30'])
+  })
+  it('the start is no lasting exemption: previewed 10 → 11, then set back to 10 from outside — cancelled (dot 1791772141)', async () => {
+    const t = await mount({ echo: true, value: 10 })
+    await t.key(t.thumb(), 'ArrowRight') // previews 11, echoed into the value
+    await t.set(10)
+    expect(t.log.at(-1)).toBe('cancel keys')
+    await t.up(t.thumb(), 'ArrowRight')
+    expect(t.writes()).toEqual([])
+  })
+  it('only refused steps, no valid preview: a value changed from outside cancels the run; the key up writes nothing (dot 1791772095)', async () => {
+    const t = await mount({ value: 100 })
+    await t.key(t.thumb(), 'ArrowUp') // refused
+    await t.set(30)
+    expect(t.log.at(-1)).toBe('cancel keys') // ended at the outside change itself, not left to the key up
+    await t.up(t.thumb(), 'ArrowUp')
+    expect([t.writes(), t.field().value]).toEqual([[], '30'])
+  })
+  it('one input at a time: while a slide runs, typing 42 + Enter in its own field does nothing (dot 1791771994)', async () => {
+    const t = await mount({ value: 50 })
+    await act(async () => { t.thumb().dispatchEvent(pe('pointerdown', 50, 1)); window.dispatchEvent(pe('pointermove', 60, 1)) })
+    await t.type('42'); await t.key(t.field(), 'Enter'); await t.key(t.field(), 'ArrowUp')
+    expect([t.writes(), t.log.filter(x => x.endsWith('typing'))]).toEqual([[], []])
+    await act(async () => { window.dispatchEvent(pe('pointerup', 60, 0)) })
+    expect(t.writes()).toEqual(['commit 60 drag'])
+  })
+  it('only invalid text typed, no preview yet: a value changed from outside still ends the field and shows the new value (dot 1791771918)', async () => {
+    const t = await mount()
+    await t.type('-')
+    await t.set(30)
+    expect([t.field().value, t.log.at(-1), t.writes()]).toEqual(['30', 'cancel typing', []])
+    await t.blur()
+    expect(t.writes()).toEqual([])
   })
   it('identity or version changing during a session cancels it; a late release writes nothing', async () => {
     for (const change of ['identity', 'version'] as const) {
