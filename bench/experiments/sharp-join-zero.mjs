@@ -45,10 +45,10 @@ function topology(u) { const big = u.loops.reduce((m, l) => Math.abs(area(l)) > 
 
 const rows = [['band', 'straight, one line'], ['same', 'curves, same side'], ['opposite', 'curves, opposite sides'], ['sharp', 'curves, opposite, sharp']]
 const cols = [[1, 1], [1, 3], [3, 1], [2, 1]]
-const W = 4, cell = 300, pad = 30, zoom = 2.2
+const W = 4, cell = 300, pad = 30, zoomOf = kind => kind === 'sharp' ? 1.3 : 2.2 // the sharp row's arms reach 40 units from p (dot 1791786172: cut off at ×2.2)
 let body = ''
 rows.forEach(([kind, label], r) => cols.forEach(([k0, k1], c) => {
-  const ox = pad + 110 + c * cell, oy = pad + 50 + r * cell, p = [ox + cell * 0.8, oy + cell * 0.32]
+  const ox = pad + 110 + c * cell, oy = pad + 50 + r * cell, p = [ox + cell * (kind === 'sharp' ? 0.62 : 0.8), oy + cell * (kind === 'sharp' ? 0.3 : 0.32)], zoom = zoomOf(kind)
   const h0 = W * k0 / 2, h1 = W * k1 / 2, L = 60
   // the incoming arrives along +x; the outgoing leaves along −x (the exact reversal); bends as the row says
   const line = (P0, P3) => [P0, add(P0, mul(sub(P3, P0), 1 / 3)), add(P0, mul(sub(P3, P0), 2 / 3)), P3]
@@ -78,12 +78,15 @@ rows.forEach(([kind, label], r) => cols.forEach(([k0, k1], c) => {
     if (arcs === 0 && onc[0]) arcs = 1
     // every crossing of each outline segment with the circle, both roots of |S0 + t·d − p| = r in [0, 1) — a segment
     // with both ends outside can still cross twice (dot 1791786138: the end-inside/outside test missed that)
-    let hits = 0; for (const [S0, S1] of u.segs) { const d = sub(S1, S0), w = sub(S0, p), A = dot(d, d), B = 2 * dot(w, d), C = dot(w, w) - rr * rr, D = B * B - 4 * A * C; if (A < 1e-24 || D < 0) continue; const q = Math.sqrt(D); for (const t of D === 0 ? [-B / (2 * A)] : [(-B - q) / (2 * A), (-B + q) / (2 * A)]) if (t >= 0 && t < 1) hits++ }
-    return `${arcs}/${hits / 2}`
+    // a tangency (the circle touching the outline without crossing — a double root on a segment, or a root at a vertex
+    // where the outline only touches) is no crossing: such a radius is marked n/a, not counted (dot 1791786243)
+    let hits = 0, tangent = false
+    for (const [S0, S1] of u.segs) { const d = sub(S1, S0), w = sub(S0, p), A = dot(d, d), B = 2 * dot(w, d), C = dot(w, w) - rr * rr, D = B * B - 4 * A * C; if (A < 1e-24 || D < -1e-12 * A * rr * rr) continue; if (Math.abs(D) <= 1e-12 * A * rr * rr) { const t = -B / (2 * A); if (t >= 0 && t <= 1) tangent = true; continue } const q = Math.sqrt(D); for (const t of [(-B - q) / (2 * A), (-B + q) / (2 * A)]) if (t >= 0 && t < 1) { if (t < 1e-9 && Math.abs(len(sub(S0, p)) - rr) < 1e-9) { const prev = u.segs.find(([, E]) => E === S0); if (prev) { const din = len(sub(prev[0], p)) < rr, dout = len(sub(S1, p)) < rr; if (din === dout) tangent = true } } hits++ } }
+    return tangent ? 'n/a (tangent)' : `${arcs}/${hits / 2}`
   }
   const radii = [0.05, 0.3, 1, rho].map(x => +x.toFixed(2))
   const checks = radii.map(rr => [rr, circleCheck(rr)])
-  const mismatch = checks.some(([, s]) => { const [x, y] = s.split('/'); return x !== y })
+  const mismatch = checks.some(([, s]) => { if (s.startsWith('n/a')) return false; const [x, y] = s.split('/'); return x !== y })
   const rot = rr => P => { const v = sub(P, p); return add(p, [v[0] * Math.cos(rr) - v[1] * Math.sin(rr), v[0] * Math.sin(rr) + v[1] * Math.cos(rr)]) }
   const rotO = rr => P => [P[0] * Math.cos(rr) - P[1] * Math.sin(rr), P[0] * Math.sin(rr) + P[1] * Math.cos(rr)]
   const rotBad = [0.37, 0.63, 1.1, 1.9, 2.71, 4.4].flatMap(rr => [['', rot(rr)], ['O', rotO(rr)]].filter(([, fn]) => { const q = pieces.map(x => x.map(fn)), w = regionOutline(q, inkOf(q)), t = topology(w); return !(t.loops === topo.loops && t.holes === topo.holes && w.touchVertices === u.touchVertices && !w.openChains.length && !w.badVertices) }).map(([tag]) => tag + rr))
@@ -102,7 +105,7 @@ rows.forEach(([kind, label], r) => cols.forEach(([k0, k1], c) => {
   body += `<rect x="${ox}" y="${oy}" width="${cell - 6}" height="${cell - 6}" fill="none" stroke="#ddd"/>`
 }))
 rows.forEach(([, label], r) => { body += `<text x="${pad}" y="${pad + 50 + r * cell + cell / 3}" font-size="11">${label}</text>` })
-cols.forEach(([k0, k1], c) => { body += `<text x="${pad + 110 + c * cell + 6}" y="${pad + 40}" font-size="11">${k0}:${k1} (thin ${W}) · drawn ×${zoom} about p (orange dot)</text>` })
+cols.forEach(([k0, k1], c) => { body += `<text x="${pad + 110 + c * cell + 6}" y="${pad + 40}" font-size="11">${k0}:${k1} (thin ${W}) · drawn ×2.2 about p (sharp row ×1.3; orange dot = p)</text>` })
 const size = Math.max(pad * 2 + 110 + cell * cols.length, pad * 2 + 50 + cell * rows.length)
 writeFileSync(new URL('./zero.svg', import.meta.url), `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><rect width="100%" height="100%" fill="#fff"/>
 <text x="${pad}" y="${pad + 6}" font-size="12">θ = 0° (experiment): v103's pinch — widths eased to zero at p over ρ, union of the two strokes; loops in separate shades — verifies the construction, not the look</text>${body}</svg>`)
