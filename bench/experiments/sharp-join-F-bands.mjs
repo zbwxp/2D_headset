@@ -9,9 +9,9 @@ const add = (a, b) => [a[0] + b[0], a[1] + b[1]], sub = (a, b) => [a[0] - b[0], 
 const len = a => Math.hypot(a[0], a[1]), dot = (a, b) => a[0] * b[0] + a[1] * b[1], cross = (a, b) => a[0] * b[1] - a[1] * b[0]
 /** Where the line P + s·d meets the line R + t·e: { s, t } (null for parallel lines). */
 const meet = (P, d, R, e) => { const den = cross(d, e); if (Math.abs(den) < 1e-12) return null; const w = sub(R, P); return { s: cross(w, e) / den, t: cross(w, d) / den } }
-const f = v => v.map(x => x.toFixed(2)).join(',')
+const f = v => v.map(x => x.toFixed(4)).join(",")
 const poly = pts => 'M' + pts.map(f).join(' L') + ' Z'
-const disc = (c, r) => `M${(c[0] + r).toFixed(2)},${c[1].toFixed(2)} a${r},${r} 0 1,0 ${-2 * r},0 a${r},${r} 0 1,0 ${2 * r},0`
+const disc = (c, r) => `M${(c[0] + r).toFixed(4)},${c[1].toFixed(4)} a${r},${r} 0 1,0 ${-2 * r},0 a${r},${r} 0 1,0 ${2 * r},0`
 
 const angles = [0, 8, 20, 45, 70, 90, 110, 140, 170, 180] // θ, the angle between the strokes (180 = straight on)
 const cols = [[1, 1, 3], [1, 1, 6], [1, 3, 3], [1, 3, 6], [3, 1, 3], [3, 1, 6]] // [incoming, outgoing] width × k

@@ -18,8 +18,8 @@ function strokeOutline(c, w, capStart, wAt = () => w) {
   for (let i = 0; i <= 80; i++) { const t = i / 80, p = bez(c, t), n = unit(dbez(c, t)), nn = [-n[1], n[0]], h = wAt(t) / 2; L.push(add(p, mul(nn, h))); R.push(sub(p, mul(nn, h))) }
   const pts = [...L, ...R.reverse()]
   POLYS.push(pts)
-  let d = 'M' + pts.map(p => p.map(v => v.toFixed(2)).join(',')).join(' L') + ' Z'
-  if (capStart) { const p = c[0]; POLYS.push(Array.from({ length: 24 }, (_, i) => add(p, [Math.cos(i / 24 * 2 * Math.PI) * w / 2, Math.sin(i / 24 * 2 * Math.PI) * w / 2]))); d += ` M${(p[0] + w / 2).toFixed(2)},${p[1].toFixed(2)} a${w / 2},${w / 2} 0 1,0 ${-w},0 a${w / 2},${w / 2} 0 1,0 ${w},0` }
+  let d = 'M' + pts.map(p => p.map(v => v.toFixed(4)).join(',')).join(' L') + ' Z'
+  if (capStart) { const p = c[0]; POLYS.push(Array.from({ length: 24 }, (_, i) => add(p, [Math.cos(i / 24 * 2 * Math.PI) * w / 2, Math.sin(i / 24 * 2 * Math.PI) * w / 2]))); d += ` M${(p[0] + w / 2).toFixed(4)},${p[1].toFixed(4)} a${w / 2},${w / 2} 0 1,0 ${-w},0 a${w / 2},${w / 2} 0 1,0 ${w},0` }
   return d
 }
 
@@ -39,7 +39,7 @@ function tip(a, b, p, h0, h1, variant) {
   const shoulder = sA < 0 || sB < 0
   const apex = capped ? mul(miter, limit / natural) : miter
   const A = add(p, o0), B = add(p, o1), M = add(p, miter), X = add(p, apex)
-  const f = v => v.map(x => x.toFixed(2)).join(',')
+  const f = v => v.map(x => x.toFixed(4)).join(',') // 4 decimals in the SVG: display error below 5e-5 px (dot 1791781991)
   if (variant === 'trueBevel') { POLYS.push([p, A, B]); return { d: `M${f(p)} L${f(A)} L${f(B)} Z`, capped, shoulder, A, B, X: A, sideA: sub(B, A), sideB: sub(A, B), bevel: true, tipPoly: [p, A, B], limit } }
   if (variant === 'v103' || !capped || shoulder) { POLYS.push([p, A, X, B]); return { d: `M${f(p)} L${f(A)} L${f(X)} L${f(B)} Z`, capped, shoulder, A, B, X, sideA: sub(X, A), sideB: sub(X, B), tipPoly: [p, A, X, B], limit } }
   if (variant === 'bevel') {
@@ -50,8 +50,8 @@ function tip(a, b, p, h0, h1, variant) {
     POLYS.push([p, A, A2, B2, B])
     return { d: `M${f(p)} L${f(A)} L${f(A2)} L${f(B2)} L${f(B)} Z`, capped, shoulder, A, B, X: A2, sideA: sub(A2, A), sideB: sub(B2, B), tipPoly: [p, A, A2, B2, B], limit }
   }
-  // the curved-side variant: each side leaves the stroke along that stroke's outer edge (its control point is the
-  // natural miter, which lies on that edge's continuation) and bends to the shortened apex — tangent there, still pointed
+  // the curved-side variant (B): each side leaves the stroke along that stroke's outer edge and bends to the shortened
+  // apex — tangent where it leaves, still pointed at the apex
   // each side leaves its stroke along the stroke's outer edge; its control point is where that edge meets the limit
   // circle (not the far natural miter), so the side stays inside the circle — a quadratic lies in the triangle of
   // its three points, all inside (dot 1791781520: the drawn tip, not one named point, keeps the limit)
