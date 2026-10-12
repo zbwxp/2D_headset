@@ -81,7 +81,9 @@ rows.forEach(([deg, bend], r) => cols.forEach(([k0, k1, k], c) => {
   const notes = []
   if (!hits.length) { body += `<text x="${ox + 6}" y="${oy + 14}" font-size="9" fill="#a50">I2b-ii — no J (the ray misses T's outer edge) — not covered</text>` + cellFrame; return }
   const jh = hits[0], hJ = jh.h, J = add(p, mul(nIn0, hJ)), tauJ = unit(sub(Tst.O[jh.i + 1], Tst.O[jh.i])) // τ_J pointing towards A
-  const jFromA = -((Tst.S[Tst.S.length - 1] - Tst.S[jh.i]) - jh.uu * len(sub(Tst.O[jh.i + 1], Tst.O[jh.i]))) // arc length along T's centre samples, negative = behind A
+  // J's distance from A measured along T's outer edge throughout (its polyline length from J to A; negative = behind A)
+  let jFromA = -(1 - jh.uu) * len(sub(Tst.O[jh.i + 1], Tst.O[jh.i]))
+  for (let i = jh.i + 1; i + 1 < Tst.O.length; i++) jFromA -= len(sub(Tst.O[i + 1], Tst.O[i]))
   const inZoneT = (Tst.S[Tst.S.length - 1] - Tst.S[jh.i]) <= ell
   // W's curvature at p signed along its inner normal (analytic): t′ = κ_in·n_in
   const d1v = dbez(cW, 0), d2v = ddbez(cW, 0), kLeft = cross(d1v, d2v) / len(d1v) ** 3, kIn = kLeft * dot(left(unit(d1v)), nIn0)
@@ -144,15 +146,15 @@ rows.forEach(([deg, bend], r) => cols.forEach(([k0, k1, k], c) => {
   const rotBad = [0.37, 0.63, 1.1, 1.9, 2.71, 4.4].flatMap(rr => [['', rot(rr)], ['O', rotO(rr)]].filter(([, fn]) => { const q = pieces.map(x => x.map(fn)), w = regionOutline(q, inkOf(q)), t = topology(w); return !(t.loops === topo.loops && t.holes === topo.holes && !w.openChains.length && !w.badVertices) }).map(([tag]) => tag + rr))
   const tipReach = Math.max(...tip.slice(1).map(P => len(sub(P, p))))
   const covered = within && samplesOut && segHits === 0 && folds === 0 && onOutline(J) && dirOK && inZoneT
-  label = `${outerCls} × I2b-ii — within ℓ, curves${covered ? '' : ' — NOT COVERED'}`
-  const note = [`ray hits on T's outer edge ${hits.length}, J the first: ${jFromA.toFixed(3)} from A along T${inZoneT ? '' : ' (OUTSIDE T\'s zone)'}`, `|n_in×τ_J| ${Math.abs(den).toFixed(4)}`, `1−κh at J ${(1 - kIn * hJ).toFixed(4)}, min along the narrowed edge ${minOneMinus.toFixed(6)}`,
+  label = `${outerCls} × I2b-ii — within ℓ, curves · the bending stroke (S1) is ${tIs0 ? 'W' : 'T'}${covered ? '' : ' — NOT COVERED'}`
+  const note = [`ray hits on T's outer edge ${hits.length}, J the first: ${jFromA.toFixed(4)} from A along T's outer edge${inZoneT ? '' : ' (OUTSIDE T\'s zone)'}`, `|n_in×τ_J| ${Math.abs(den).toFixed(4)}`, `1−κh at J ${(1 - kIn * hJ).toFixed(4)}, min along the narrowed edge ${minOneMinus.toFixed(6)}`,
     `h_in(0) ${hJ.toFixed(4)}, h_in′(0) ${m0.toFixed(4)}`, `direction −E′(0)·τ_J ${dot(mul(Ep0, -1), tauJ).toFixed(4)}${dirOK ? '' : ' WRONG'}`,
     `h_in within its end values: ${within ? 'yes' : 'NO'}`, `samples outside T: ${samplesOut ? 'yes' : 'NO'}`, `segment crossings with T ${segHits}`, `folds ${folds}`,
     `J on the outline: ${onOutline(J) ? 'yes' : 'NO'}`, turnJ !== null ? `sampled turn at J ${turnJ.toFixed(3)}°` : 'J inside an outline sub-edge', `sampled turn at the cut ${turnCut.toFixed(3)}°`,
     `hump ${hump.toFixed(3)}`, `removed ${removed.toFixed(3)} (within ℓ)`, `strip probes covered by other ink ${stripHits}/${probes}`, `loops ${topo.loops}, holes ${topo.holes} (input alone ${input.loops}, ${input.holes})`, `open ${u.openChains.length}`, `bad ${u.badVertices}`, `crossings ${crossings}`,
     `tip ${tipReach.toFixed(1)} / ${limit}`, `rotations ${rotBad.length ? 'FAIL ' + rotBad.join(',') : 'ok ×12'}`].join(' · ')
   const marks = { loops: u.loops, openChains: u.openChains, removed: [strip], cut: [Wn.O[zN], Wn.I[zN]], J, p }
-  if (deg === 2 && bend > 0 && k0 === 1 && k1 === 3) focus = { ...marks, label: `${deg}°, W bends +7, ${k0}:${k1}, k = ${k}` }
+  if (deg === 2 && bend > 0 && k0 === 1 && k1 === 3) focus = { ...marks, label: `${deg}°, S1 (W) bends +7, ${k0}:${k1}, k = ${k}` }
   body += drawFitted(marks, ox + 8, oy + 22, cell - 22, cell * 0.38)
   body += `<text x="${ox + 6}" y="${oy + 14}" font-size="9" fill="${covered ? '#363' : '#e00'}">${label}</text>`
   body += readingLines(ox + 6, oy + cell * 0.38 + 40, note, { maxChars: 56, fill: /FAIL|NOT|NO\b|WRONG|OUTSIDE|open [1-9]|bad [1-9]|· crossings [1-9]|crossings with T [1-9]|covered by other ink [1-9]|folds [1-9]/.test(note) ? '#e00' : '#555' })
@@ -170,7 +172,7 @@ function drawFitted(m, x, y, w, h) {
   for (const ch of m.openChains) out += `<path d="${path(ch, false)}" fill="none" stroke="#e00"/>`
   return out + `<text x="${x + w - 4}" y="${y + h + 12}" font-size="8" fill="#888" text-anchor="end">×${k.toFixed(2)}</text>`
 }
-rows.forEach(([deg, bend], r) => { body += `<text x="${pad}" y="${pad + 50 + r * cell + cell / 3}" font-size="12">${deg}°, W bends ${bend > 0 ? '+' : '−'}7</text>` })
+rows.forEach(([deg, bend], r) => { body += `<text x="${pad}" y="${pad + 50 + r * cell + cell / 3}" font-size="12">${deg}°, S1 bends ${bend > 0 ? '+' : '−'}7</text>` }) // S1 (outgoing) is W in the 1:3, 1:2 columns and T in the 3:1, 2:1 columns (dot)
 cols.forEach(([k0, k1, k], c) => { body += `<text x="${pad + 110 + c * cell + 6}" y="${pad + 40}" font-size="11">${k0}:${k1} · ℓ = ${k}× (thin ${Wd})</text>` })
 const gridW = pad * 2 + 110 + cell * cols.length, size = Math.max(gridW, pad * 2 + 50 + cell * rows.length)
 // the enlarged cell (as on the straight sheet): ℓ cut, J, the removed strip and the tip at once, in the space to the right
