@@ -72,7 +72,10 @@ angles.forEach((deg, r) => ratios.forEach(([k0, k1], ci) => {
   const polys = [strokeOutside(s0, z0), strokeOutside(s1r, z1)]
   let notes = [], fdrawn = false
   if (outerCls !== 'O3' && Q) {
-    const tip = outerCls === 'O1' ? [M] : [add(p, mul(sub(M, p), limit / len(sub(M, p))))]
+    // O2: the curved sides of B (dot 1791782430) — from A and from B to the apex on the limit circle, tangent at A, B
+    const quad = (P0, C, P1) => Array.from({ length: 24 }, (_, i) => { const t = (i + 1) / 24, u = 1 - t; return add(add(mul(P0, u * u), mul(C, 2 * u * t)), mul(P1, t * t)) })
+    const X = outerCls === 'O2' ? add(p, mul(sub(M, p), limit / len(sub(M, p)))) : null
+    const tip = outerCls === 'O1' ? [M] : [...quad(A, add(A, mul(a, Math.sqrt(Math.max(0, limit * limit - h0 * h0)))), X), ...quad(X, add(B, mul(b, -Math.sqrt(Math.max(0, limit * limit - h1 * h1)))), B).slice(0, -1)]
     // the zone outline, in the definition's order: E0o → (S0's outer edge) → A → M → B → (S1's outer edge) → E1o →
     // cut → E1i → (S1's inner edge) → Q → (S0's inner edge) → E0i → cut
     const zone = [...s0.O.slice(z0), ...tip, ...s1r.O.slice(z1).reverse(), ...s1r.I.slice(z1, qi1 + 1), Q, ...s0.I.slice(z0, qi0 + 1).reverse()]
@@ -85,7 +88,7 @@ angles.forEach((deg, r) => ratios.forEach(([k0, k1], ci) => {
     const kCut = Math.max(angleBetween(sub(s0.O[z0 + 1], s0.O[z0]), sub(s0.O[z0], s0.O[z0 - 1])), angleBetween(sub(s0.I[z0 + 1], s0.I[z0]), sub(s0.I[z0], s0.I[z0 - 1])),
       angleBetween(sub(s1r.O[z1 + 1], s1r.O[z1]), sub(s1r.O[z1], s1r.O[z1 - 1])), angleBetween(sub(s1r.I[z1 + 1], s1r.I[z1]), sub(s1r.I[z1], s1r.I[z1 - 1])))
     notes.push(`self-crossings ${crossings} · turn at A ${kA.toFixed(2)}° B ${kB.toFixed(2)}° · at the cuts ≤ ${kCut.toFixed(3)}°`)
-    if (outerCls === 'O2') notes.push('O2: tip as A (apex at the limit)')
+    if (outerCls === 'O2') notes.push('O2: curved sides to the apex on the limit circle (as B)')
     if (crossings) notes.push('the zone outline crosses itself')
   } else notes.push(outerCls === 'O3' ? 'O3: not covered (no backward extension)' : 'I2: the inner edges do not cross in the zones')
   // an enclosed-blank alarm on the union near the joint (0.25 px grid; sampling-sensitive, not a proof)

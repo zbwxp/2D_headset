@@ -44,8 +44,23 @@ angles.forEach((deg, r) => cols.forEach(([k0, k1, k], c) => {
     cls = `${outerCls} × ${innerCls}`
     if (outerCls !== 'O3' && innerCls === 'I1') {
       const E0o = sub(add(p, o0), mul(a, ell)), E0i = sub(sub(p, o0), mul(a, ell)), E1o = add(add(p, o1), mul(b, ell)), E1i = add(sub(p, o1), mul(b, ell))
-      // O2: the tip shortened for this sheet by pulling the apex in to the limit circle (style A, straight sides)
-      const tipPts = outerCls === 'O1' ? [M] : (() => { const X = add(p, mul(sub(M, p), limit / len(sub(M, p)))); notes.push('O2: tip as A (apex at the limit)'); return [X] })()
+      // O2 (dot 1791782430): the outer edges are kept to their corners A and B, then each side curves to the shortened
+      // apex X on the limit circle — leaving its edge along the edge (control point where that edge meets the circle),
+      // so the outline stays tangent at A and B and inside the limit; nothing of the zone's edges before A / B changes
+      const A = add(p, o0), B = add(p, o1)
+      const quad = (P0, C, P1) => Array.from({ length: 24 }, (_, i) => { const t = (i + 1) / 24, u = 1 - t; return add(add(mul(P0, u * u), mul(C, 2 * u * t)), mul(P1, t * t)) })
+      const tipPts = outerCls === 'O1' ? [M] : (() => {
+        const X = add(p, mul(sub(M, p), limit / len(sub(M, p))))
+        const CA = add(A, mul(a, Math.sqrt(Math.max(0, limit * limit - h0 * h0)))), CB = add(B, mul(b, -Math.sqrt(Math.max(0, limit * limit - h1 * h1))))
+        notes.push('O2: corners A, B kept; curved sides to the apex on the limit circle (as B)')
+        const sideA = quad(A, CA, X), sideB = quad(X, CB, B)
+        const ang = (u, v) => Math.acos(Math.max(-1, Math.min(1, dot(u, v) / (len(u) * len(v) || 1)))) * 180 / Math.PI
+        // measured: the farthest point of the tip from p, and the turn of the outline at E0o, A, B, E1o
+        const reach = Math.max(...[...sideA, ...sideB].map(P => len(sub(P, p))))
+        const turns = [ang(a, sub(A, E0o)), ang(sub(A, E0o), sub(sideA[0], A)), ang(sub(B, sideB[sideB.length - 2]), mul(b, 1)), ang(mul(b, 1), sub(E1o, B))]
+        notes.push(`reach ${reach.toFixed(3)} / ${limit.toFixed(0)} · turns at E0o, A, B, E1o ${turns.map(x => x.toFixed(3)).join(' / ')}°`)
+        return [A, ...sideA, ...sideB]
+      })()
       fpath = [E0o, ...tipPts, E1o, E1i, Q, E0i]
       notes.push(`ℓ = ${k}×wider width; Q at ${mi.s.toFixed(1)} / ${mi.t.toFixed(1)} along`)
     } else notes.push(outerCls === 'O3' ? 'O3: not covered (this experiment uses no backward extension)' : 'I2: not covered (Q beyond the zone)')
