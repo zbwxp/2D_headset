@@ -14,7 +14,19 @@ bowen 1791790281 allowed downloading the candidates into a scratch folder outsid
 
 **Scope (dot 1791790569):** these fixtures passing supports the comparison of the candidates; it is not a general guarantee of correctness on every input.
 
-**F1 scale study (`p0c.mjs`):** the union's area against the true one: 6.4e-2 / −8.7e-4 / −2.1e-4 / 2.4e-5 / 5.1e-6 / 7.5e-6 / 2.6e-9 at s = 10² … 10⁸; against A0′ + A1′ − A∩′ (the areas of the rounded inputs and of their intersection): 0 / −6.0e-3 / −6.0e-4 / −5.6e-5 / −6.5e-6 / −5.5e-7 / −6.1e-8 — about 6 / s. **What is and is not exact (dot 1791790774):** BigInt makes the area of each *integer* polygon exact; but A∩′ is itself the library's output, whose crossing vertices are rounded, so this is **not** a comparison with the exact (rational) union of the rounded inputs — it compares two rounded results. Read as: the gap shrinks with s, consistent with input rounding plus the rounding of new vertices; one fixture, not a general bound.
+**F1 scale study (`p0c.mjs`):** the union's area against the true one: 6.4e-2 / −8.7e-4 / −2.1e-4 / 2.4e-5 / 5.1e-6 / 7.5e-6 / 2.6e-9 at s = 10² … 10⁸; against A0′ + A1′ − A∩′ (the areas of the rounded inputs and of their intersection): 0 / −6.0e-3 / −6.0e-4 / −5.6e-5 / −6.5e-6 / −5.5e-7 / −6.1e-8 — about 6 / s. **What is and is not exact (dot 1791790774):** BigInt makes the area of each *integer* polygon exact; but A∩′ is itself the library's output, whose crossing vertices are rounded, so this is **not** a comparison with the exact (rational) union of the rounded inputs — it compares two rounded results. So the ~6 / s column is only the **inclusion–exclusion residual of two library outputs** (dot 1791790804), not the union's own error.
+
+**F1 with an exact rational reference (`p0d.mjs`, dot 1791790804):** both F1 pieces are convex, so the exact intersection of the rounded inputs is clipped in rationals (BigInt fractions, Sutherland–Hodgman), and the exact union area of the rounded inputs is A0′ + A1′ − A∩(exact). Separately:
+
+| s | input rounding: exact union of rounded inputs − true | operation: library union − exact union of rounded inputs |
+|---|---|---|
+| 10² | 6.44e-2 | 0 |
+| 10³ | −8.68e-4 | −4.91e-8 |
+| 10⁴ | −2.39e-4 | 2.88e-5 |
+| 10⁵ | 1.91e-5 | 4.74e-6 |
+| 10⁶ | 5.07e-6 | −2.53e-9 |
+
+On this one fixture the input rounding dominates and the operation's own area error is smaller and not monotone in s; one convex fixture, not a general bound.
 
 **Contract found (refined, dot 1791790632):** independent solid pieces passed to a union are oriented the same way; a result with holes that goes into another operation keeps its outer loops and its holes in **opposite** orientations — holes are never turned into solids by normalising. The adapter normalises solids only and passes structured results (outer + holes) through as they are.
 
