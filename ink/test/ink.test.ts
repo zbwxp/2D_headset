@@ -310,6 +310,45 @@ describe('sharp (cusp) joins — the lines\' ink plus v103\'s tip (Slack 1791804
     const ys = l0.loops.flatMap(l => l.flatMap((a, i) => { const b = l[(i + 1) % l.length]!; return (a.x + 20) * (b.x + 20) <= 0 && a.x !== b.x ? [a.y + (b.y - a.y) * (-20 - a.x) / (b.x - a.x)] : [] }))
     expect(Math.max(...ys) - Math.min(...ys)).toBeCloseTo(4, 1)
   })
+  // J3-min (docs/j3-min-cusp-flat-checklist.md, bowen 1791816534): a cusp end is drawn flat at p — no round cap beside the tip
+  it('J3-min: 3 and 2 at 100° (the 125.json eye corner): both ends drawn flat at p, the free ends still round, one outline', () => {
+    const ink = corner(100, 3, 2), l0 = ink.pieces.find(p => p.source.id === 'l0')!
+    expect(Math.max(...l0.loops.flat().map(v => v.x))).toBeLessThanOrEqual(4 / l0.scale + 1e-9) // l0 arrives along +x: nothing of its cap (radius 1.5) past p but the 4-grid-unit overlap
+    expect(Math.min(...l0.loops.flat().map(v => v.x))).toBeCloseTo(-51.5, 1) // its free end keeps the round cap
+    expect(ink.groups.length).toBe(1)
+    expect(ink.groups[0]!.loops.length).toBe(1)
+    expect(ink.groups[0]!.status).toBe('unproven')
+    expect(ink.diagnostics.every(x => x.status === 'unproven')).toBe(true)
+  })
+  it('J3-min: a line passing back beside its own flat end keeps its ink there (generated flat, nothing cut out — dot 1791816797)', () => {
+    // l0 starts at (1, −20), runs up through (0.42, 0) — just beyond p along l0's arrival direction, inside the old cut
+    // box — then hooks round and arrives at p = (0, 0) along +x; l1 leaves p at 100°
+    const d = new Core(), t = 100 * Math.PI / 180
+    d.edit(e => {
+      e.layer('L')
+      sk(e).point('a', 'L', P(1, -20)); sk(e).point('p', 'L', P(0)); sk(e).point('c', 'L', P(-50 * Math.cos(t), 50 * Math.sin(t)))
+      sk(e).line('l0', 'a', 'p', { ha: P(0, 60), hb: P(-10, 0) }); sk(e).line('l1', 'p', 'c')
+      e.lineStroke('l0', { width: 3, profile: 'uniform' } as never); e.lineStroke('l1', { width: 2, profile: 'uniform' } as never)
+      e.join('p', 'l0', 'l1', { mode: 'cusp' })
+    })
+    const g = d.geometry(), c = g.lines.find(l => l.id === 'l0')!.curve, l0 = build(g, d.snapshot()).pieces.find(p => p.source.id === 'l0')!
+    const inside = (v: Vec) => l0.loops.reduce((w, l) => w + l.reduce((k, a, i) => { const b = l[(i + 1) % l.length]!; return k + ((a.y <= v.y) !== (b.y <= v.y) && v.x < a.x + (v.y - a.y) * (b.x - a.x) / (b.y - a.y) ? 1 : 0) }, 0), 0) % 2 === 1
+    const passing = Array.from({ length: 200 }, (_, i) => bez(c, i / 400)).filter(v => v.x > 0.2 && Math.abs(v.y) < 1.5)
+    expect(passing.length).toBeGreaterThan(0)
+    expect(passing.every(inside)).toBe(true)
+  })
+  it('J3-min: a smooth join is not cut (its round end stays, paused J2)', () => {
+    const d = new Core(), t = 100 * Math.PI / 180
+    d.edit(e => {
+      e.layer('L')
+      sk(e).point('a', 'L', P(-50)); sk(e).point('p', 'L', P(0)); sk(e).point('c', 'L', P(-50 * Math.cos(t), 50 * Math.sin(t)))
+      sk(e).line('l0', 'a', 'p'); sk(e).line('l1', 'p', 'c')
+      e.lineStroke('l0', { width: 3, profile: 'uniform' } as never); e.lineStroke('l1', { width: 3, profile: 'uniform' } as never)
+      e.join('p', 'l0', 'l1', { mode: 'smooth' })
+    })
+    const l0 = build(d.geometry(), d.snapshot()).pieces.find(p => p.source.id === 'l0')!
+    expect(Math.max(...l0.loops.flat().map(v => v.x))).toBeCloseTo(1.5, 1)
+  })
   it('the known, unhandled I2b case (4 and 12 at 10°) is flagged on the tip, drawn all the same', () => {
     const ink = corner(10, 4, 12), d = ink.diagnostics.find(x => x.source.kind === 'tip')!
     expect(d.status).toBe('defect')

@@ -10,16 +10,22 @@ the scaffold 1ac07f7). The wider line's cap (radius h_w around p) reaches past t
 (3 / 2 at 100°: the miter is 1.67 from p, the cap 1.5 — the cap's round shows beside the tip).
 
 ## 2. The change (principle §1.1: a joined end has no cap — cut flat, perpendicular to the end's direction)
-- At every **cusp** end (kinds tip / ease / none of `cuspTip`), the line's ink is cut flat at p: the cap region — a box
-  on the far side of p, from p outward by R and ±R across, R = the end's half-width at p (after any easing) × 1.05 — is
-  removed from that line's piece (clipper `difference`, on the piece's own grid).
+- At every **cusp** end (kinds tip / ease / none of `cuspTip`), the line's end is **generated flat** — never cut out of
+  the finished ink (dot 1791816797: a curve passing back through a cut box would be carved too). The line is built by
+  the hull construction (the union of the convex hulls of consecutive discs, as the tapered sweep): the centre line is
+  extended along the end's handle by 4 grid units, and only the hulls of the end's own last stretch (2 × its widest
+  radius, by arc length) are cut by the face's box; the rest of the line is untouched. The face is exactly
+  perpendicular to the handle — the direction `cuspTip` uses. (The library's butt end on that short extension left a
+  0.15 dent on 125.json's right eye, so the equal-width line is not inflated with butt ends.)
+- The 4-grid-unit extension makes the line overlap the tip (whose sides p–A lie on the face at p) by a sliver, so the
+  union has no seam from rounding (an edge-only contact left the tip a separate loop on the eye corner).
 - The tip polygon is unchanged: its side p–A0 / p–A1 is exactly the cut face, so the union has no seam; the inner side
   is covered by the two bodies (both run past p's inner bisector for any angle under 180°).
 - 'ease' (the outer edges do not meet ahead, or straight on with unequal widths): as today, widths ease to the average,
   then the tip at equal widths; the ends are cut flat too. 'pinch' (fold back): unchanged (the width is 0 at p).
 - Smooth / arc / bound ends: unchanged (paused J2). Free ends: round, as today.
-- The cut enters the line's cache key; a cut piece's diagnostic is 'unproven' with the reason "end cut flat at a cusp"
-  (a defect found by the output check stays a defect).
+- The flat ends enter the line's cache key; the band check leaves out the vertices on a face (the face is the
+  construction, not the swept edge); the status stays 'unproven'.
 - I2b (the wider line's inner corner showing past the thinner line at acute angles) stays as today: flagged on the tip,
   not handled — only built if a real drawing shows it (principle §3).
 
@@ -31,4 +37,5 @@ the scaffold 1ac07f7). The wider line's cap (radius h_w around p) reaches past t
 5. Set the join to smooth / bound: the ends go back to today's look.
 
 Tests: one bench-level ink test per row of §2 (cut present at a cusp end, absent at a free end and at smooth / bound),
-the 125.json corner as a real-drawing sample (its tip + no point of the ink beyond the cut box).
+the 125.json corner as a real-drawing sample (its tip + no point of the ink beyond the cut box), and a line that passes
+back beside its own flat end keeps its ink there (dot 1791816797).
