@@ -23,13 +23,14 @@ Two bands crossing at 200 angles (crossing sine from 0.100 up).
 - **The library's own rounding** — output vertices against the exact crossings of the *rounded* input edges: worst **0.496 grid units** (≤ √2/2 as expected).
 - **Against the true crossing** (unrounded inputs): worst 2.6 / 5.6 / 4.1 / 3.6 / 3.4 grid units at s = 10² … 10⁶. This is the **input rounding** (≤ 0.5 unit per vertex) moved along a shallow crossing: about 0.5 / sin φ grid units, 5.0 at sin φ = 0.1 — and sharp joins at small angles cross at exactly such shallow angles.
 - **Status:** the 0.5 / sin φ term is an explanation that fits this measurement (one family of crossings, 200 angles), not a proven bound; the budget below is a working estimate for P1 to test, not a guarantee (dot 1791790569).
-- **Budget consequence (working estimate):** the displacement of a new vertex is ≤ (0.5 / sin φ + 0.5) / s drawing units, φ the crossing angle. With ε_round ≤ ε / 4 this asks s ≥ 4·(0.5 / sin φ + 0.5) / ε. s can be large: coordinates × s must stay below 2⁵³ (clipper2-ts throws otherwise) — for a drawing within ±10⁶ units, s up to ~9·10⁹. At s = 10⁸ and ε = 0.01, crossings down to sin φ ≈ 2·10⁻⁶ fit the budget; shallower ones are reported (not verified), as §10.1 requires.
+- **Not a budget guarantee — an item to verify (dot 1791790593):** (0.5 / sin φ + 0.5) / s is an empirical order of magnitude from this one family of crossings. It does not account for the perturbation of several endpoints of both edges, nor for their change of direction, so it **cannot certify** any choice of s for any range of φ (the earlier sentence "s = 10⁸ covers crossings down to sin φ ≈ 2·10⁻⁶" is withdrawn). What it does tell P1: shallow crossings magnify input rounding, so s should be large (coordinates × s below 2⁵³).
+- **What P1 must do instead:** claim an error as verified only with a checkable conservative bound, or with an **a-posteriori check per case** (e.g. each output vertex compared against the exact crossing of the unrounded edges it came from, and each piece's area / topology against the unclipped input); where neither holds, the result carries the plan's **not verified** status.
 
 ## 3. Region collapse (grid units)
 
 - A lone thin triangle of height t beside a square: **vanishes at t = 0.2, survives from t = 0.5** (both libraries).
 - A gap of width g between two squares: **closes at g = 0.2, stays from g = 0.5** (clipper2-ts).
-- **Observed in these cases, not a guarantee** (dot 1791790569): features under about half a grid unit collapsed here; at s = 10⁸ that is 5·10⁻⁹ drawing units — far below any ε, provided s is chosen as in §2.
+- **Observed in these cases, not a guarantee** (dot 1791790569, 1791790593): with these positions and directions, features under about half a grid unit collapsed here; that does not mean every feature above half a unit keeps its topology; at s = 10⁸ that is 5·10⁻⁹ drawing units — far below any ε, provided s is chosen as in §2.
 
 ## 4. Speed
 
