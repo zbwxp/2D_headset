@@ -9,8 +9,8 @@ Both are bench-only (glue, `bench/src/app.tsx`): nothing in core, interaction, `
 ## 1. Playback: the arrows move the pose
 
 - **Keys:** in playback, a plain arrow (no ⌘) moves the pose as the pad's handle would move: **→ yaw +, ← yaw −, ↑ pitch +, ↓ pitch −** (the pad: left = −90, top = +45).
-- **Steps:** 1°; **Shift** ×10 (10°). The pose is whole degrees (pad, sliders, fields), so **Option / Ctrl** has no finer step here: 1° as the plain key (stated; bowen may ask for 0.1° — the pose would then leave whole degrees everywhere). Clamped to the limits (±90, ±45); at a limit the key changes nothing.
-- **Each press and each repeat** of a held key takes effect at once, as each move of a pad drag does: through `changePose(next, 'keys')` — the one place that sets the pose and both fields' text; the pad's handle and the sliders follow. No session and no commit: nothing is written (the drawing's text, the history and autosave's write count unchanged), so there is nothing to undo or cancel.
+- **Steps — `move/`'s, not a second set** (dot 1791769046): a playback arrow run is a **`move/` key run** (`createMover`, `stepOf`): 1°; **Shift** ×10 (10°); **Option / Ctrl** ×0.1 (0.1°); combined keys multiply as there. The pose takes decimals already (the number fields accept them); only the pad's mouse drag rounds to whole degrees, and stays so. Clamped to the limits (±90, ±45); at a limit a step changes nothing.
+- **The run's target** (bowen 1791768754: grabbing the coord grid's point): `begin` takes the pose at the first press; `preview(offset)` sets the pose to start + offset (x → yaw, y → pitch; ↑ is +pitch), clamped, through `changePose(next, 'keys')` — the one place that sets the pose and both fields' text, so the pad's handle and the sliders follow at each step and each repeat; `commit` the same; `cancel` (Esc, blur, leaving playback, a pad / slider / field / canvas input) puts back the pose of the run's start. Nothing is written (the drawing's text, the history and autosave's write count unchanged). The run holds the bench's one gesture slot as the other key runs do (`KEYS`).
 - **One input at a time:** while a mouse gesture runs (a correction drag, a pad drag, a pan or zoom drag) the arrows are ignored, as for the move sessions (`docs/move-plan.md` §1); a key never cancels a running drag.
 - **Keys that stay elsewhere:** an arrow on a focused field or slider is that control's (the existing rule: the yaw slider steps the yaw itself); a typing field or an input method keeps its keys; ⌘ + arrow does nothing (not a move, §2).
 - While restoring: nothing (the restoring gate comes first, as now).
@@ -22,10 +22,10 @@ Both are bench-only (glue, `bench/src/app.tsx`): nothing in core, interaction, `
 
 ## Not now
 
-- 0.1° pose steps; panning or zooming by keys (bowen 1791768959: the right drag is enough; Z exists).
+- Panning or zooming by keys (bowen 1791768959: the right drag is enough; Z exists).
 
 ## Tests (bench)
 
-- Playback: → / ← / ↑ / ↓ change yaw / pitch by 1 in the pad's directions; Shift by 10; Option and Ctrl by 1; clamped at ±90 / ±45; a held key's repeats each step; the pad's handle, the sliders and both fields show the new pose; the drawing's text, the history and autosave's write count unchanged.
+- Playback: → / ← / ↑ / ↓ change yaw / pitch by 1 in the pad's directions; Shift by 10; Option and Ctrl by 0.1 (`stepOf`); Esc during a held run puts back the run's start; clamped at ±90 / ±45; a held key's repeats each step; the pad's handle, the sliders and both fields show the new pose; the drawing's text, the history and autosave's write count unchanged.
 - An arrow during a correction drag and during a pad drag changes nothing and cancels nothing; an arrow on the focused yaw slider is the slider's (one step, not two); while restoring nothing.
 - Feature-off: without the playback arrow route the pose test fails.
