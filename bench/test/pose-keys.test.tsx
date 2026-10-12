@@ -197,4 +197,39 @@ describe('playback: the arrows turn the view', () => {
     const s = await t.key('ArrowLeft', {}, t.input('yaw'))
     expect([bench().pose(), s.defaultPrevented]).toEqual([{ yaw: 90, pitch: 0 }, false])
   })
+
+  it('the pose keeps plain JS precision: 0.1234567890123 and 1e-11 with Option → then ← come back as they were (dot 1791770081, 1791770133)', async () => {
+    const t = await setup()
+    await t.play(0.1234567890123, 0)
+    await t.key('ArrowRight', { altKey: true }); await t.up('ArrowRight')
+    await t.key('ArrowLeft', { altKey: true }); await t.up('ArrowLeft')
+    expect(bench().pose()).toEqual({ yaw: 0.1234567890123, pitch: 0 })
+    await t.type('yaw-text', '1e-11') // dot 1791770133: a tiny value is not cut to 0
+    await t.key('ArrowRight', { altKey: true }); await t.up('ArrowRight')
+    await t.key('ArrowLeft', { altKey: true }); await t.up('ArrowLeft')
+    expect(bench().pose()).toEqual({ yaw: 1e-11, pitch: 0 })
+  })
+
+  it('every ⌘ combination keeps its own: ⌘ + Ctrl + arrow turns nothing (dot 1791770081)', async () => {
+    const t = await setup()
+    await t.play(0, 0)
+    const e = await t.key('ArrowRight', { metaKey: true, ctrlKey: true })
+    expect([bench().pose(), e.defaultPrevented]).toEqual([{ yaw: 0, pitch: 0 }, false])
+  })
+
+  it('an input method taking the keys ends the run: the held key\'s repeats after it do nothing (dot 1791770081)', async () => {
+    for (const how of ['compositionstart', 'isComposing'] as const) {
+      const t = await setup()
+      await t.play(0, 0)
+      await t.key('ArrowRight')
+      if (how === 'compositionstart') await act(async () => { document.body.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true })) })
+      else await t.key('a', { isComposing: true })
+      await t.key('ArrowRight', { repeat: true })
+      expect([how, bench().pose()]).toEqual([how, { yaw: 1, pitch: 0 }])
+      await t.up('ArrowRight')
+      await t.key('ArrowRight'); await t.up('ArrowRight') // a new real press turns again
+      expect(bench().pose()).toEqual({ yaw: 2, pitch: 0 })
+    }
+  })
 })
+

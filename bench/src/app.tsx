@@ -657,8 +657,11 @@ export function App() {
     setPoseText(t => ({ yaw: source === 'yaw-field' ? t.yaw : String(next.yaw), pitch: source === 'pitch-field' ? t.pitch : String(next.pitch) }))
   }
   const LIMITS = { yaw: 90, pitch: 45 } as const
-  /** The decimal places of a number (up to 10), so a step adds without a float tail and without losing the pose's own decimals. */
-  const places = (n: number) => { for (let d = 0; d <= 10; d++) if (Number(n.toFixed(d)) === n) return d; return 10 }
+  /**
+   * The decimal places of a number (up to 20), so a step adds without a float tail and without losing the pose's own
+   * decimals; a number with more (no short decimal form) is added as it is, at plain JS precision (dot 1791770081).
+   */
+  const places = (n: number) => { for (let d = 0; d <= 20; d++) if (Number(n.toFixed(d)) === n) return d; return Infinity }
   const SHORT_PLACES = places(POSE_STEPS.short)
   /**
    * The pose's key run (docs/keyboard-pose-pan-plan.md §1): each preview is turned into the step it adds and applied to
@@ -668,7 +671,8 @@ export function App() {
   const poseTarget = (): Target | undefined => {
     if (!poseRef.current) return undefined
     let last = { x: 0, y: 0 }
-    const add = (v: number, d: number, limit: number) => (d === 0 ? v : Math.max(-limit, Math.min(limit, Number((v + d).toFixed(Math.max(places(v), SHORT_PLACES))))))
+    const sum = (v: number, d: number) => { const p = Math.max(places(v), SHORT_PLACES); return p <= 20 ? Number((v + d).toFixed(p)) : v + d }
+    const add = (v: number, d: number, limit: number) => (d === 0 ? v : Math.max(-limit, Math.min(limit, sum(v, d))))
     return {
       begin: () => true,
       preview: o => {
@@ -720,7 +724,8 @@ export function App() {
       const t = e.target as HTMLElement
       const typing = e.isComposing || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable
         || (t.tagName === 'INPUT' && !['button', 'checkbox', 'radio', 'file', 'range', 'color', 'submit', 'reset'].includes((t as HTMLInputElement).type))
-      if (typing) return
+      // an input method taking the keys ends a key run: its held key's repeats are not this run's after (dot 1791770081)
+      if (typing) { if (e.isComposing && gesture.current?.id === KEYS) gesture.current.cancel('an input method'); return }
       // an arrow on any focused field or slider is that control's own (a slider steps with it), never a move;
       // a key run already running still ends only by its own paths (dot 1791734673)
       if (isArrow(e.key) && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return
@@ -733,7 +738,7 @@ export function App() {
       if (restoringNow.current) return
       // playback: a plain arrow on the canvas turns the view; its default is prevented even when it changes nothing
       // (a limit, a gesture running), so the page never scrolls; ⌘ + arrow keeps its own behaviour (dot 1791769087)
-      if (posing.current && isArrow(e.key) && !(e.metaKey && !e.ctrlKey)) {
+      if (posing.current && isArrow(e.key) && !e.metaKey) { // every ⌘ combination keeps its own (⌘ + Ctrl too; dot 1791770081)
         e.preventDefault()
         if (gesture.current && gesture.current.id !== KEYS) return // a drag runs: ignored, and its repeats never start a run
         keyHooks.current.poseArrow?.(e)
@@ -757,8 +762,9 @@ export function App() {
       const t = e.target as HTMLElement | null
       if (gesture.current?.id === KEYS && t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) gesture.current.cancel('focus moving to a field')
     }
-    window.addEventListener('keydown', key); window.addEventListener('keyup', up); window.addEventListener('blur', blur); document.addEventListener('focusin', focus)
-    return () => { window.removeEventListener('keydown', key); window.removeEventListener('keyup', up); window.removeEventListener('blur', blur); document.removeEventListener('focusin', focus) }
+    const composing = () => { if (gesture.current?.id === KEYS) gesture.current.cancel('an input method') }
+    window.addEventListener('keydown', key); window.addEventListener('keyup', up); window.addEventListener('blur', blur); document.addEventListener('focusin', focus); document.addEventListener('compositionstart', composing)
+    return () => { window.removeEventListener('keydown', key); window.removeEventListener('keyup', up); window.removeEventListener('blur', blur); document.removeEventListener('focusin', focus); document.removeEventListener('compositionstart', composing) }
   }, [ix])
 
   // what the selection touches, for the rotate / scale buttons and the A handles
