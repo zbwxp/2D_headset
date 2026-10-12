@@ -10,8 +10,9 @@ uniform width, different → one end thick, one end thin (a pressure-pen stroke)
   reused, no second set — `endStroke.taper` stays the free-end stroke, not touched here).
 - `widthAt(stroke, 'a' | 'b')` in core; every reader of a line's width **at a point** uses it: the zones (derived
   `zones`, document 939 / 969 — the automatic zone from the two widths at the joint), the ink's joins.
-- Archive stays VERSION 7 (an optional field; a file without `widthB` opens unchanged — no migration needed, so no
-  version exception to ask for): `widthB` accepted when positive, finite and different from `width`. Clipboard carries it. Playback: strokes come whole from the dominant view, as today (`appearance`).
+- Archive VERSION 8 (dot 1791819678: an older program must refuse a file with end widths, not drop them); a version 7
+  file is read as it is (it is an 8 file without end widths). `widthB` accepted when positive, finite and different
+  from `width`. Clipboard carries it. Playback: strokes come whole from the dominant view, as today (`appearance`).
 - `lineStroke(id, { width, widthB?, profile })` sets both; the bench's "Set width" sets a uniform width (drops `widthB`).
 
 - **Split** (dot 1791819133 / 1791819173): both halves take the width at the cut — linear in arc length along each

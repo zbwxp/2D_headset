@@ -603,8 +603,10 @@ export function createInkCache(opts: InkOptions = {}) {
         // the arc runs from lines[0]'s end to lines[1]'s (derived); a hidden line lends no width — the arc keeps the other's
         const [l0, l1] = a.lines.map(id => byId.get(id)).map(l => l && l.state.visible ? l : undefined)
         if (!l0 && !l1) continue
-        // each line's width at the arc's point (the point the two lines share)
-        const shared = l0 && l1 ? [l0.a, l0.b].find(x => x === l1.a || x === l1.b) : undefined
+        // each line's width at the arc's point — the point the arc's two lines share, found from the pair itself
+        // whether or not both are visible (dot 1791819678: a hidden side made the visible line's other end count)
+        const [m0, m1] = a.lines.map(id => byId.get(id))
+        const shared = m0 && m1 ? [m0.a, m0.b].find(x => x === m1.a || x === m1.b) : undefined
         const at = (l: InkLines['lines'][number]) => (shared ? wAt(l, shared) : l.stroke.width)
         const w0 = at((l0 ?? l1)!), w1 = at((l1 ?? l0)!)
         const p = one({ kind: 'arc', id: a.key, lines: [a.lines[0], a.lines[1]] }, a.curve, w0 === w1 ? w0 : [w0, w1])

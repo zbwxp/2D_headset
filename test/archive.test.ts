@@ -128,12 +128,12 @@ describe('save and open', () => {
     const cases: [string, string, RegExp][] = [
       ['not JSON', '{oops', /not JSON/],
       ['another format', JSON.stringify({ format: 'something', version: 1, document: {} }), /not a headset v3 drawing/],
-      ['another version', good.replace('"version":7', '"version":8'), /unsupported version 8/],
+      ['another version', good.replace('"version":8', '"version":9'), /unsupported version 9/],
       // format versions (docs/archive-plan.md): 1 single view (bowen 1791651929); 2 stage 1, no angle baseline (dot 1791680650); 3 stage 2, no responses (stage 3b)
-      ['a version 1 file', good.replace('"version":7', '"version":1'), /unsupported version 1/],
-      ['a version 2 file (stage 1)', good.replace('"version":7', '"version":2'), /unsupported version 2/],
-      ['a version 3 file (stage 2)', good.replace('"version":7', '"version":3'), /unsupported version 3/],
-      ['a version 4 file (stage 3b, no reference pictures)', good.replace('"version":7', '"version":4'), /unsupported version 4/],
+      ['a version 1 file', good.replace('"version":8', '"version":1'), /unsupported version 1/],
+      ['a version 2 file (stage 1)', good.replace('"version":8', '"version":2'), /unsupported version 2/],
+      ['a version 3 file (stage 2)', good.replace('"version":8', '"version":3'), /unsupported version 3/],
+      ['a version 4 file (stage 3b, no reference pictures)', good.replace('"version":8', '"version":4'), /unsupported version 4/],
       ['a missing part', edit(doc => { delete doc.links }), /missing links/],
       ['a line pointing to a missing point', edit(doc => { doc.network.lines[0].a = 'nowhere' }), /open-failed/],
       ['a point id used twice', edit(doc => { doc.network.points.push({ ...doc.network.points[0] }) }), /open-failed/],

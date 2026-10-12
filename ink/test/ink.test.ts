@@ -298,6 +298,20 @@ describe('two end widths (bowen 1791818995): a line tapers linearly from its a-e
     expect(across(l0.loops, 20)).toBeCloseTo(4 - 3 * 20 / 30, 1)
     expect(across(l0.loops, 29.9)).toBeCloseTo(2, 1)
   })
+  it('an arc with one side hidden takes the visible line\'s width at the arc\'s own point (dot 1791819678)', () => {
+    const d = new Core()
+    d.edit(e => {
+      e.layer('L'); sk(e).point('a', 'L', P(0)); sk(e).point('p', 'L', P(30)); sk(e).point('c', 'L', P(30, 30))
+      sk(e).line('l0', 'a', 'p'); sk(e).line('l1', 'p', 'c')
+      e.lineStroke('l0', { width: 2, widthB: 8, profile: 'uniform' } as never)
+      e.join('p', 'l0', 'l1', { mode: 'arc', radius: 5 })
+    })
+    d.edit(e => e.lineState('l1', { visible: false }))
+    const arc = build(d.geometry(), d.snapshot()).pieces.find(p => p.source.kind === 'arc')!
+    // the arc is drawn at l0's width at p (8), not at its far end (2)
+    const xs = arc.loops.flat(), ys = xs.map(v => v.y)
+    expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(7)
+  })
   it('a bound chain whose widths match at the joint (2 → 4, 4 → 1) is one stroke, no easing at the joint', () => {
     const d = new Core()
     d.edit(e => {

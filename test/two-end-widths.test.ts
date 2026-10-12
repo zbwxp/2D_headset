@@ -37,6 +37,14 @@ describe('two end widths', () => {
     expect(save(open(text))).toBe(text)
     expect(() => open(text.replace('"widthB":6', '"widthB":3'))).toThrow(/one form per content/)
   })
+  it('the file version is 8; a version 7 file (no end widths) opens as it is and saves as 8 (dot 1791819678)', () => {
+    const d = pair()
+    d.edit(e => e.lineStroke('l0', { width: 2, profile: 'uniform' }))
+    const v8 = save(d)
+    expect(JSON.parse(v8).version).toBe(8)
+    const v7 = v8.replace('"version":8', '"version":7')
+    expect(save(open(v7))).toBe(v8)
+  })
   it('copied and pasted with the line', () => {
     const d = pair()
     d.edit(e => e.lineStroke('l0', { width: 4, widthB: 1, profile: 'uniform' }))
