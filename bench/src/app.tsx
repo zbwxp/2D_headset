@@ -1119,7 +1119,8 @@ export function App() {
             const uniform = new Map<string, { group: NonNullable<typeof ink>['groups'][number]; paint: string; first: boolean }>(), arcsAlone: NonNullable<typeof ink>['pieces'][number][] = []
             for (const gr of ink?.groups ?? []) {
               const paints = new Set(gr.pieces.flatMap(p => p.source.kind === 'line' ? [paintOf(p.source.id)] : []))
-              if (paints.size === 1) { let first = true; for (const G of g.lines) if (gr.pieces.some(p => p.source.kind === 'line' && p.source.id === G.id)) { uniform.set(G.id, { group: gr, paint: [...paints][0]!, first }); first = false } }
+              // an empty union is nothing to draw: the group falls back to its pieces (dot 1791803549)
+              if (paints.size === 1 && gr.loops.length) { let first = true; for (const G of g.lines) if (gr.pieces.some(p => p.source.kind === 'line' && p.source.id === G.id)) { uniform.set(G.id, { group: gr, paint: [...paints][0]!, first }); first = false } }
               else arcsAlone.push(...gr.pieces.filter(p => p.source.kind === 'arc'))
             }
             for (const p of ink?.pieces ?? []) if (p.source.kind === 'arc' && !(ink?.groups ?? []).some(gr => gr.pieces.includes(p))) arcsAlone.push(p)
@@ -1145,8 +1146,8 @@ export function App() {
               })}
             </>
           })()}
-          {/* the arcs' debug centre line, only while the ink switch is off (with it on, the arc is inked) */}
-          {!ink && g.arcs.map(a => <path key={a.key} d={path(a.curve)} fill="none" stroke="#a50" strokeWidth={2} />)}
+          {/* the arcs' debug centre line while the ink switch is off, and for an arc with no ink to draw (its diagnostic says why) */}
+          {g.arcs.filter(a => !ink || (!inkOf.has(a.key) && ink.diagnostics.some(d => d.source.id === a.key))).map(a => <path key={a.key} data-arc-fallback={ink ? a.key : undefined} d={path(a.curve)} fill="none" stroke="#a50" strokeWidth={2} />)}
           {/* the pending mark (stage 2): an orange dot on each line whose front differs from the baseline */}
           {!pose && g.lines.filter(G => pending.includes(G.id)).map(G => { const m = mid(G.curve); return <circle key={'pending' + G.id} data-pending={G.id} cx={m.x} cy={m.y} r={4 * px} fill="#f80" stroke="#fff" strokeWidth={px} /> })}
           {/* playback on a line: the pickable points, and the drag's ghost at start + displacement (stage 3b package 5) */}
