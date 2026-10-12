@@ -40,7 +40,8 @@ Plan: `docs/ink-joins-plan.md` (passed for P0 + P1's single-line design, dot 179
 
 ## 4. Drawing — what changes and what does not
 
-- **Switch off (default): the canvas is exactly today's** (SVG strokes, bench/src/app.tsx:1097–1103).
+- **Since bowen 1791815311 the switch is on by default** (joins show only with it); off still gives the old strokes, for comparison.
+- **Switch off (P1's default): the canvas is exactly today's** (SVG strokes, bench/src/app.tsx:1097–1103).
 - **Switch on:** each line's ink is drawn as its own filled path **in today's order and with today's paint** (normal / selected / picked / mirror source / cut / locked, pose colours, app.tsx:1100); no merging across lines in P1 (no shared cuts exist without joins, and all paints are opaque, so per-line paths give no seam and no double colour).
 - **Unchanged either way:** hidden lines' dashed decoration at 0.35 (app.tsx:1102), drawn from the centre line; arcs' own path (1104); halos (1090–1091); fills (1080–1082); edit-preview and drag ghosts (centre lines); thumbnails; hit-testing; name labels.
 - **The switch:** a bench-only toggle, not saved with the drawing, not in core; its state never enters undo.

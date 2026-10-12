@@ -186,8 +186,9 @@ export function App() {
   const [refPreview, setRefPreview] = useState<null | (RefBind & { base: ReferenceImage; props: ReferenceProps })>(null)
   const previewNow = useRef(refPreview)
   const [moveRef, setMoveRef] = useState(false)
-  // ink outlines (docs/ink-p1-checklist.md): an experimental switch, off by default, not saved, never in undo
-  const [inkOn, setInkOn] = useState(false)
+  // ink outlines (docs/ink-p1-checklist.md): on by default since bowen 1791815311 (joins only show with it); off = the
+  // old SVG strokes, kept for comparison; not saved, never in undo
+  const [inkOn, setInkOn] = useState(true)
   const [canvasPicks, setCanvasPicks] = useState(0)
   const inkCache = useRef(createInkCache())
   const [activeRef, setActiveRef] = useState<null | RefBind>(null)

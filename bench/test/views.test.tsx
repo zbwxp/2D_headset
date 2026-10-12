@@ -32,6 +32,8 @@ async function setup() {
     bench().core.edit(e => e.line(`v${k}`, { id: `p${k}`, layer: 'layer-1', position: { x: 0, y: 300 * k } }, { id: `q${k}`, layer: 'layer-1', position: { x: 100, y: 300 * k } }))
     bench().ix.setTool('A'); bench().refresh()
   })
+  // the stroke paths are compared: the ink switch (on by default since bowen 1791815311) off
+  { const t = host.querySelector('[data-testid="ink-outline"]') as HTMLInputElement; if (t.checked) await act(async () => { t.click() }) }
   return { svg, k, host }
 }
 const at = (view: string, id: string) => bench().core.in(view).snapshot().points.find(p => p.id === id)!.position

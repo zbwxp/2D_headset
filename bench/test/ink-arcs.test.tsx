@@ -52,7 +52,7 @@ async function setup() {
   await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); await wait(50) })
   await act(async () => { bench().chooseView('view:0,0') })
   const toggle = host.querySelector('[data-testid="ink-outline"]') as HTMLInputElement
-  await act(async () => { toggle.click() })
+  if (!toggle.checked) await act(async () => { toggle.click() })
   const q = (sel: string) => [...host.querySelectorAll(sel)]
   return { host, q }
 }

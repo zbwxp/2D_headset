@@ -50,6 +50,8 @@ async function setup() {
   const button = (label: string) => [...host.querySelectorAll('button')].find(b => b.textContent === label)!
   const slider = (id: 'yaw' | 'pitch') => host.querySelector(`[data-testid="${id}"]`) as HTMLElement
   const setSlider = async (id: 'yaw' | 'pitch', v: number) => { await slideTo(slider(id), v, id === 'yaw' ? -90 : -45, id === 'yaw' ? 90 : 45) }
+  // the stroke paths are compared: the ink switch (on by default since bowen 1791815311) off
+  { const t = host.querySelector('[data-testid="ink-outline"]') as HTMLInputElement; if (t.checked) await act(async () => { t.click() }) }
   return { host, svg, k, root, button, slider, setSlider }
 }
 const state = () => ({ file: save(bench().core), undo: bench().core.canUndo, redo: bench().core.canRedo })
