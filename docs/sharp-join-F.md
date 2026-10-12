@@ -40,6 +40,20 @@ So M is computed on the forward extensions, Q on the actual inner offset curves 
 - **O1 — the outer edges, each extended forward, meet:** extended *forward* along their end tangents beyond A = p + o0 and B = p + o1 (neither folding back past its own corner), the two outer edges meet at M on the outer side. With straight edges both forward extensions meet iff θ < 180° − arccos(1/r) (r = 1: always below 180°; 2: 120°; 3: 109.5°; 4: 104.5°). This is the condition **for this experiment's forward-extension construction** only — not for every F-like construction (dot 1791781802). Path (rebuilt ink): S0's outer edge to A, the extension A → M, M → B, S1's outer edge.
 - **O2 — O1, but M is beyond the limit** (5 × the average local width, measured from p to the farthest drawn point, dot 1791781520): the tip is shortened by one of the styles A / B / D / E of the sheet — **bowen**.
 - **O3 — the forward extensions do not meet** (θ ≥ 180° − arccos(1/r), r > 1): marked on the sheet as **"not covered: this experiment uses no backward extension"** — not as "no construction exists". A and B are joined some other way (a step, a straight bevel, a smooth curve, widths eased) — **bowen**.
+- **O3-w — widths eased to a common width at p, the corner kept** (a definition for review, dot 1791784305: "保留转角特征的接法，先写几何定义"; no sample drawn yet). The bridged O3 (`sharp-join-O3.mjs`) stays as the rounded comparison.
+  - **Precedent (v103, 7205381):** `cuspCorner` (src/domain/drawing/inkJoin.ts) caps the tip at 5 × the sum of the half widths (the average full width), and for unequal widths takes the meeting point of the two full outer lines (backward included), with no O3 case of its own. v103's 0° pinch (src/domain/drawing/appearance.ts:125–131) changes only the width: it multiplies it by smoothstep(|s − s_p| / ρ), ρ = min(1.5 × full width, each part's length / 3), so the ink narrows to zero at p. v103's joins require equal base widths (model.ts:129), so unequal local widths there come only from profiles and tapers.
+  - **Unchanged:** both centre lines, so the corner stays at p; everything outside the zones.
+  - **Changed:** only each stroke's half width inside its zone. With s the centre-line arc length from p and λ ≤ ℓ the easing length: h_i(s) = h_p + (h_i − h_p)·σ(s / λ) for s ≤ λ, and h_i beyond. σ(x) = x²(3 − 2x) is v103's `smooth`. At s = λ the width is h_i with zero slope, so there is no kink at the cut; at p it is h_p with zero slope.
+  - **h_p, the common half width at p:** the average (h0 + h1)/2 to start. The thinner h_t and the wider h_w are the other two choices. This is a fullness choice for **bowen**, shown only after the construction passes.
+  - **Edges:** each stroke's offset curves at ±h_i(s) along its own normal.
+  - **The joint:** at p both strokes have half width h_p, so it is an equal-width joint, r = 1. For any θ < 180° the forward extensions meet, which gives O1 or O2. The limit stays 5 × 2h_p, equal to v103's 5 × (h0 + h1) when h_p is the average. The inner edges are classified I1 / I2 on the eased edges and built as the union, exactly as above. At θ = 180° there is no corner, and the eased widths alone give a smooth width change.
+  - **Checks (planned):**
+    - as for the other classes: loops and holes against the input alone, open chains, bad vertices, crossings, square-end corners shown, the tip's reach against the limit, the 12 rotations;
+    - the width at p equal on both sides;
+    - max |dh/ds| = 1.5·|h_i − h_p| / λ, reported;
+    - eased-edge folds (curvature × h ≥ 1, or an edge turning back along the centre line);
+    - a mutation: with h_p replaced by each stroke's own width, the cell must classify as O3 again.
+  - **What it changes visibly:** near the corner the thin stroke widens and the wide one narrows, over λ. That is the look, for **bowen**.
 - **θ = 0° — a reversal** (or a degenerate tangent): its own case; the outline pinches to p (as v103).
 - **θ = 180° — straight on:** its own case. Equal widths: a straight continuation, no tip, nothing to join — not a failure. Unequal widths: no tip; a pure width change at p, treated as O3.
 
