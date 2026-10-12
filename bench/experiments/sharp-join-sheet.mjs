@@ -69,7 +69,7 @@ angles.forEach((deg, r) => {
     const th = Math.PI - deg * Math.PI / 180
     const inc = process.argv[3] === 'long' ? [[p[0] - 80, p[1] + 12], [p[0] - 55, p[1] + 2], [p[0] - 25, p[1]], p] : [[p[0] - 70, p[1] + 11], [p[0] - 48, p[1] + 2], [p[0] - 22, p[1]], p]
     const dir = [Math.cos(th), Math.sin(th)]
-    // 'long' keeps the first sheet's geometry, where an enclosed gap of 0.2 px² showed at 20° / 1:3 (dot 1791781xxx: a
+    // 'long' keeps the first sheet's geometry, where an enclosed gap of 0.2 px² showed at 20° / 1:3 (dot 1791781103: a
     // failure sample stays a failure sample — shortening the lines is no fix)
     const LONG = process.argv[3] === 'long'
     const outEnd = LONG ? add(p, mul(dir, 85)) : add(p, mul(dir, 70)), outC1 = LONG ? add(p, mul(dir, 28)) : add(p, mul(dir, 24)), outC2 = LONG ? add(add(p, mul(dir, 58)), [0, 6]) : add(add(p, mul(dir, 48)), [0, 5])
