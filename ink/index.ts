@@ -36,10 +36,11 @@ export interface InkEvidence {
   /** The grid: units per drawing unit, and the input rounding √2 / (2s). */
   readonly scale: number
   readonly inputRounding: number
-  /** Measured on the result: the largest |distance to the true centre curve − h| over every output vertex. */
-  readonly bandError: number
+  /** Measured on the result: the largest |distance to the true centre curve − h| over every output vertex; null when
+   *  the check stopped at its work limit (diagnosis incomplete — the ink is drawn all the same). */
+  readonly bandError: number | null
   /** The output checks (§2b): loops simple, no bridge; the vertex band; the area check where it applies. */
-  readonly checks: { readonly simple: boolean; readonly band: boolean; readonly area: boolean | 'n/a' }
+  readonly checks: { readonly simple: boolean; readonly band: boolean | 'incomplete'; readonly area: boolean | 'n/a' }
 }
 export interface InkDiagnostic { readonly line: string; readonly status: InkStatus; readonly reason?: string; readonly evidence?: InkEvidence }
 export interface Ink { readonly pieces: readonly InkPiece[]; readonly diagnostics: readonly InkDiagnostic[] }
@@ -97,24 +98,37 @@ function curveDistance(p: Vec, poly: readonly Vec[]): number {
 /**
  * The largest |distance to the true centre curve − h| over every vertex of the loops (the curve flattened to ε/16 for
  * the distance, so a vertex passes when this is ≤ ε − ε/16). For a zero-length line, the distance to its point.
+ * The work is proportional to the line's length / (h + ε) and the vertex count, never to its bounding box (dot
+ * 1791802464), and capped: past `budget` steps the check stops and returns null — "diagnosis incomplete"; the ink is
+ * drawn all the same.
  */
-export function vertexBand(loops: readonly (readonly Vec[])[], curve: Cubic | null, point: Vec, h: number, eps: number): number {
+export function vertexBand(loops: readonly (readonly Vec[])[], curve: Cubic | null, point: Vec, h: number, eps: number, budget = 200_000): number | null {
   const fine = curve ? flatten(curve, eps / 16).points : [point]
   if (fine.length < 2) { let w = 0; for (const l of loops) for (const v of l) w = Math.max(w, Math.abs(len(sub(v, fine[0]!)) - h)); return w }
-  // a grid of the curve's segments (cell r = h + ε): a vertex within the band has its nearest segment within r, so only
-  // the cells around it are searched; a vertex with no segment there is measured against all (it fails the band anyway)
+  // a grid of the curve's segments (cell r = h + ε), each segment entered in the cells of points spaced ≤ r along it:
+  // a vertex within r of a segment is within 1.5 r of one of those points, so the cells within 2 of the vertex's cell
+  // are searched; a vertex with no segment there is measured against all (it fails the band anyway)
   const r = h + eps, key = (i: number, j: number) => i * 73856093 ^ j * 19349663, grid = new Map<number, number[]>()
+  let work = 0
   for (let k = 0; k + 1 < fine.length; k++) {
-    const a = fine[k]!, b = fine[k + 1]!
-    for (let i = Math.floor(Math.min(a.x, b.x) / r); i <= Math.floor(Math.max(a.x, b.x) / r); i++)
-      for (let j = Math.floor(Math.min(a.y, b.y) / r); j <= Math.floor(Math.max(a.y, b.y) / r); j++) { const q = key(i, j); (grid.get(q) ?? grid.set(q, []).get(q)!).push(k) }
+    const a = fine[k]!, b = fine[k + 1]!, n = Math.max(1, Math.ceil(len(sub(b, a)) / r))
+    if ((work += n + 1) > budget) return null
+    let last = NaN
+    for (let i = 0; i <= n; i++) {
+      const p = lerp(a, b, i / n), q = key(Math.floor(p.x / r), Math.floor(p.y / r))
+      if (q === last) continue
+      last = q
+      const cell = grid.get(q) ?? grid.set(q, []).get(q)!
+      if (cell[cell.length - 1] !== k) cell.push(k)
+    }
   }
   let worst = 0
   for (const l of loops) for (const v of l) {
     let best = Infinity
     const ci = Math.floor(v.x / r), cj = Math.floor(v.y / r)
-    for (let i = ci - 1; i <= ci + 1; i++) for (let j = cj - 1; j <= cj + 1; j++) for (const k of grid.get(key(i, j)) ?? []) best = Math.min(best, segmentDistance(v, fine[k]!, fine[k + 1]!))
-    if (best > r) best = curveDistance(v, fine)
+    for (let i = ci - 2; i <= ci + 2; i++) for (let j = cj - 2; j <= cj + 2; j++) for (const k of grid.get(key(i, j)) ?? []) { work++; best = Math.min(best, segmentDistance(v, fine[k]!, fine[k + 1]!)) }
+    if (best > r) { work += fine.length; best = curveDistance(v, fine) }
+    if (work > budget) return null
     worst = Math.max(worst, Math.abs(best - h))
   }
   return worst
@@ -204,7 +218,7 @@ export function lineInk(id: string, curve: Cubic, width: number, opts: InkOption
   // the vertex band: every output vertex within [h − ε, h + ε] of the true centre curve (measured against a finer
   // flattening, whose own distance to the curve is ≤ ε/16 — subtracted from the tolerance)
   const bandError = vertexBand(loops, zeroLength ? null : curve, curve[0], h, eps)
-  const band = bandError <= eps - eps / 16
+  const band = bandError === null ? 'incomplete' as const : bandError <= eps - eps / 16
   // the area, only where the sweep cannot overlap itself: one loop, the polyline's turning small against h
   let area: boolean | 'n/a' = 'n/a'
   if (!zeroLength && loops.length === 1) {
@@ -224,9 +238,10 @@ export function lineInk(id: string, curve: Cubic, width: number, opts: InkOption
   const evidence: InkEvidence = { epsilon: eps, flattening: { bound: flat.bound, floorHit: flat.floorHit }, arcTolerance, scale: s, inputRounding, bandError, checks: { simple: !defect, band, area } }
   const piece: InkPiece = { source: { kind: 'line', id }, loops }
   if (defect) return { piece, diagnostic: { line: id, status: 'defect', reason: defect, evidence } }
-  if (!band) return { piece, diagnostic: { line: id, status: 'defect', reason: `an output vertex is ${bandError.toExponential(2)} off the stroke's edge (ε ${eps.toExponential(2)})`, evidence } }
+  if (band === false) return { piece, diagnostic: { line: id, status: 'defect', reason: `an output vertex is ${bandError!.toExponential(2)} off the stroke's edge (ε ${eps.toExponential(2)})`, evidence } }
   if (area === false) return { piece, diagnostic: { line: id, status: 'defect', reason: 'the area differs from the stroke area', evidence } }
   // the arc approximation is a configuration, not a bound (dot 1791801420): only the zero-length disc, built by us, is bounded
+  if (band === 'incomplete') return { piece, diagnostic: { line: id, status: 'unproven', reason: 'diagnosis incomplete: the vertex band check stopped at its work limit', evidence } }
   const verified = zeroLength && !flat.floorHit
   return { piece, diagnostic: { line: id, status: verified ? 'verified' : 'unproven', evidence } }
 }

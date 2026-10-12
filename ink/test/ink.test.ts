@@ -93,6 +93,22 @@ describe('the vertex band catches a planted outlier', () => {
   })
 })
 
+describe('the vertex band costs the line\'s length, not its bounding box (dot 1791802464)', () => {
+  it('a width-1 line at 45°, spans 100 / 200 / 300: checked in full, time growing with the length', () => {
+    const ms: number[] = []
+    for (const span of [100, 200, 300]) {
+      const t0 = performance.now(), r = lineInk('d', line(P(0), P(span, span)), 1)
+      ms.push(performance.now() - t0)
+      expect(r.diagnostic.evidence!.checks.band).toBe(true)
+    }
+    expect(ms[2]!).toBeLessThan(50) // was ≈ 164 ms for the band check alone at span 300
+  })
+  it('past its work limit the check stops — "diagnosis incomplete" — and returns no number', () => {
+    const c = line(P(0), P(300, 300)), r = lineInk('d', c, 1)
+    expect(vertexBand(r.piece!.loops, c, c[0], 0.5, r.diagnostic.evidence!.epsilon, 10)).toBeNull()
+  })
+})
+
 describe('build — over a document', () => {
   const doc = () => {
     const d = new Core()
