@@ -32,7 +32,8 @@ function cap(O, I, back, n = 16) {
 
 const angles = [2, 3, 4, 5, 6]
 const cols = [[1, 3, 3], [3, 1, 3], [1, 2, 3], [2, 1, 3], [1, 3, 6], [3, 1, 6]]
-const W = 4, cell = 280, pad = 30, zoom = 1.6
+const W = 4, cell = 300, pad = 30
+let focus = null
 let body = ''
 angles.forEach((deg, r) => cols.forEach(([k0, k1, k], c) => {
   const ox = pad + 70 + c * cell, oy = pad + 50 + r * cell, p = [ox + cell * 0.86, oy + cell * 0.3]
@@ -86,22 +87,44 @@ angles.forEach((deg, r) => cols.forEach(([k0, k1, k], c) => {
   const rotO = rr => P => [P[0] * Math.cos(rr) - P[1] * Math.sin(rr), P[0] * Math.sin(rr) + P[1] * Math.cos(rr)]
   const rotBad = [0.37, 0.63, 1.1, 1.9, 2.71, 4.4].flatMap(rr => [['', rot(rr)], ['O', rotO(rr)]].filter(([, fn]) => { const w = region(mapSpec(spec, fn)), t = topology(w); return !(t.loops === topo.loops && t.holes === topo.holes && !w.openChains.length && !w.badVertices) }).map(([tag]) => tag + rr))
   const tipReach = Math.max(...tip.slice(1).map(P => len(sub(P, p))))
-  note = `${applies ? '' : 'NOT APPLICABLE (R1 beyond a stroke) · '}d1 ${d1.toFixed(1)} vs ℓ ${ell} · beyond the cut: stretch ${(d1 - ell).toFixed(1)}, largest change ${hCut.toFixed(3)} normal to T's edge (${alongCut.toFixed(3)} along the cut), removed area ${wedge.toFixed(3)} (½(d1−ℓ)²tanθ = ${wedgeFormula.toFixed(3)}) · the new cut at R1 on the kept side: ${cutKept ? 'yes' : 'NO'} · loops ${topo.loops}, holes ${topo.holes} (input alone ${input.loops}, ${input.holes}) · open ${openChains.length} · bad ${badVertices} · touch ${touchVertices} · crossings ${crossings} · C_W on the outline: ${onOutline(CW) ? 'YES' : 'no'} · W's inner corner at the ℓ cut on the outline (a step): ${onOutline(Ecut) && !near(Ecut, R1) ? 'YES' : 'no'} · R1 off W's inner edge ${len(sub(R1, add(WR1, mul(oW, -1)))).toExponential(1)}, off T's outer edge ${distToT(R1).toExponential(1)} · ${onR1} · tip ${tipReach.toFixed(1)} / ${limit} · rotations ${rotBad.length ? 'FAIL ' + rotBad.join(',') : 'ok ×12'}`
-  const cid = `c${r}_${c}`, toP = P => P
-  body += `<clipPath id="${cid}"><rect x="${ox}" y="${oy + 18}" width="${cell - 6}" height="${cell - 120}"/></clipPath><g clip-path="url(#${cid})"><g transform="translate(${f(p)}) scale(${zoom}) translate(${f(mul(p, -1))})">`
-  body += `<path d="${loops.map(l => 'M' + l.map(f).join(' L') + ' Z').join(' ')}" fill="#111"/>`
-  body += `<path d="M${[Ecut, R1, X].map(toP).map(f).join(' L')} Z" fill="#e00" opacity="0.8"/>` // the removed ink beyond ℓ
-  body += `<path d="M${f(add(add(p, mul(dW, ell)), oW))} L${f(Ecut)}" stroke="#36c" stroke-width="${0.8 / zoom}" stroke-dasharray="${2 / zoom},${1.5 / zoom}"/>`
-  body += `<circle cx="${R1[0]}" cy="${R1[1]}" r="${2.2 / zoom}" fill="#c0c"/><circle cx="${p[0]}" cy="${p[1]}" r="${1.6 / zoom}" fill="#e80"/>`
-  for (const ch of openChains) body += `<path d="M${ch.map(f).join(' L')}" fill="none" stroke="#e00" stroke-width="0.3"/>`
-  body += '</g></g>'
+  // readings: one short item per line group (dot 1791786738: long readings spilled into the next cell)
+  note = [applies ? '' : 'NOT APPLICABLE (R1 beyond a stroke)', `d1 ${d1.toFixed(1)} vs ℓ ${ell}`, `beyond the cut: stretch ${(d1 - ell).toFixed(1)}`,
+    `largest change ${hCut.toFixed(3)} normal to T's edge`, `(${alongCut.toFixed(3)} along the cut)`, `removed area ${wedge.toFixed(3)}`, `(½(d1−ℓ)²tanθ = ${wedgeFormula.toFixed(3)})`,
+    `new cut at R1 on the kept side: ${cutKept ? 'yes' : 'NO'}`, `loops ${topo.loops}, holes ${topo.holes} (input alone ${input.loops}, ${input.holes})`,
+    `open ${openChains.length}`, `bad ${badVertices}`, `touch ${touchVertices}`, `crossings ${crossings}`, `C_W on the outline: ${onOutline(CW) ? 'YES' : 'no'}`,
+    `step at the ℓ cut: ${onOutline(Ecut) && !near(Ecut, R1) ? 'YES' : 'no'}`, `R1 off W's inner edge ${len(sub(R1, add(WR1, mul(oW, -1)))).toExponential(1)}`,
+    `off T's outer edge ${distToT(R1).toExponential(1)}`, onR1, `tip ${tipReach.toFixed(1)} / ${limit}`, `rotations ${rotBad.length ? 'FAIL ' + rotBad.join(',') : 'ok ×12'}`].filter(Boolean).join(' · ')
+  const marks = { loops, openChains, wedge: [Ecut, R1, X], cut: [add(add(p, mul(dW, ell)), oW), Ecut], R1, p }
+  if (deg === 2 && k0 === 1 && k1 === 3 && k === 3) focus = { ...marks, label: `${deg}° · ${k0}:${k1} · k = ${k} — ${label}` }
+  // each cell fitted to its whole outline (and the marks), uniform scale (dot 1791786738: tip and free ends were cut off)
+  body += drawFitted(marks, ox + 8, oy + 22, cell - 22, cell * 0.42)
   body += `<text x="${ox + 6}" y="${oy + 14}" font-size="9" fill="#363">${label}</text>`
-  body += readingLines(ox + 6, oy + cell - 98, note, { maxChars: 56, fill: /FAIL|NOT APPLICABLE|YES|NO\b|not on the outline|open [1-9]|bad [1-9]|· crossings [1-9]/.test(note) ? '#e00' : '#555' })
+  body += readingLines(ox + 6, oy + cell * 0.42 + 40, note, { maxChars: 52, fill: /FAIL|NOT APPLICABLE|YES|NO\b|not on the outline|open [1-9]|bad [1-9]|crossings [1-9]/.test(note) ? '#e00' : '#555' })
   body += `<rect x="${ox}" y="${oy}" width="${cell - 6}" height="${cell - 6}" fill="none" stroke="#ddd"/>`
 }))
+/** The outline and marks drawn into the box (x, y, w, h), scaled uniformly to fit the outline and the marks. */
+function drawFitted(m, x, y, w, h) {
+  const pts = [...m.loops.flat(), ...m.wedge, ...m.cut, m.R1, m.p]
+  const xs = pts.map(P => P[0]), ys = pts.map(P => P[1]), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys)
+  const k = Math.min(w / (x1 - x0 || 1), h / (y1 - y0 || 1)), tx = x + (w - k * (x1 - x0)) / 2 - k * x0, ty = y + (h - k * (y1 - y0)) / 2 - k * y0
+  const T = P => [tx + k * P[0], ty + k * P[1]], path = (l, z) => 'M' + l.map(P => f(T(P))).join(' L') + (z ? ' Z' : '')
+  let out = `<path d="${m.loops.map(l => path(l, true)).join(' ')}" fill="#111"/>`
+  out += `<path d="${path(m.wedge, true)}" fill="#e00" opacity="0.85"/>`
+  out += `<path d="${path(m.cut, false)}" stroke="#36c" stroke-width="1" stroke-dasharray="3,2"/>`
+  out += `<circle cx="${T(m.R1)[0]}" cy="${T(m.R1)[1]}" r="2.6" fill="#c0c"/><circle cx="${T(m.p)[0]}" cy="${T(m.p)[1]}" r="2" fill="#e80"/>`
+  for (const ch of m.openChains) out += `<path d="${path(ch, false)}" fill="none" stroke="#e00"/>`
+  return out + `<text x="${x + w - 4}" y="${y + h + 12}" font-size="8" fill="#888" text-anchor="end">×${k.toFixed(2)}</text>`
+}
 angles.forEach((deg, r) => { body += `<text x="${pad}" y="${pad + 50 + r * cell + cell / 3}" font-size="13">${deg}°</text>` })
-cols.forEach(([k0, k1, k], c) => { body += `<text x="${pad + 70 + c * cell + 6}" y="${pad + 40}" font-size="11">${k0}:${k1} · ℓ = ${k}× (thin ${W}) · ×${zoom}</text>` })
-const size = Math.max(pad * 2 + 70 + cell * cols.length, pad * 2 + 50 + cell * angles.length)
+cols.forEach(([k0, k1, k], c) => { body += `<text x="${pad + 70 + c * cell + 6}" y="${pad + 40}" font-size="11">${k0}:${k1} · ℓ = ${k}× (thin ${W})</text>` })
+// the enlarged cell (dot 1791786738): 2°, 1:3, k = 3 — the ℓ cut, R1, the removed ink and the tip all visible at once
+const gridW = pad * 2 + 70 + cell * cols.length, panelY = pad + 50 + cell * angles.length + 30, panelH = 360
+if (focus) {
+  body += `<text x="${pad}" y="${panelY - 8}" font-size="12">Enlarged: ${focus.label} — ℓ cut blue dashes, R1 magenta, removed ink red, p orange (uniform scale)</text>`
+  body += drawFitted(focus, pad, panelY, gridW - 2 * pad, panelH)
+  body += `<rect x="${pad - 4}" y="${panelY - 4}" width="${gridW - 2 * pad + 8}" height="${panelH + 22}" fill="none" stroke="#ddd"/>`
+}
+const size = Math.max(gridW, panelY + panelH + 40)
 writeFileSync(new URL('./I2bii.svg', import.meta.url), `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><rect width="100%" height="100%" fill="#fff"/>
-<text x="${pad}" y="${pad + 6}" font-size="12">I2b-ii, straight bands — an experimental variant that widens the trim from the ℓ cut (blue dashes) to R1 (magenta); removed ink beyond ℓ in red; p orange</text>${body}</svg>`)
+<text x="${pad}" y="${pad + 6}" font-size="12">I2b-ii, straight bands — an experimental variant that widens the trim from the ℓ cut (blue dashes) to R1 (magenta); removed ink beyond ℓ in red; p orange; each cell fitted to its whole outline</text>${body}</svg>`)
 console.log('wrote I2bii.svg', size)
