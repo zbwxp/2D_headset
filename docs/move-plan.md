@@ -37,11 +37,13 @@ Asked by bowen 1791733125: after a selection, a box that scales, rotates and str
 
 bowen 1791733775: "我用的mac 所以是opt加方向是慢移动". **Option (Alt) + arrow is the slow move** (×0.1); Ctrl + arrow stays as asked (a Mac usually takes Ctrl + ← / → for switching desktops, which does no harm).
 
-## Later stages, tracked (dot 1791733489)
+## Later stages — settled (2026-10-12)
 
-Status 2026-10-12: package 2 (the selection box) accepted (dot 1791738243). bowen answered (1791768754, 1791768870, 1791768959): in playback the arrows turn the view as the coord grid's point does — no point selected, no keyboard correction; the view's pan stays the right drag, no keys. Plan: `docs/keyboard-pose-pan-plan.md`. Asked before: which point the arrows move in playback (a clicked point, marked — or the point under the resting pointer), and the keys of the view's pan (⌘ + arrows — or arrows when nothing is there to move).
-
-bowen's rule is "everything the mouse can drag, the keyboard can move". After packages 1 and 2, two mouse moves still have no keyboard: **the playback correction drag** (its keyboard step will be a `move/` session whose target is `correct`, with playback's own picking, locks and pose rules — never `translate`) and **the view's pan**. They are required, staged after package 2, each with its own plan; bowen's request is complete only when they are done.
+bowen's rule "everything the mouse can drag, the keyboard can move" — what was left after packages 1 and 2:
+- **The playback correction drag:** no keyboard version. bowen 1791768754: in playback no point is selected; the arrows turn the view as the coord grid's point does — `docs/keyboard-pose-pan-plan.md` (a `move/` key run on the pose).
+- **The view's pan:** no keyboard version (bowen 1791768959: the right drag is enough).
+- **Step sizes:** passed in by each caller — single / long / short (bowen 1791769146); `stepOf` leaves `move/` in that package.
+- **Sliders:** one module whose slide and keys are `move/` sessions (bowen 1791769016, 1791769065) — `docs/slider-plan.md`, the package after.
 
 ## Not now
 
