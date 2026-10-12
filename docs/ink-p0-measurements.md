@@ -12,6 +12,8 @@ bowen 1791790281 allowed downloading the candidates into a scratch folder outsid
 | F3 touch at a point | two arms meeting only at p (0°) | 2 paths, area 30 exactly | same |
 | F4 collinear overlap | two bands on one line, widths 4 / 12 (0°, straight) | 1 path, area 1200 exactly | same |
 
+**Scope (dot 1791790569):** these fixtures passing supports the comparison of the candidates; it is not a general guarantee of correctness on every input.
+
 **Contract found:** every piece passed to a union must be oriented the same way (or the fill rule chosen to match); the module normalises orientation before each call.
 
 ## 2. Rounding of new intersection points
@@ -20,13 +22,14 @@ Two bands crossing at 200 angles (crossing sine from 0.100 up).
 
 - **The library's own rounding** — output vertices against the exact crossings of the *rounded* input edges: worst **0.496 grid units** (≤ √2/2 as expected).
 - **Against the true crossing** (unrounded inputs): worst 2.6 / 5.6 / 4.1 / 3.6 / 3.4 grid units at s = 10² … 10⁶. This is the **input rounding** (≤ 0.5 unit per vertex) moved along a shallow crossing: about 0.5 / sin φ grid units, 5.0 at sin φ = 0.1 — and sharp joins at small angles cross at exactly such shallow angles.
-- **Budget consequence:** the displacement of a new vertex is ≤ (0.5 / sin φ + 0.5) / s drawing units, φ the crossing angle. With ε_round ≤ ε / 4 this asks s ≥ 4·(0.5 / sin φ + 0.5) / ε. s can be large: coordinates × s must stay below 2⁵³ (clipper2-ts throws otherwise) — for a drawing within ±10⁶ units, s up to ~9·10⁹. At s = 10⁸ and ε = 0.01, crossings down to sin φ ≈ 2·10⁻⁶ fit the budget; shallower ones are reported (not verified), as §10.1 requires.
+- **Status:** the 0.5 / sin φ term is an explanation that fits this measurement (one family of crossings, 200 angles), not a proven bound; the budget below is a working estimate for P1 to test, not a guarantee (dot 1791790569).
+- **Budget consequence (working estimate):** the displacement of a new vertex is ≤ (0.5 / sin φ + 0.5) / s drawing units, φ the crossing angle. With ε_round ≤ ε / 4 this asks s ≥ 4·(0.5 / sin φ + 0.5) / ε. s can be large: coordinates × s must stay below 2⁵³ (clipper2-ts throws otherwise) — for a drawing within ±10⁶ units, s up to ~9·10⁹. At s = 10⁸ and ε = 0.01, crossings down to sin φ ≈ 2·10⁻⁶ fit the budget; shallower ones are reported (not verified), as §10.1 requires.
 
 ## 3. Region collapse (grid units)
 
 - A lone thin triangle of height t beside a square: **vanishes at t = 0.2, survives from t = 0.5** (both libraries).
 - A gap of width g between two squares: **closes at g = 0.2, stays from g = 0.5** (clipper2-ts).
-- So features under about half a grid unit collapse; at s = 10⁸ that is 5·10⁻⁹ drawing units — far below any ε, provided s is chosen as in §2.
+- **Observed in these cases, not a guarantee** (dot 1791790569): features under about half a grid unit collapsed here; at s = 10⁸ that is 5·10⁻⁹ drawing units — far below any ε, provided s is chosen as in §2.
 
 ## 4. Speed
 
