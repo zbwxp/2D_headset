@@ -2,7 +2,7 @@
 
 The two stages left of bowen 1791733125 ("everything the mouse can drag, the keyboard can move"; tracked in `docs/move-plan.md`). Directions chosen by bowen 1791768754:
 - **Playback:** no point is selected; moving with the keys is **grabbing the point in the coord grid** (the pose pad) and moving it — turning the view. So the arrows move the pose, not a point of the drawing (this replaces the "keyboard correction" stage: the correction drag keeps the mouse only).
-- **⌘ + arrows:** "背景" — read as the view (the canvas's camera); asked to confirm (1791768781). If bowen meant the background picture, part 2 changes target, not its rules.
+- **"背景":** bowen 1791768870 — the background picture: its Move picture moving is right, and it must use the same move code. It does: the picture's drag and arrows, the selection's drag and arrows and the box's handle drags are all `createMover` sessions of the one `move/` module, each with its own target (told bowen 1791768893 and after). So ⌘ + arrows was not a request for the view; **part 2 waits for bowen** (asked whether the view's pan, the right / middle drag, also wants keys) and is dropped if he says no.
 
 Both are bench-only (glue, `bench/src/app.tsx`): nothing in core, interaction, `move/` or `pose-pad/` changes; neither writes the drawing.
 
