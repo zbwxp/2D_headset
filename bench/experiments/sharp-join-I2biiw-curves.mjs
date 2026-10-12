@@ -118,7 +118,11 @@ rows.forEach(([deg, bend], r) => cols.forEach(([k0, k1, k], c) => {
   const Tsegs = [Tband, Tcap].flatMap(q => q.map((P, i) => [P, q[(i + 1) % q.length]]))
   let segHits = 0
   for (let i = 0; i + 1 < E.length; i++) for (const [P, Q] of Tsegs) if (segCross(E[i], E[i + 1], P, Q)) segHits++
-  const folds = E.reduce((n, P, i) => n + (i > 0 && dot(sub(P, E[i - 1]), Wn.T[i - 1]) <= 0 ? 1 : 0), 0) + (1 - kIn * hJ > 0 ? 0 : 1)
+  // 1 − κ·h_in along the whole narrowed edge, not only at J (dot 1791788028): W's curvature at each sample (analytic,
+  // signed along its inner normal) against the narrowed half width there
+  const kAt = t => { const d1 = dbez(cW, t), d2 = ddbez(cW, t), nin = mul(left(unit(d1)), -sW); return cross(d1, d2) / len(d1) ** 3 * dot(left(unit(d1)), nin) }
+  const oneMinus = Wn.ts.slice(0, zN + 1).map((t, i) => 1 - kAt(t) * hIn(Wn.S[i])), minOneMinus = Math.min(...oneMinus)
+  const folds = E.reduce((n, P, i) => n + (i > 0 && dot(sub(P, E[i - 1]), Wn.T[i - 1]) <= 0 ? 1 : 0), 0) + oneMinus.filter(v => v <= 0).length
   const ang = (v, w) => Math.acos(Math.max(-1, Math.min(1, dot(unit(v), unit(w))))) * 180 / Math.PI
   const into = u.segs.find(([, Q]) => near(Q, J)), outOf = u.segs.find(([P]) => near(P, J))
   const turnJ = into && outOf ? ang(sub(into[1], into[0]), sub(outOf[1], outOf[0])) : null
@@ -141,7 +145,7 @@ rows.forEach(([deg, bend], r) => cols.forEach(([k0, k1, k], c) => {
   const tipReach = Math.max(...tip.slice(1).map(P => len(sub(P, p))))
   const covered = within && samplesOut && segHits === 0 && folds === 0 && onOutline(J) && dirOK && inZoneT
   label = `${outerCls} × I2b-ii — within ℓ, curves${covered ? '' : ' — NOT COVERED'}`
-  const note = [`ray hits on T's outer edge ${hits.length}, J the first: ${jFromA.toFixed(3)} from A along T${inZoneT ? '' : ' (OUTSIDE T\'s zone)'}`, `|n_in×τ_J| ${Math.abs(den).toFixed(4)}`, `1−κh at J ${(1 - kIn * hJ).toFixed(4)}`,
+  const note = [`ray hits on T's outer edge ${hits.length}, J the first: ${jFromA.toFixed(3)} from A along T${inZoneT ? '' : ' (OUTSIDE T\'s zone)'}`, `|n_in×τ_J| ${Math.abs(den).toFixed(4)}`, `1−κh at J ${(1 - kIn * hJ).toFixed(4)}, min along the narrowed edge ${minOneMinus.toFixed(6)}`,
     `h_in(0) ${hJ.toFixed(4)}, h_in′(0) ${m0.toFixed(4)}`, `direction −E′(0)·τ_J ${dot(mul(Ep0, -1), tauJ).toFixed(4)}${dirOK ? '' : ' WRONG'}`,
     `h_in within its end values: ${within ? 'yes' : 'NO'}`, `samples outside T: ${samplesOut ? 'yes' : 'NO'}`, `segment crossings with T ${segHits}`, `folds ${folds}`,
     `J on the outline: ${onOutline(J) ? 'yes' : 'NO'}`, turnJ !== null ? `sampled turn at J ${turnJ.toFixed(3)}°` : 'J inside an outline sub-edge', `sampled turn at the cut ${turnCut.toFixed(3)}°`,
