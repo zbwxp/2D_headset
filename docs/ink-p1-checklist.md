@@ -18,6 +18,14 @@ Plan: `docs/ink-joins-plan.md` (passed for P0 + P1's single-line design, dot 179
 - **Rounding:** each input vertex moves ≤ √2 / (2s); s chosen per line so that this is ≤ ε/8. **New vertices made by the library** (where the offset overlaps itself) have no proven bound (dot's counterexample, 1791790659). They are checked **a posteriori, on the whole result**: every output vertex's distance to the true centre curve must lie in [h − ε, h + ε] (the distance to the cubic computed by subdivision to a stated tolerance). Because a vanished sliver or hole leaves no vertex (dot 1791790659), the area is compared too: the result's area against the analytic stroke area (length × 2h + πh² for a curve without self-overlap; a sanity check, not a proof). A line whose result fails, or cannot be checked, is reported **not verified**.
 - **Lines without self-overlap** (no output vertex that is not an offset sample, cap or join arc point): verified by the bounds alone.
 
+## 2b. Known library defects — the adapter checks every output (dot 1791800973)
+
+- **Open upstream reports, confirmed in the port by its maintainer:** clipper2-ts #29 = Clipper2 #1083 ("UNION fails to output simple polygons" — non-adjacent self-intersections left in closed output paths) and clipper2-ts #30 = Clipper2 #1085 ("Unexpected bridges after union" — zero-width bridges). Not yet reproduced on our pinned 2.0.1-18. The WebAssembly build is the same upstream algorithm, so switching to it does **not** remove them.
+- **Regression list (P1 tests):** the two reports' inputs, reproduced on the pinned version and kept as fixtures whatever they show.
+- **Output checks in the adapter, on every result:** each output loop is simple (no two non-adjacent edges cross — segment test on integer coordinates, exact); no zero-width bridge (no edge that meets another edge of the same result collinearly with opposite direction over a shared stretch, and no vertex visited twice in one loop); plus the vertex-distance and area checks of §2.
+- **When a check fails:** that line is drawn **as today** (its SVG stroke, so nothing goes missing) and its diagnostic says which check failed. Never silent, never blank.
+- **The glue estimate** ("one or two hundred lines", Slack 1791800780) is a first guess only; the adapter also carries these output checks, the source information and the failure handling.
+
 ## 3. Ownership and reads (plan §2, §10)
 
 - `ink/` package (sibling of `move/`): `build(geometry, snapshot, options) → Ink`; pure, no state, no writes.
