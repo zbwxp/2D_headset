@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs'
 import { union, FillRule } from 'clipper2-ts'
 import { Core, type Vec } from '../../src'
 import { sk } from '../../test/sketch'
-import { band, build, createInkCache, flatten, lineInk, outputDefect, segmentDistance, vertexBand, type Cubic } from '..'
+import { band, build, createInkCache, cuspTip, flatten, lineInk, outputDefect, segmentDistance, vertexBand, type Cubic } from '..'
 
 const P = (x: number, y = 0): Vec => ({ x, y })
 const line = (a: Vec, b: Vec): Cubic => [a, { x: a.x + (b.x - a.x) / 3, y: a.y + (b.y - a.y) / 3 }, { x: a.x + 2 * (b.x - a.x) / 3, y: a.y + 2 * (b.y - a.y) / 3 }, b]
@@ -268,6 +268,53 @@ describe('smooth joins — one outline; unequal widths ease to the average at th
     const ink = build(d.geometry(), d.snapshot())
     expect(ink.groups.length).toBe(1)
     expect(ink.groups[0]!.pieces.map(p => p.source.kind).sort()).toEqual(['arc', 'line', 'line', 'line'])
+  })
+})
+
+describe('sharp (cusp) joins — the lines\' ink plus v103\'s tip (Slack 1791804643, dot 1791804679)', () => {
+  /** Two lines meeting at p = (0, 0): l0 from (−50, 0) into p, l1 from p out at the interior angle θ (degrees). */
+  const corner = (theta: number, w0: number, w1: number) => {
+    const d = new Core(), t = theta * Math.PI / 180
+    d.edit(e => {
+      e.layer('L')
+      sk(e).point('a', 'L', P(-50)); sk(e).point('p', 'L', P(0)); sk(e).point('c', 'L', P(-50 * Math.cos(t), 50 * Math.sin(t)))
+      sk(e).line('l0', 'a', 'p'); sk(e).line('l1', 'p', 'c')
+      e.lineStroke('l0', { width: w0, profile: 'uniform' } as never); e.lineStroke('l1', { width: w1, profile: 'uniform' } as never)
+      e.join('p', 'l0', 'l1', { mode: 'cusp' })
+    })
+    return build(d.geometry(), d.snapshot())
+  }
+  const far = (loops: readonly (readonly Vec[])[]) => Math.max(...loops.flat().map(v => Math.hypot(v.x, v.y)))
+  it('equal widths at 60°: one outline, the tip as long as v103\'s miter, h / sin(θ/2) = 4', () => {
+    const ink = corner(60, 4, 4), tip = ink.pieces.find(p => p.source.kind === 'tip')!
+    expect(far(tip.loops)).toBeCloseTo(4, 2) // within the grid's rounding (≤ ε/8)
+    expect(ink.groups.length).toBe(1)
+    expect(ink.groups[0]!.loops.length).toBe(1)
+    expect(ink.diagnostics.every(x => x.status === 'unproven')).toBe(true)
+  })
+  it('a very sharp corner (5°): the tip is shortened to 5 × (h0 + h1) = 20 (its miter would be ≈ 45.9)', () => {
+    expect(far(corner(5, 4, 4).pieces.find(p => p.source.kind === 'tip')!.loops)).toBeCloseTo(20, 2)
+  })
+  it('unequal widths at a blunt corner (2 and 12 at 150°, O3: the forward extensions do not meet): eased to 7 at the joint, then the tip', () => {
+    expect(cuspTip(P(0), P(1), { x: -Math.cos(150 * Math.PI / 180), y: Math.sin(150 * Math.PI / 180) }, 1, 6).kind).toBe('ease')
+    const ink = corner(150, 2, 12), tip = ink.pieces.find(p => p.source.kind === 'tip')!
+    expect(tip.loops.flat().filter(v => Math.abs(Math.hypot(v.x, v.y) - 3.5) < 1e-3).length).toBe(2) // A0 and A1 at h_p = 3.5
+    expect(ink.groups[0]!.loops.length).toBe(1)
+  })
+  it('folding back (0°): no tip, both widths pinched to 0 at the joint', () => {
+    const ink = corner(0, 4, 4)
+    expect(ink.pieces.some(p => p.source.kind === 'tip')).toBe(false)
+    const l0 = ink.pieces.find(p => p.source.id === 'l0')!
+    expect(Math.max(...l0.loops.flat().filter(v => v.x > -0.5).map(v => Math.abs(v.y)))).toBeLessThan(0.3)
+    // away from the joint (beyond ρ = 6) the full width 4: the loops' edges crossing x = −20
+    const ys = l0.loops.flatMap(l => l.flatMap((a, i) => { const b = l[(i + 1) % l.length]!; return (a.x + 20) * (b.x + 20) <= 0 && a.x !== b.x ? [a.y + (b.y - a.y) * (-20 - a.x) / (b.x - a.x)] : [] }))
+    expect(Math.max(...ys) - Math.min(...ys)).toBeCloseTo(4, 1)
+  })
+  it('the known, unhandled I2b case (4 and 12 at 10°) is flagged on the tip, drawn all the same', () => {
+    const ink = corner(10, 4, 12), d = ink.diagnostics.find(x => x.source.kind === 'tip')!
+    expect(d.status).toBe('defect')
+    expect(d.reason).toMatch(/I2b/)
+    expect(ink.pieces.some(p => p.source.kind === 'tip')).toBe(true)
   })
 })
 

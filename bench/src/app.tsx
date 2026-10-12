@@ -1121,9 +1121,9 @@ export function App() {
               const paints = new Set(gr.pieces.flatMap(p => p.source.kind === 'line' ? [paintOf(p.source.id)] : []))
               // an empty union is nothing to draw: the group falls back to its pieces (dot 1791803549)
               if (paints.size === 1 && gr.loops.length) { let first = true; for (const G of g.lines) if (gr.pieces.some(p => p.source.kind === 'line' && p.source.id === G.id)) { uniform.set(G.id, { group: gr, paint: [...paints][0]!, first }); first = false } }
-              else arcsAlone.push(...gr.pieces.filter(p => p.source.kind === 'arc'))
+              else arcsAlone.push(...gr.pieces.filter(p => p.source.kind !== 'line'))
             }
-            for (const p of ink?.pieces ?? []) if (p.source.kind === 'arc' && !(ink?.groups ?? []).some(gr => gr.pieces.includes(p))) arcsAlone.push(p)
+            for (const p of ink?.pieces ?? []) if (p.source.kind !== 'line' && !(ink?.groups ?? []).some(gr => gr.pieces.includes(p))) arcsAlone.push(p)
             return <>
               {arcsAlone.map(p => { const d = loopsD(p.loops); return <g key={p.source.id}><path data-ink={p.source.id} d={d} fill="#111" stroke="none" />{defectMark(p.source.id, d, inkDefects.get(p.source.id))}</g> })}
               {g.lines.map(G => {
