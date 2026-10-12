@@ -31,35 +31,72 @@ export function insideEO(P, poly) { let c = false; for (let i = 0, j = poly.leng
  * (Two earlier versions: a fixed-step split straddled the union's corners; a midpoint "inside another polygon" test kept
  * seams shared by two pieces, as their midpoint lies on the other piece's boundary, not strictly inside.)
  */
-export function unionOutline(polys) {
+export function unionOutline(polys) { return regionOutline(polys, P => polys.some(q => insideEO(P, q))) }
+/**
+ * The same extractor for any region of ink given by a predicate `ink(P)` (true where there is ink): the candidate
+ * edges are the edges of `polys`, cut as above; a sub-edge is on the outline iff `ink` differs on its two sides. A union
+ * is `P => some piece holds P`; a trim is `P => a piece holds P && P is on the kept side of a curve` (the curve's
+ * sampled polyline is then one of the candidate polys) — one extractor for every construction, no polygon clipping.
+ * Known limit: the side test looks 1e-5 off each sub-edge, so a sliver of ink or blank thinner than that can be judged
+ * wrongly (seen: a free-end cap drawn as a 32-gon centred on the end edge left a 5e-6 sliver against the body's square
+ * end — open chains; fixed in the sheet by building the cap on the exact end edge). A product module would need an
+ * exact side rule (winding contributions per piece), not an offset.
+ */
+export function regionOutline(polys, ink) {
   const TOL = 1e-6
   // one vertex registry: every split point is snapped to a registered vertex within TOL, so coincident edges of
   // different pieces are cut at the same vertices and deduplicate by vertex ids (dot 1791783896: a rotated case left
   // overlapping duplicates when each piece cut a shared edge at its own points)
   const verts = []
-  const vid = P => { for (let i = 0; i < verts.length; i++) if (Math.abs(verts[i][0] - P[0]) < TOL && Math.abs(verts[i][1] - P[1]) < TOL) return i; verts.push(P); return verts.length - 1 }
+  // (indexed by TOL-sized buckets for speed only: the lookup still returns the lowest-numbered vertex within TOL)
+  const bucket = new Map(), bkey = (x, y) => x + ',' + y
+  const vid = P => {
+    const bx = Math.floor(P[0] / TOL), by = Math.floor(P[1] / TOL)
+    let best = -1
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (const i of bucket.get(bkey(bx + dx, by + dy)) ?? []) if ((best < 0 || i < best) && Math.abs(verts[i][0] - P[0]) < TOL && Math.abs(verts[i][1] - P[1]) < TOL) best = i
+    if (best >= 0) return best
+    verts.push(P); const k = bkey(bx, by); (bucket.get(k) ?? bucket.set(k, []).get(k)).push(verts.length - 1); return verts.length - 1
+  }
   polys.forEach(poly => poly.forEach(vid)) // every polygon vertex first
   const edges = polys.map(poly => poly.map((A, i) => [A, poly[(i + 1) % poly.length]]))
   // pass 1: every crossing between edges of different pieces is registered before any edge is cut — an edge cut
   // before a later crossing was found would be cut differently from its coincident twin
-  edges.forEach((es, k) => es.forEach(([A, B]) => {
+  // (pairs whose boxes are apart cannot meet and are skipped — a sweep over x, for speed only; the meeting pairs are
+  // then tested in the original order, so the registry is built exactly as by testing every pair)
+  const flat = [], M = 1e-6
+  edges.forEach((es, k) => es.forEach(([A, B], i) => flat.push({ k, i, A, B, x0: Math.min(A[0], B[0]) - M, x1: Math.max(A[0], B[0]) + M, y0: Math.min(A[1], B[1]) - M, y1: Math.max(A[1], B[1]) + M })))
+  const byX = flat.map((_, n) => n).sort((m, n) => flat[m].x0 - flat[n].x0), near = flat.map(() => [])
+  for (let m = 0; m < byX.length; m++) {
+    const E = flat[byX[m]]
+    for (let q = m + 1; q < byX.length && flat[byX[q]].x0 <= E.x1; q++) {
+      const F = flat[byX[q]]
+      if (F.k === E.k || F.y0 > E.y1 || F.y1 < E.y0) continue
+      if (F.k > E.k) near[byX[m]].push(byX[q]); else near[byX[q]].push(byX[m])
+    }
+  }
+  flat.forEach(({ A, B }, n) => {
     const d = sub(B, A)
-    edges.forEach((fs, j) => { if (j <= k) return; for (const [C, D] of fs) { const e = sub(D, C), den = cross(d, e); if (Math.abs(den) < 1e-12) continue; const w = sub(C, A), t = cross(w, e) / den, u = cross(w, d) / den; if (t >= -1e-9 && t <= 1 + 1e-9 && u >= -1e-9 && u <= 1 + 1e-9) vid(add(A, mul(d, t))) } })
-  }))
+    for (const o of near[n].sort((x, y) => x - y)) { const [C, D] = [flat[o].A, flat[o].B], e = sub(D, C), den = cross(d, e); if (Math.abs(den) < 1e-12) continue; const w = sub(C, A), t = cross(w, e) / den, u = cross(w, d) / den; if (t >= -1e-9 && t <= 1 + 1e-9 && u >= -1e-9 && u <= 1 + 1e-9) vid(add(A, mul(d, t))) }
+  })
+  const vx = verts.map((_, i) => i).sort((m, n) => verts[m][0] - verts[n][0]) // the vertices by x, for pass 2's lookup
   // pass 2: each edge cut at every registered vertex lying on it; a sub-edge kept iff exactly one side has ink
   const raw = []
   edges.forEach(es => es.forEach(([A, B]) => {
     const d = sub(B, A), L2 = dot(d, d)
     if (L2 < TOL * TOL) return
     const L = Math.sqrt(L2), cuts = [vid(A), vid(B)]
-    verts.forEach((V, i) => { const t = dot(sub(V, A), d) / L2; if (t > 0 && t < 1 && len(sub(V, add(A, mul(d, t)))) < TOL) cuts.push(i) })
+    const xa = Math.min(A[0], B[0]) - TOL, xb = Math.max(A[0], B[0]) + TOL, ya = Math.min(A[1], B[1]) - TOL, yb = Math.max(A[1], B[1]) + TOL
+    let lo = 0, hi = vx.length; while (lo < hi) { const md = (lo + hi) >> 1; if (verts[vx[md]][0] < xa) lo = md + 1; else hi = md }
+    const onIt = []
+    for (let q = lo; q < vx.length && verts[vx[q]][0] <= xb; q++) { const i = vx[q], V = verts[i]; if (V[1] < ya || V[1] > yb) continue; const t = dot(sub(V, A), d) / L2; if (t > 0 && t < 1 && len(sub(V, add(A, mul(d, t)))) < TOL) onIt.push(i) }
+    cuts.push(...onIt.sort((x, y) => x - y))
     const ids = [...new Set(cuts)].sort((x, y) => dot(sub(verts[x], A), d) - dot(sub(verts[y], A), d))
     const n = mul([-d[1], d[0]], 1 / L) // the edge's left normal
     for (let m = 0; m + 1 < ids.length; m++) {
       const P = verts[ids[m]], Q = verts[ids[m + 1]]
       if (ids[m] === ids[m + 1] || len(sub(Q, P)) < TOL) continue
       const mid = mul(add(P, Q), 0.5), eps = 1e-5
-      const left = polys.some(q => insideEO(add(mid, mul(n, eps)), q)), right = polys.some(q => insideEO(sub(mid, mul(n, eps)), q))
+      const left = ink(add(mid, mul(n, eps))), right = ink(sub(mid, mul(n, eps)))
       if (left === right) continue // ink on both sides (a seam) or on neither
       raw.push(left ? [ids[m], ids[m + 1]] : [ids[m + 1], ids[m]]) // oriented: ink on the left
     }

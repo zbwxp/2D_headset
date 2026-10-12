@@ -4,7 +4,8 @@
 // E0i → E1i, each a cubic leaving the thinner / arriving at the wider edge along that edge's direction (handles
 // 1/3 of the chord, a starting value). Outside the zones nothing changes. Checks (the shared outline extractor): one
 // closed loop, crossings, rotations; a bridge folding back along its chord; the width across the zone (min / max,
-// a bulge if outside the two lines' widths) — the local width change reported as it is. Run: node sharp-join-O3.mjs
+// the sampled-boundary nearest distance: 49 outer samples to the nearest of 49 inner samples, flagged if outside the
+// two lines' widths — a reading, not a proof of the continuous outline's normal thickness or of no bulge (dot 1791784305). Run: node sharp-join-O3.mjs
 import { writeFileSync } from 'node:fs'
 import { add, circle, cross, dot, f, len, mul, readingLines, segCross, sub, unionOutline } from './outline.mjs'
 
@@ -45,17 +46,17 @@ angles.forEach((deg, r) => cols.forEach(([k0, k1, k], c) => {
     const rotBad = [0.37, 0.63, 1.1, 1.9, 2.71, 4.4].flatMap(rr => [['', rot(rr)], ['O', rotO(rr)]].filter(([, fn]) => { const u = unionOutline(pieces.map(q => q.map(fn))); return !(u.loops.length === 1 && !u.openChains.length && !u.badVertices) }).map(([tag]) => tag + rr))
     // a fold: the bridge turning back against its chord somewhere (its derivative's projection on the chord ≤ 0)
     const folds = [Bo, Bi].map(B => { const ch = sub(B[3], B[0]); let n = 0; for (let i = 0; i <= 96; i++) if (dot(dcubic(...B, i / 96), ch) <= 0) n++; return n })
-    // the width across the zone: from each outer bridge sample to the nearest point of the inner bridge
+    // the sampled-boundary nearest distance: from each outer bridge sample to the nearest inner bridge sample
     const widths = outer.map(P => Math.min(...inner.map(Q => len(sub(P, Q)))))
     const wmin = Math.min(...widths), wmax = Math.max(...widths), lo = 2 * Math.min(h0, h1), hi = 2 * Math.max(h0, h1)
-    const bulge = wmax > hi + 1e-6 || wmin < lo - 1e-6
+    const outside = wmax > hi + 1e-6 || wmin < lo - 1e-6
     label = 'O3 — no tip: a smooth width transition (experiment)'
-    note = `loops ${loops.length} · open ${openChains.length} · bad ${badVertices} · crossings ${crossings} · rotations ${rotBad.length ? 'FAIL ' + rotBad.join(',') : 'ok ×12 (joint + sheet origin)'} · folds ${folds.join('/')} · width in zone ${wmin.toFixed(2)}–${wmax.toFixed(2)} (lines ${lo}, ${hi})${bulge ? ' BULGE' : ''}`
+    note = `loops ${loops.length} · open ${openChains.length} · bad ${badVertices} · crossings ${crossings} · rotations ${rotBad.length ? 'FAIL ' + rotBad.join(',') : 'ok ×12 (joint + sheet origin)'} · folds ${folds.join('/')} · sampled-boundary nearest distance ${wmin.toFixed(2)}–${wmax.toFixed(2)} (lines ${lo}, ${hi}; not a thickness proof)${outside ? ' OUTSIDE' : ''}`
     body += `<path d="${loops.map(l => 'M' + l.map(f).join(' L') + ' Z').join(' ')}" fill="#111"/>`
     for (const ch of openChains) body += `<path d="M${ch.map(f).join(' L')}" fill="none" stroke="#e00"/>`
   }
   body += `<text x="${ox + 6}" y="${oy + 14}" font-size="9" fill="${O3 ? '#363' : '#a50'}">${label}</text>`
-  if (note) body += readingLines(ox + 6, oy + cell - 46, note, { fill: /FAIL|BULGE|loops [02-9]|open [1-9]|bad [1-9]|crossings [1-9]|folds [1-9]|folds \d+\/[1-9]/.test(note) ? '#e00' : '#555' })
+  if (note) body += readingLines(ox + 6, oy + cell - 46, note, { fill: /FAIL|OUTSIDE|loops [02-9]|open [1-9]|bad [1-9]|crossings [1-9]|folds [1-9]|folds \d+\/[1-9]/.test(note) ? '#e00' : '#555' })
   body += `<rect x="${ox}" y="${oy}" width="${cell - 6}" height="${cell - 6}" fill="none" stroke="#ddd"/>`
 }))
 angles.forEach((deg, r) => { body += `<text x="${pad}" y="${pad + 50 + r * cell + cell / 2}" font-size="13">${deg}°</text>` })
