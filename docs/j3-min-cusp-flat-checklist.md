@@ -39,3 +39,18 @@ the scaffold 1ac07f7). The wider line's cap (radius h_w around p) reaches past t
 Tests: one bench-level ink test per row of §2 (cut present at a cusp end, absent at a free end and at smooth / bound),
 the 125.json corner as a real-drawing sample (its tip + no point of the ink beyond the cut box), and a line that passes
 back beside its own flat end keeps its ink there (dot 1791816797).
+
+## 4. Added (bowen 1791817201 / 1791817234 / 1791817399, dot 1791817427): bound / smooth width transition, the tip's length
+The scope cut went too far: two lines joined by **仅绑定 (bound) or 平滑 (smooth)** must blend their widths — today a
+bound pair draws "a big circle over a small one" (bowen's 22:58 screenshot: every join of the eye is bound).
+- **Bound joins as smooth ones do today:** the two lines' ink joined into one outline (a group); unequal widths ease
+  to the average at the joint, each side over λ — so both round ends at p have the same radius and the stroke runs
+  through as one (a circle swept along the path).
+- **λ = the zone's 限长后长度 / 2** from `zones()` (default wider² / narrower, manual per view in the panel; already
+  limited to L / 3 per side), passed to the ink with the snapshot; without zones (tests, old callers) λ as today.
+- Not added: fork precedence (the first row at an end still rules its easing, as today), widths-first at cusps, the
+  single centred S-curve (each side keeps today's smoothstep to the average — the shape of J2's draft is paused).
+- **The tip's length** (bowen 1791817399): at most **2 × the lines' average width** from p (the natural tip at 30° is
+  h / sin 15° ≈ 1.93 w); a longer tip is shortened (today 5 × (h0 + h1) = 2.5 × the width sum).
+- Flows: the 22:58 eye (all bound, 3 / 4 / 4 / 2) on 5199 with images; an equal-width bound chain looks as today;
+  manual zone in one view changes only that view; hide one line of a pair → the other's end is round at its own width.
