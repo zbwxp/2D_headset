@@ -6,7 +6,8 @@
 // edge collinear with the other stroke's), curves bending to the same side, to opposite sides, and to opposite sides
 // sharply (the arms may then meet only at p). A point contact is a TOUCH vertex: the regions come out as separate loops
 // sharing p (outline.mjs). Checked against the ink itself: on circles of radius r about p, the number of ink arcs (from
-// the ink predicate) against half the outline's crossings with that circle. Also: loops / holes / touch vertices, open,
+// the ink predicate, 7200 fixed angles — an arc narrower than one step can be missed, dot 1791786138) against half the
+// outline's crossings with that circle (each segment solved against the circle, both roots). A sampled check, no proof. Also: loops / holes / touch vertices, open,
 // bad, crossings, p on the outline (the input alone is no baseline where its own constant-width offsets fold), widths at p and at s = ρ, the max half-width slope, eased-edge folds, 12 rotations.
 // Run: node sharp-join-zero.mjs → zero.svg beside it.
 import { writeFileSync } from 'node:fs'
@@ -75,7 +76,9 @@ rows.forEach(([kind, label], r) => cols.forEach(([k0, k1], c) => {
     const n = 7200, onc = Array.from({ length: n }, (_, i) => ink(add(p, [rr * Math.cos(2 * Math.PI * i / n), rr * Math.sin(2 * Math.PI * i / n)])))
     let arcs = 0; for (let i = 0; i < n; i++) if (onc[i] && !onc[(i + n - 1) % n]) arcs++
     if (arcs === 0 && onc[0]) arcs = 1
-    let hits = 0; for (const [S0, S1] of u.segs) { const d0 = len(sub(S0, p)) - rr, d1 = len(sub(S1, p)) - rr; if ((d0 < 0) !== (d1 < 0)) hits++ }
+    // every crossing of each outline segment with the circle, both roots of |S0 + t·d − p| = r in [0, 1) — a segment
+    // with both ends outside can still cross twice (dot 1791786138: the end-inside/outside test missed that)
+    let hits = 0; for (const [S0, S1] of u.segs) { const d = sub(S1, S0), w = sub(S0, p), A = dot(d, d), B = 2 * dot(w, d), C = dot(w, w) - rr * rr, D = B * B - 4 * A * C; if (A < 1e-24 || D < 0) continue; const q = Math.sqrt(D); for (const t of D === 0 ? [-B / (2 * A)] : [(-B - q) / (2 * A), (-B + q) / (2 * A)]) if (t >= 0 && t < 1) hits++ }
     return `${arcs}/${hits / 2}`
   }
   const radii = [0.05, 0.3, 1, rho].map(x => +x.toFixed(2))
