@@ -39,6 +39,7 @@ Today "no join row" means 仅绑定 (src/joins/index.ts:1–3) and lines that on
 ### 2.3 Precedence when joins share a line end
 - A line end may be in several joins at its point (e.g. a fork a, b, c: a–b bound, later a–c set to smooth — bowen 1791810585). **All of them merge the ink**; **the topmost join containing the end governs that end** — its transition zone and its join rule decide the end's boundary and width.
 - Lines at the point without a join between them are nothing to each other; an end with no join there is taken over as in §1.1.
+- **Precedence reaches the shape too, for arcs** (Claude 1791811062): derived trims a line end for every arc at it — the largest radius there (src/derived/index.ts:61–66) — whatever the order. With a list, an arc trims a line end only when it governs that end; otherwise the end keeps its full length and the governing join (e.g. a cusp on top) works at p. Smooth's spring and cusp put no trim on the shape, so they need no such rule. In J1.
 
 ### 2.4 What is broadcast to the views (bowen 1791810585)
 - **Broadcast to every view:** the pairs, their modes and the list's order.
@@ -56,6 +57,7 @@ Unchanged: smooth's spring, arc's trims and fillet, cusp's freedom in the shape;
 
 - **Widths first** (bowen 1791809376 B): inside the zone the two widths transition to one width (the same S-curve as §1.3), then F.
 - **F** (docs/sharp-join-F.md) as the geometric idea (dot 1791806880): each line flat-ended at p; the two outer edges extended along their **actual** edge directions at p to meet at M (the tip), the inner edges meeting at Q; only the outermost outline kept. With the S-curve the width is still changing at p, so the edges there are not parallel to the centre lines; and equal widths at p do not by themselves rule out every crossing of the edges inside the zone (dot 1791808765) — the handling the sheets added around F (trimming or narrowing an exposed inner corner, I2b) stays a candidate, used only where a delivered picture shows it is needed.
+- **Open for bowen:** the end at a 0° fold-back — with L(0) = 0 and both lines flat-ended at p it is a square end (v103 pinched it to zero width); square, round or pinched (Claude 1791811062).
 - **The tip's overhang is a function of the angle** (bowen 1791809376 C): overhang = the tip's length beyond the line body (dot 1791809495). Its natural value already falls to 0 at 180°; it is capped by L(θ) = 5 × the average full width × smoothstep(θ / 30°) — 0 at 0°, the full 5× from 30° (30° is bowen's example, adjustable). Overhang = min(natural, L(θ)), continuous from 0° to 180° — no switch to a pinch at 0°. The shortened tip's style (straight sides as v103, curved as the sheets) is bowen's to choose.
 
 ## 4. The transition zone
@@ -68,7 +70,7 @@ Unchanged: smooth's spring, arc's trims and fillet, cusp's freedom in the shape;
 
 ## 5. Packages (one at a time, each accepted by dot)
 
-1. **J1 — joins in the core:** the 'bound' mode; creation by operation (§2.1); the join list per point with its order (§2.2) and precedence read from it (§2.3); bind moving the removed point's joins; per-view zone length beside the radius (§2.4); the archive version and its migration. Flows: pen chains, split, bind onto a free end / onto a fork / of a point carrying a pair, unbind, undo / redo, copy / paste, save / reopen (old file → joins added; new file → never), multi-view (modes and order everywhere, zone / radius per view).
+1. **J1 — joins in the core:** the 'bound' mode; creation by operation (§2.1); the join list per point with its order (§2.2) and precedence read from it (§2.3), including which arc trims a line end; bind moving the removed point's joins; per-view zone length beside the radius (§2.4); the archive version and its migration. Flows: pen chains, split, bind onto a free end / onto a fork / of a point carrying a pair, unbind, undo / redo, copy / paste, save / reopen (old file → joins added; new file → never), multi-view (modes and order everywhere, zone / radius per view).
 2. **J1b — the join list in the bench:** the panel for a selected curve (its two ends, each end's joins named "A ↔ B", mode, zone automatic / manual and the length used, radius), the list per point with drag to reorder, the Join tool offering 'bound'.
 3. **J2 — swept joins in the ink:** groups through joins; bound / smooth / arc as one sweep along the connected path with the zone's S-curve; ends governed per §2.3; later-attached ends taken over (§1.1); free ends round; the current smooth easing (each side to the average, flat at p) replaced. Flows: equal and unequal widths, a chain with joins at both ends of a short line, an arc, a fork (a–b bound, c attached, a–c set smooth, reorder), hide a line, width / radius edits, undo.
 4. **J3 — sharp joins:** widths first, F from the actual edges, the tip's overhang L(θ); pictures against the sheets' cases; remaining jumps recorded.
