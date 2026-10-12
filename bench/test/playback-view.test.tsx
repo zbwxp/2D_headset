@@ -14,6 +14,14 @@ class Pt { constructor(public x = 0, public y = 0) {} matrixTransform() { return
 ;(globalThis as { DOMPoint?: unknown }).DOMPoint ??= Pt
 const wait = (ms = 0) => new Promise(r => setTimeout(r, ms))
 let n = 0
+/** A real click on a slider's bar at `v` (the bar given a 100 px rect): the jump is the slider's own change (docs/slider-plan.md). */
+async function slideTo(thumb: Element, v: number, lo: number, hi: number) {
+  const bar = thumb.parentElement as HTMLElement
+  bar.getBoundingClientRect = () => ({ left: 0, top: 0, width: 100, height: 4, right: 100, bottom: 4, x: 0, y: 0, toJSON() {} }) as DOMRect
+  const x = (v - lo) / (hi - lo) * 100, ev = (type: string, buttons: number) => { const e = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, button: 0, buttons }); Object.defineProperty(e, 'pointerId', { value: 7 }); return e }
+  await act(async () => { bar.dispatchEvent(ev('pointerdown', 1)); window.dispatchEvent(ev('pointerup', 0)) })
+}
+const valueOf = (thumb: Element) => thumb.getAttribute('aria-valuenow')
 const roots: { unmount(): void }[] = []
 afterEach(async () => { await act(async () => { for (const r of roots.splice(0)) r.unmount() }); delete (window as { benchStore?: Store }).benchStore; resetPage() })
 type B = { core: Core; refresh(): void; chooseView(k: string): void; pose(): null | { yaw: number; pitch: number }; log: { calls: string; result: string }[] }
@@ -71,7 +79,7 @@ describe('the pose pad in playback', () => {
     await act(async () => { t.pad().dispatchEvent(pe('pointerdown', a.x, a.y, 1)) })
     expect(bench().pose()).toEqual({ yaw: -45, pitch: 30 })
     await act(async () => { window.dispatchEvent(pe('pointermove', b.x, b.y, 1)); window.dispatchEvent(pe('pointerup', b.x, b.y, 0)) })
-    expect([bench().pose(), t.input('yaw').value, t.input('pitch').value, t.input('yaw-text').value, t.input('pitch-text').value]).toEqual([{ yaw: 60, pitch: -20 }, '60', '-20', '60', '-20'])
+    expect([bench().pose(), valueOf(t.input('yaw')), valueOf(t.input('pitch')), t.input('yaw-text').value, t.input('pitch-text').value]).toEqual([{ yaw: 60, pitch: -20 }, '60', '-20', '60', '-20'])
     expect(save(bench().core)).toBe(before)
   })
 
@@ -79,7 +87,7 @@ describe('the pose pad in playback', () => {
     const t = await setup()
     await t.play(0, 0)
     const handle = () => { const h = t.host.querySelector('[data-handle]')!; return [h.getAttribute('cx'), h.getAttribute('cy')] }
-    await act(async () => { const s = t.input('yaw'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(s, '45'); s.dispatchEvent(new Event('input', { bubbles: true })) })
+    await slideTo(t.input('yaw'), 45, -90, 90)
     expect([handle(), t.input('yaw-text').value]).toEqual([['150', '50'], '45'])
     await t.type('pitch-text', '-')
     expect([bench().pose(), handle(), t.input('pitch-text').value]).toEqual([{ yaw: 45, pitch: 0 }, ['150', '50'], '-'])

@@ -13,6 +13,14 @@ class Pt { constructor(public x = 0, public y = 0) {} matrixTransform() { return
 ;(globalThis as { DOMPoint?: unknown }).DOMPoint ??= Pt
 const wait = (ms = 0) => new Promise(r => setTimeout(r, ms))
 let n = 0
+/** A real click on a slider's bar at `v` (the bar given a 100 px rect): the jump is the slider's own change (docs/slider-plan.md). */
+async function slideTo(thumb: Element, v: number, lo: number, hi: number) {
+  const bar = thumb.parentElement as HTMLElement
+  bar.getBoundingClientRect = () => ({ left: 0, top: 0, width: 100, height: 4, right: 100, bottom: 4, x: 0, y: 0, toJSON() {} }) as DOMRect
+  const x = (v - lo) / (hi - lo) * 100, ev = (type: string, buttons: number) => { const e = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, button: 0, buttons }); Object.defineProperty(e, 'pointerId', { value: 7 }); return e }
+  await act(async () => { bar.dispatchEvent(ev('pointerdown', 1)); window.dispatchEvent(ev('pointerup', 0)) })
+}
+const valueOf = (thumb: Element) => thumb.getAttribute('aria-valuenow')
 const roots: { unmount(): void }[] = []
 afterEach(async () => { await act(async () => { for (const r of roots.splice(0)) r.unmount() }); delete (window as { benchStore?: Store }).benchStore; resetPage() })
 type B = { core: Core; refresh(): void; chooseView(k: string): void; pose(): null | { yaw: number; pitch: number } }
@@ -51,7 +59,7 @@ async function setup() {
     return e
   }
   const up = async (k: string) => { await act(async () => { window.dispatchEvent(new KeyboardEvent('keyup', { key: k, bubbles: true })) }) }
-  const shown = () => [bench().pose(), t2(input('yaw').value), t2(input('pitch').value), input('yaw-text').value, input('pitch-text').value]
+  const shown = () => [bench().pose(), t2(valueOf(input('yaw'))!), t2(valueOf(input('pitch'))!), input('yaw-text').value, input('pitch-text').value]
   const t2 = (v: string) => Number(v)
   const untouched = () => ({ text: save(bench().core), undo: bench().core.canUndo, writes: writes.length })
   return { host, svg, k, input, type, play, pad, padAt, key, up, shown, untouched }
@@ -122,7 +130,7 @@ describe('playback: the arrows turn the view', () => {
     expect(bench().pose()).toEqual({ yaw: 10, pitch: 1 })
     await t.up('ArrowUp')
     await t.key('ArrowUp')
-    await act(async () => { const s = t.input('yaw'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(s, '30'); s.dispatchEvent(new Event('input', { bubbles: true })) })
+    await slideTo(t.input('yaw'), 30, -90, 90)
     expect(bench().pose()).toEqual({ yaw: 30, pitch: 2 })
     await t.key('ArrowUp', { repeat: true }) // the slider ended the run
     expect(bench().pose()).toEqual({ yaw: 30, pitch: 2 })
@@ -194,8 +202,10 @@ describe('playback: the arrows turn the view', () => {
     await t.up('ArrowRight')
     const m = await t.key('ArrowLeft', { metaKey: true })
     expect([bench().pose(), m.defaultPrevented]).toEqual([{ yaw: 90, pitch: 0 }, false])
+    // an arrow on the focused yaw thumb is the slider's own run: one step, the canvas run not also turning (docs/slider-plan.md)
     const s = await t.key('ArrowLeft', {}, t.input('yaw'))
-    expect([bench().pose(), s.defaultPrevented]).toEqual([{ yaw: 90, pitch: 0 }, false])
+    await act(async () => { t.input('yaw').dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowLeft', bubbles: true })) })
+    expect([bench().pose(), s.defaultPrevented]).toEqual([{ yaw: 89, pitch: 0 }, true])
   })
 
   it('the pose keeps plain JS precision: 0.1234567890123 and 1e-11 with Option → then ← come back as they were (dot 1791770081, 1791770133)', async () => {
@@ -230,6 +240,17 @@ describe('playback: the arrows turn the view', () => {
       await t.key('ArrowRight'); await t.up('ArrowRight') // a new real press turns again
       expect(bench().pose()).toEqual({ yaw: 2, pitch: 0 })
     }
+  })
+
+  it('a held arrow on the yaw thumb: the slider\'s own pose updates never cancel its run (docs/slider-plan.md)', async () => {
+    const t = await setup()
+    await t.play(0, 0)
+    const thumb = t.input('yaw')
+    await act(async () => { thumb.focus() })
+    await t.key('ArrowRight', {}, thumb); await t.key('ArrowRight', { repeat: true }, thumb)
+    expect(bench().pose()).toEqual({ yaw: 2, pitch: 0 })
+    await act(async () => { thumb.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowRight', bubbles: true })) })
+    expect(bench().pose()).toEqual({ yaw: 2, pitch: 0 })
   })
 })
 

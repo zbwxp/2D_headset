@@ -20,6 +20,14 @@ beforeEach(() => { pending.length = 0; (globalThis as { Image: unknown }).Image 
 const roots: { unmount(): void }[] = []
 afterEach(async () => { (globalThis as { Image: unknown }).Image = realImage; await act(async () => { for (const r of roots.splice(0)) r.unmount() }) })
 const bench = () => (window as unknown as { bench: { core: Core; chooseView(k: string): void } }).bench
+/** A real press on a slider's bar at `v` (its range read from the thumb, the bar given a 100 px rect); `release` ends it. */
+function slideAt(thumb: Element, v: number) {
+  const bar = thumb.parentElement as HTMLElement, lo = Number(thumb.getAttribute('aria-valuemin')), hi = Number(thumb.getAttribute('aria-valuemax'))
+  bar.getBoundingClientRect = () => ({ left: 0, top: 0, width: 100, height: 4, right: 100, bottom: 4, x: 0, y: 0, toJSON() {} }) as DOMRect
+  const x = (v - lo) / (hi - lo) * 100, ev = (type: string, buttons: number) => { const e = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, button: 0, buttons }); Object.defineProperty(e, 'pointerId', { value: 7 }); return e }
+  bar.dispatchEvent(ev('pointerdown', 1))
+  return { release: () => window.dispatchEvent(ev('pointerup', 0)) }
+}
 const setValue = (el: HTMLInputElement, v: string) => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(el, v); el.dispatchEvent(new Event('input', { bubbles: true })) }
 const pe = (type: string, x: number, y: number, buttons: number, id = 1) => { const e = new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0, buttons }); Object.defineProperty(e, 'pointerId', { value: id }); return e }
 const key = (k: string, target: EventTarget = window, shift = false) => target.dispatchEvent(new KeyboardEvent('keydown', { key: k, shiftKey: shift, bubbles: true }))
@@ -51,10 +59,11 @@ async function setup() {
 describe('live adjusting: a preview, then one commit (§8.1, §8a.1)', () => {
   it('a slider drag is drawn at once, writes nothing until release, then one undo step', async () => {
     const t = await setup(), before = save(bench().core), x0 = t.drawnX()
-    await act(async () => { setValue(t.slider('x'), '120') })
+    let s!: { release(): void }
+    await act(async () => { s = slideAt(t.slider('x'), 120) })
     expect(t.drawnX()).toBe(x0 + 120)
     expect(save(bench().core)).toBe(before)
-    await act(async () => { t.slider('x').dispatchEvent(new MouseEvent('pointerup', { bubbles: true })) })
+    await act(async () => { s.release() })
     expect(t.pic().x).toBe(120)
     await act(async () => { t.button('Undo').click() })
     expect(save(bench().core)).toBe(before)
@@ -77,10 +86,11 @@ describe('live adjusting: a preview, then one commit (§8.1, §8a.1)', () => {
   it('a preview whose picture was undone underneath is dropped, not written back', async () => {
     const t = await setup()
     await act(async () => { setValue(t.field('x'), '10'); key('Enter', t.field('x')) })
-    await act(async () => { setValue(t.slider('opacity'), '0.9') })
+    let s!: { release(): void }
+    await act(async () => { s = slideAt(t.slider('opacity'), 0.9) })
     await act(async () => { t.button('Undo').click() }) // x back to 0 underneath the opacity preview
     const undone = save(bench().core)
-    await act(async () => { t.slider('opacity').dispatchEvent(new MouseEvent('pointerup', { bubbles: true })) })
+    await act(async () => { s.release() })
     expect(save(bench().core)).toBe(undone)
   })
 })
@@ -226,7 +236,7 @@ describe('mirror a picture left-right (§9)', () => {
     expect([t.pic().flipped, t.pic().angle, marks(t.host, t.id)]).toEqual([false, 30, before])
   })
 
-  it('Mirror while the angle field is previewing: the preview ends first (written), then the mirror reads the document; a late blur or pointerup writes nothing back (dot 1791717133)', async () => {
+  it('Mirror while the angle field is previewing: the field ends first by its own ending (written), then the mirror reads the document; a slide running is cancelled (docs/slider-plan.md: a new input never forces a commit); a late blur or pointerup writes nothing back (dot 1791717133)', async () => {
     const t = await setup()
     await act(async () => { setValue(t.field('angle'), '30'); key('Enter', t.field('angle')) })
     await act(async () => { setValue(t.field('angle'), '45') }) // previewing, not written
@@ -234,14 +244,16 @@ describe('mirror a picture left-right (§9)', () => {
     await act(async () => { t.button('Mirror ⇆', t.host.querySelector(`[data-ref="${t.id}"]`)!).click() })
     expect(t.pic()).toMatchObject({ angle: -45, flipped: true })
     const text = save(bench().core)
-    await act(async () => { t.field('angle').dispatchEvent(new FocusEvent('focusout', { bubbles: true })); t.slider('angle').dispatchEvent(new MouseEvent('pointerup', { bubbles: true })) })
+    await act(async () => { t.field('angle').dispatchEvent(new FocusEvent('focusout', { bubbles: true })) })
     expect(save(bench().core)).toBe(text)
-    await act(async () => { setValue(t.slider('angle'), '60') }) // a slider preview, then Mirror, then its late pointerup
+    let s!: { release(): void }
+    await act(async () => { s = slideAt(t.slider('angle'), 60) }) // a slide previewing 60, then Mirror, then its late pointerup
+    expect(t.host.querySelector(`[data-ref="${t.id}"] [data-field="angle"]`)!.getAttribute('value') ?? (t.field('angle')).value).toBe('60')
     await act(async () => { t.button('Mirror ⇆', t.host.querySelector(`[data-ref="${t.id}"]`)!).click() })
-    await act(async () => { t.slider('angle').dispatchEvent(new MouseEvent('pointerup', { bubbles: true })) })
-    expect(t.pic()).toMatchObject({ angle: -60, flipped: false })
+    await act(async () => { s.release() })
+    expect(t.pic()).toMatchObject({ angle: 45, flipped: false }) // the slide cancelled: the mirror of −45
     await act(async () => { t.button('Undo').click() }) // the mirror, one step
-    expect(t.pic()).toMatchObject({ angle: 60, flipped: true })
+    expect(t.pic()).toMatchObject({ angle: -45, flipped: true })
   })
 
   it('a preview whose picture was mirrored underneath is dropped, not written (flipped is part of the base)', async () => {

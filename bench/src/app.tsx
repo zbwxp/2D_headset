@@ -13,6 +13,7 @@ import { cursorFor } from '../../cursor'
 import { PosePad } from '../../pose-pad'
 import { labelsFor, middleOf, type Kind as LabelKind } from '../../name-labels'
 import { createMover, isArrow, type Target } from '../../move'
+import { Slider } from '../../slider'
 
 type Id = string
 type Unit = Snapshot['selection'][number]
@@ -166,7 +167,6 @@ export function App() {
   // fields' own text, kept apart from the pose (dot 1791696847)
   const [corrRefusal, setCorrRefusal] = useState<null | { message: string; objects: readonly { kind: string; id: string }[] }>(null)
   const [corrGhost, setCorrGhost] = useState<null | { id: Id; to: Vec }>(null)
-  const [poseText, setPoseText] = useState({ yaw: '0', pitch: '0' })
   // reference pictures (docs/reference-images-plan.md §7.1): this App's counter, advanced by a view change,
   // entering or leaving playback, an Open and unmounting; a picture read keeps it and writes only if unchanged
   const refGen = useRef(0)
@@ -328,6 +328,7 @@ export function App() {
    */
   const refAct = (b: RefBind, what: string, act: (r: ReferenceImage) => void) => {
     if (!refNow(b)) { note(`${what} dropped: the picture is no longer the one shown`); bump(); return }
+    endOpenField() // an open field ends by its own ending (its typed value written), never written again by a late blur
     gesture.current?.cancel(what)
     commitPreview()
     const r = refNow(b)
@@ -340,6 +341,7 @@ export function App() {
   /** The same one ending for a library control, bound to its entry. */
   const libAct = (b: RefBind, what: string, act: (a: AssetUse) => void) => {
     if (!libNow(b)) { note(`${what} dropped: the library picture is no longer the one shown`); bump(); return }
+    endOpenField()
     gesture.current?.cancel(what)
     commitPreview()
     const a = libNow(b)
@@ -409,6 +411,7 @@ export function App() {
   const BUTTON_BIT = [1, 4, 2] // button 0 → buttons bit 1 (left), 1 → 4 (middle), 2 → 2 (right)
   const CLICK = 2 // screen px a press may move and still be a click (v1: 7205381 DrawingRoom zoom)
   const onDown = (e: React.PointerEvent) => {
+    endOpenField()
     endPoseRun()
     if (gesture.current) {
       if (gesture.current.id !== e.pointerId) return // another pointer while a gesture runs: ignored
@@ -478,6 +481,7 @@ export function App() {
    * drawing changed. Lines are never picked while the mode is on.
    */
   const onRefDown = (e: React.PointerEvent) => {
+    endOpenField()
     if (gesture.current) {
       if (gesture.current.id !== e.pointerId) return
       gesture.current.cancel('a new press of the same pointer')
@@ -570,6 +574,7 @@ export function App() {
   /** The selection's arrows (with V / A): interaction runs them; the bench gives the run the one gesture slot. */
   keyHooks.current.afterArrow = () => { if (ix.moving() === 'keys') holdKeys() }
   const onPoseDown = (e: React.PointerEvent) => {
+    endOpenField()
     endPoseRun()
     if (gesture.current) {
       if (gesture.current.id !== e.pointerId) return
@@ -640,7 +645,7 @@ export function App() {
     ix.cancelAll()
     posing.current = true; poseGen.current++; refGen.current++
     const [yaw, pitch] = shown.slice('view:'.length).split(',').map(Number)
-    setPose({ yaw: yaw!, pitch: pitch! }); setPoseText({ yaw: String(yaw), pitch: String(pitch) }); setCorrRefusal(null)
+    setPose({ yaw: yaw!, pitch: pitch! }); setCorrRefusal(null)
   }
   const stopPose = () => { gesture.current?.cancel('leaving playback'); refGen.current++; posing.current = false; setPose(null); setCorrRefusal(null) }
   /** A valid pose change ends a playback drag first: a target belongs to one pose (dot 1791696847). */
@@ -652,9 +657,8 @@ export function App() {
    */
   const changePose = (next: { yaw: number; pitch: number }, source: 'pad' | 'keys' | 'slider' | 'yaw-field' | 'pitch-field') => {
     // the pad's and the keys' own steps never end their own gesture; any other source ends a running one
-    if (source !== 'pad' && source !== 'keys') gesture.current?.cancel('a pose change')
+    if (source !== 'pad' && source !== 'keys' && source !== 'slider') gesture.current?.cancel('a pose change')
     setCorrRefusal(null); setPose(next)
-    setPoseText(t => ({ yaw: source === 'yaw-field' ? t.yaw : String(next.yaw), pitch: source === 'pitch-field' ? t.pitch : String(next.pitch) }))
   }
   const LIMITS = { yaw: 90, pitch: 45 } as const
   /**
@@ -693,13 +697,28 @@ export function App() {
     poseMover.keyDown(poseTarget, { key: e.key, repeat: e.repeat, shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey }, POSE_STEPS)
     if (poseMover.running === 'keys') holdKeys()
   }
-  /** A number field's text, and the pose only when it parses to a finite angle in range; "", "-" and the like change nothing. */
-  const typePose = (axis: 'yaw' | 'pitch', text: string) => {
-    setPoseText(t => ({ ...t, [axis]: text }))
-    const v = Number(text)
-    if (pose && text.trim() !== '' && Number.isFinite(v) && Math.abs(v) <= LIMITS[axis] && v !== pose[axis]) changePose({ ...pose, [axis]: v }, `${axis}-field`)
+  /**
+   * The sliders (docs/slider-plan.md): a slide or a thumb key run takes the one gesture slot as a pad drag does (its key
+   * runs as `SLIDER_KEYS`, not `KEYS`, which the editing and picture runs own); typing is the one **open field**, ended
+   * — as leaving it would — before any other input begins (dot 1791770098).
+   */
+  const SLIDER_KEYS = -2
+  const openField = useRef<null | { end(): void }>(null)
+  const endOpenField = () => { const f = openField.current; openField.current = null; f?.end() }
+  const sliderHooks = {
+    onStart: (d: { input: 'drag' | 'keys'; pointerId?: number; cancel(): void }) => {
+      endOpenField()
+      const id = d.input === 'keys' ? SLIDER_KEYS : d.pointerId!
+      if (gesture.current && gesture.current.id !== id && d.input === 'drag' && gesture.current.id >= 0) return false // another pointer's gesture keeps the slot
+      gesture.current?.cancel('a slider')
+      gesture.current = { id, right: false, cancel: () => d.cancel() }
+      sliderCancel.current = gesture.current.cancel
+      return true
+    },
+    onEnd: () => { if (gesture.current && gesture.current.cancel === sliderCancel.current) gesture.current = null; sliderCancel.current = null },
+    onField: (d: { end(): void } | null) => { if (d) { if (openField.current && openField.current !== d) endOpenField(); openField.current = d } else openField.current = null },
   }
-  const poseTextValid = (axis: 'yaw' | 'pitch') => { const v = Number(poseText[axis]); return poseText[axis].trim() !== '' && Number.isFinite(v) && Math.abs(v) <= LIMITS[axis] }
+  const sliderCancel = useRef<null | ((why: string) => void)>(null)
   /** A tool change (key or button, Z included) ends any gesture through its one cancel path (dot 1791554909). */
   const chooseTool = (t: Tool | 'Z') => {
     gesture.current?.cancel('a tool change')
@@ -728,7 +747,7 @@ export function App() {
       if (typing) { if (e.isComposing && gesture.current?.id === KEYS) gesture.current.cancel('an input method'); return }
       // an arrow on any focused field or slider is that control's own (a slider steps with it), never a move;
       // a key run already running still ends only by its own paths (dot 1791734673)
-      if (isArrow(e.key) && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return
+      if (isArrow(e.key) && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA' || t.getAttribute?.('role') === 'slider')) return
       // undo / redo during a key run (the selection's or the picture's) end the run, write nothing and undo nothing earlier (dot 1791734673)
       if (gesture.current?.id === KEYS && e.key.toLowerCase() === 'z' && (e.metaKey || e.ctrlKey)) { gesture.current.cancel(e.shiftKey ? 'redo' : 'undo'); e.preventDefault(); return }
       // a plain Z is the viewport's zoom, in every mode (bowen 1791727452); ⌘Z / Ctrl-Z stays undo
@@ -826,16 +845,20 @@ export function App() {
         <div data-testid="playback" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           {pose ? <>
             <button onClick={stopPose}>Leave playback</button>
-            {(['yaw', 'pitch'] as const).map(axis => <label key={axis}>{axis} {pose[axis]}
-              <input type="range" data-testid={axis} min={-LIMITS[axis]} max={LIMITS[axis]} step={1} value={pose[axis]} onChange={e => changePose({ ...pose, [axis]: +e.target.value }, 'slider')} />
-              <input data-testid={`${axis}-text`} value={poseText[axis]} style={{ width: 64, borderColor: poseTextValid(axis) ? undefined : '#c00' }} onChange={e => typePose(axis, e.target.value)} />
-            </label>)}
+            {(['yaw', 'pitch'] as const).map(axis => {
+              // the pose is a view: preview and commit both set it, a cancel keeps the last (as the grid); a thumb session's
+              // own updates never cancel it, typing ends any other gesture as a field always did
+              const set = (v: number, input: 'drag' | 'keys' | 'typing') => { const now = poseRef.current; if (now && now[axis] !== v) changePose({ ...now, [axis]: v }, input === 'typing' ? `${axis}-field` : 'slider') }
+              return <div key={axis}><Slider label={axis} value={pose[axis]} identity={`pose:${axis}`} accept={v => Math.abs(v) <= LIMITS[axis]} track={[-LIMITS[axis], LIMITS[axis]]}
+                steps={POSE_STEPS} fieldAttrs={{ 'data-testid': `${axis}-text` }} thumbAttrs={{ 'data-testid': axis }} {...sliderHooks}
+                onPreview={set} onCommit={set} onCancel={() => {}} /></div>
+            })}
             {/* yaw and pitch on one grid (bowen 1791727397): its drag takes the one gesture slot, ending the old gesture first */}
             <PosePad yaw={pose.yaw} pitch={pose.pitch} limits={LIMITS}
               onStart={d => {
                 // as on the canvas: another pointer's running gesture keeps the slot, the press is ignored (dot 1791731833);
                 // a pose key run is ended instead (the pose stays), and the press acts (dot 1791769205)
-                endPoseRun()
+                endOpenField(); endPoseRun()
                 if (gesture.current && gesture.current.id !== d.pointerId) return false
                 gesture.current?.cancel('a pose pad press'); gesture.current = { id: d.pointerId, right: false, cancel: d.cancel }; return true
               }}
@@ -855,7 +878,8 @@ export function App() {
         </div>
         {ix.tool === 'join' && <div>
           <select value={opts.joinMode} onChange={e => ix.setOptions({ joinMode: e.target.value as typeof opts.joinMode })}><option>smooth</option><option>cusp</option><option>arc</option></select>
-          {opts.joinMode === 'arc' && <> r <input type="number" value={opts.radius} style={{ width: 50 }} onChange={e => ix.setOptions({ radius: +e.target.value })} /></>}
+          {opts.joinMode === 'arc' && <Slider label="r" value={opts.radius} identity="join-radius" accept={v => v > 0} track={null} steps={{ step: 1, long: 10, short: 0.1 }}
+            fieldAttrs={{ 'data-testid': 'radius' }} {...sliderHooks} onPreview={() => {}} onCommit={v => ix.setOptions({ radius: v })} onCancel={() => {}} />}
           <div style={{ color: '#666' }}>click two lines; alt on the second: remove join</div>
         </div>}
         {ix.tool === 'fill' && <div><input type="color" value={opts.color} onChange={e => ix.setOptions({ color: e.target.value })} /> <span style={{ color: '#666' }}>shift-click: clear</span></div>}
@@ -882,7 +906,9 @@ export function App() {
           {B('Unlock', () => run(x => selLines.forEach(l => x.lineState(l, { locked: false }))))}
           {B('Hide', () => run(x => selLines.forEach(l => x.lineState(l, { visible: false }))))}
           {B('Show all', () => run(x => s.lines.filter(l => !l.state.visible).forEach(l => x.lineState(l.id, { visible: true }))))}
-          <span>width <input type="number" value={width} style={{ width: 40 }} onChange={e => setWidth(+e.target.value)} /></span>
+          {/* a field only (bowen 1791769257); "Set width" still applies it to the selected lines (dot 1791769298) */}
+          <Slider label="width" value={width} identity="stroke-width" accept={v => v > 0} track={null} steps={{ step: 1, long: 10, short: 0.1 }}
+            fieldAttrs={{ 'data-testid': 'width' }} {...sliderHooks} onPreview={() => {}} onCommit={v => setWidth(v)} onCancel={() => {}} />
           {B('Set width', () => run(x => selLines.forEach(l => x.lineStroke(l, { ...line(l).stroke, width }))))}
           {B('Broadcast stroke', () => ix.broadcastStroke(), 'this view\'s width, profile and end strokes of the selected lines → every other view')}
         </div>
@@ -916,15 +942,17 @@ export function App() {
             return <div key={r.id} data-ref={r.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 2, outline: active ? '1px solid #2a7fff' : undefined }}>
             <input type="checkbox" checked={r.visible} onChange={e => { const v = e.target.checked; refAct(bound, 'visibility', now => run(x => x.setReference(now.id, { visible: v }))) }} />
             {(['x', 'y', 'scale', 'angle', 'opacity'] as const).map(k => {
-              const [lo, hi, step] = RANGE[k], toSlider = (v: number) => (k === 'scale' ? Math.log10(v) : v), fromSlider = (v: number) => (k === 'scale' ? 10 ** v : v)
-              return <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>{k}
-                <input key={`${r.id}:${k}:${r[k]}`} data-field={k} type="number" style={{ width: 54 }} defaultValue={r[k]} step={k === 'opacity' ? 0.1 : undefined}
-                  onChange={e => { const t = e.target.value, v = Number(t); if (t.trim() !== '' && Number.isFinite(v)) previewRef(r, { [k]: v }) }}
-                  onKeyDown={e => { if (e.key === 'Enter') commitPreview(); else if (e.key === 'Escape') { cancelPreview(); (e.target as HTMLInputElement).value = String(r[k]) } }}
-                  onBlur={commitPreview} />
-                <input data-slider={k} type="range" min={lo} max={hi} step={step} value={Math.min(hi, Math.max(lo, toSlider(live[k])))} style={{ width: 70 }}
-                  onChange={e => previewRef(r, { [k]: fromSlider(Number(e.target.value)) })} onPointerUp={commitPreview} onKeyUp={commitPreview} onBlur={commitPreview} />
-              </label>
+              // one slider each (docs/slider-plan.md): preview → the shared picture preview, commit → its one setReference,
+              // cancel → the preview withdrawn; accepted as core accepts (src/reference), the track only the slide's range
+              const SLIDE = { x: [box.x, box.x + box.w], y: [box.y, box.y + box.h], scale: [-3, 2], angle: [-180, 180], opacity: [0, 1] } as const
+              const STEPS = { x: { step: 1, long: 10, short: 0.1 }, y: { step: 1, long: 10, short: 0.1 }, angle: { step: 1, long: 10, short: 0.1 }, scale: { step: 0.01, long: 0.1, short: 0.001 }, opacity: { step: 0.01, long: 0.1, short: 0.001 } }
+              const accept = (v: number) => (k === 'scale' ? v > 0 && Number.isFinite(r.width * v) && Number.isFinite(r.height * v) : k === 'opacity' ? v >= 0 && v <= 1 : Number.isFinite(v))
+              return <Slider key={k} label={k} value={r[k]} identity={`${r.id}:${r.src}:${k}`} version={refGen.current} accept={accept} track={SLIDE[k]} scale={k === 'scale' ? 'log' : 'linear'} steps={STEPS[k]}
+                fieldAttrs={{ 'data-field': k }} thumbAttrs={{ 'data-slider': k }} {...sliderHooks}
+                onStart={d => (refNow(bound) ? sliderHooks.onStart(d) : false)}
+                onPreview={v => { const now = refNow(bound); if (now) previewRef(now, { [k]: v }) }}
+                onCommit={v => { const now = refNow(bound); if (!now) return; previewRef(now, { [k]: v }); commitPreview() }}
+                onCancel={() => cancelPreview()} />
             })}
             {B('Mirror ⇆', () => mirrorRef(bound))}
             {B('Remove', () => refAct(bound, 'Remove', now => run(x => x.removeReference(now.id))))}

@@ -15,6 +15,14 @@ class Pt { constructor(public x = 0, public y = 0) {} matrixTransform() { return
 const wait = (ms = 0) => new Promise(r => setTimeout(r, ms))
 let n = 0
 // every App of a test is unmounted after it: a mounted App listens on the window and would take keys and window.bench
+/** A real click on a slider's bar at `v` (the bar given a 100 px rect): the jump is the slider's own change (docs/slider-plan.md). */
+async function slideTo(thumb: Element, v: number, lo: number, hi: number) {
+  const bar = thumb.parentElement as HTMLElement
+  bar.getBoundingClientRect = () => ({ left: 0, top: 0, width: 100, height: 4, right: 100, bottom: 4, x: 0, y: 0, toJSON() {} }) as DOMRect
+  const x = (v - lo) / (hi - lo) * 100, ev = (type: string, buttons: number) => { const e = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, button: 0, buttons }); Object.defineProperty(e, 'pointerId', { value: 7 }); return e }
+  await act(async () => { bar.dispatchEvent(ev('pointerdown', 1)); window.dispatchEvent(ev('pointerup', 0)) })
+}
+const valueOf = (thumb: Element) => thumb.getAttribute('aria-valuenow')
 const roots: { unmount(): void }[] = []
 afterEach(async () => { await act(async () => { for (const r of roots.splice(0)) r.unmount() }) })
 type B = { core: Core; ix: { setTool(t: string): void; tool: string; preview(): { drag?: unknown } }; refresh(): void; chooseView(k: string): void; pose(): null | { yaw: number; pitch: number } }
@@ -40,11 +48,8 @@ async function setup() {
     bench().ix.setTool('A'); bench().refresh()
   })
   const button = (label: string) => [...host.querySelectorAll('button')].find(b => b.textContent === label)!
-  const slider = (id: 'yaw' | 'pitch') => host.querySelector(`[data-testid="${id}"]`) as HTMLInputElement
-  const setSlider = async (id: 'yaw' | 'pitch', v: number) => {
-    const el = slider(id)
-    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(el, String(v)); el.dispatchEvent(new Event('input', { bubbles: true })) })
-  }
+  const slider = (id: 'yaw' | 'pitch') => host.querySelector(`[data-testid="${id}"]`) as HTMLElement
+  const setSlider = async (id: 'yaw' | 'pitch', v: number) => { await slideTo(slider(id), v, id === 'yaw' ? -90 : -45, id === 'yaw' ? 90 : 45) }
   return { host, svg, k, root, button, slider, setSlider }
 }
 const state = () => ({ file: save(bench().core), undo: bench().core.canUndo, redo: bench().core.canRedo })

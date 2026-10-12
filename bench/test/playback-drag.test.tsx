@@ -13,6 +13,13 @@ class Pt { constructor(public x = 0, public y = 0) {} matrixTransform() { return
 if (!Blob.prototype.text) Blob.prototype.text = function (this: Blob) { return new Promise<string>(res => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.readAsText(this) }) }
 const wait = (ms = 0) => new Promise(r => setTimeout(r, ms))
 let n = 0
+/** A real click on a slider's bar at `v` (its range read from the thumb, the bar given a 100 px rect), by the mouse (pointer 1). */
+async function slideTo(thumb: Element, v: number) {
+  const bar = thumb.parentElement as HTMLElement, lo = Number(thumb.getAttribute('aria-valuemin')), hi = Number(thumb.getAttribute('aria-valuemax'))
+  bar.getBoundingClientRect = () => ({ left: 0, top: 0, width: 100, height: 4, right: 100, bottom: 4, x: 0, y: 0, toJSON() {} }) as DOMRect
+  const x = (v - lo) / (hi - lo) * 100, ev = (type: string, buttons: number) => { const e = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, button: 0, buttons }); Object.defineProperty(e, 'pointerId', { value: 1 }); return e }
+  await act(async () => { bar.dispatchEvent(ev('pointerdown', 1)); window.dispatchEvent(ev('pointerup', 0)) })
+}
 const roots: { unmount(): void }[] = []
 afterEach(async () => { await act(async () => { for (const r of roots.splice(0)) r.unmount() }) })
 type B = { core: Core; refresh(): void; chooseView(k: string): void; pose(): null | { yaw: number; pitch: number }; edit(fn: (e: Editor) => unknown): void; log: { calls: string; result: string }[] }
@@ -227,7 +234,7 @@ describe('cancel flows: nothing written, a late pointerup commits nothing, liste
     { name: 'pointercancel', act: async () => { await act(async () => { window.dispatchEvent(pe('pointercancel', 0, 0, 0)) }) } },
     { name: 'window blur', act: async () => { await act(async () => { window.dispatchEvent(new Event('blur')) }) } },
     { name: 'a new press of the same pointer', act: async t => { await act(async () => { t.svg.dispatchEvent(pe('pointerdown', 700, 0, 1)); window.dispatchEvent(pe('pointerup', 700, 0, 0)) }) } },
-    { name: 'a pose change by the slider', act: async t => { await t.type('yaw', '50') } },
+    { name: 'a pose change by the slider', act: async t => { await slideTo(t.input('yaw'), 50) } },
     { name: 'a valid number typed', act: async t => { await t.type('yaw-text', '31.35') } },
     { name: 'leaving playback', act: async t => { await act(async () => { t.button('Leave playback').click() }) } },
   ]

@@ -120,20 +120,21 @@ describe('the same input rules for the picture and the selection (dot 1791734673
     expect([JSON.parse(before).document.reference, save(bench().core)]).toEqual([JSON.parse(selected).document.reference, selected])
   })
 
-  it('arrows on a focused slider are the slider\'s: they move neither the picture nor the selection', async () => {
+  it('arrows on a focused slider are the slider\'s: they turn its value (one setReference) and move neither the picture\'s place nor the selection', async () => {
     const t = await setup()
     await t.activate()
-    const slider = t.host.querySelector(`[data-ref="${t.id}"] [data-slider="angle"]`) as HTMLInputElement
-    const before = save(bench().core)
+    const slider = t.host.querySelector(`[data-ref="${t.id}"] [data-slider="angle"]`) as HTMLElement
+    const lines = () => JSON.stringify(bench().core.snapshot().points)
+    const before = { x: t.pic().x, y: t.pic().y, angle: t.pic().angle, lines: lines() }
     await act(async () => { slider.focus() })
     await act(async () => { down('ArrowRight', {}, slider) }); await act(async () => { up('ArrowRight', slider) })
-    expect(save(bench().core)).toBe(before)
+    expect({ x: t.pic().x, y: t.pic().y, angle: t.pic().angle, lines: lines() }).toEqual({ ...before, angle: before.angle + 1 })
     await t.moveMode(false)
     await act(async () => { down('a') }); await act(async () => { t.svg.dispatchEvent(pe('pointerdown', 0, t.y, 1)); window.dispatchEvent(pe('pointerup', 0, t.y, 0)) })
-    const selected = save(bench().core)
+    const selected = lines()
     await act(async () => { slider.focus() })
     await act(async () => { down('ArrowLeft', {}, slider) }); await act(async () => { up('ArrowLeft', slider) })
-    expect(save(bench().core)).toBe(selected)
+    expect([lines(), t.pic().angle, t.pic().x]).toEqual([selected, before.angle, before.x])
   })
 
   it('⌘Z or Ctrl + Z during a key run ends the run only: nothing earlier is undone, the late release moves nothing — the picture and the selection alike', async () => {
