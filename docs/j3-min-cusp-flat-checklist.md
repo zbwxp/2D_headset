@@ -61,3 +61,9 @@ bound pair draws "a big circle over a small one" (bowen's 22:58 screenshot: ever
   widths at a threshold angle.
 - Flows: the 22:58 eye (all bound, 3 / 4 / 4 / 2) on 5199 with images; an equal-width bound chain looks as today;
   manual zone in one view changes only that view; hide one line of a pair → the other's end is round at its own width.
+- **One S-curve across the joint** (bowen 1791817874, dot 1791818196 / 1791818554): the two sides eased to the average
+  separately, so the width's rate of change went fast, stopped at the joint, then fast again (the width itself was
+  continuous) — with the curve's bends it read as bumps. Now each side is half of one S-curve centred on the joint
+  (`Profile` end `centred`), the joint its steepest point, the same slope from both lines. The 125.json eye's left
+  shoulder improves; the small notch at the middle joint's lower edge remains in both versions — recorded as observed,
+  its cause not established.

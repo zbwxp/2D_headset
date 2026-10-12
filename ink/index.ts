@@ -30,12 +30,15 @@ export interface InkLines {
 /**
  * A half-width along a centre curve: `h`, except where an end eases — from `joint` at that end to `h` over `length`
  * of arc length (measured along the flattened curve; 'all' = the whole curve), by smoothstep (slope 0 at both ends of
- * the span).
+ * the span). `centred`: the end is one half of a single S-curve centred on the joint (principle §1.3; bowen 1791817874 —
+ * two smoothsteps meeting flat at the joint read as a lump): h = h + 2 (joint − h) · smoothstep((1 − s / length) / 2),
+ * so the joint is the S-curve's middle (steepest, the same slope from both lines) and the far end meets h flat.
  */
+export interface EndEase { readonly joint: number; readonly centred?: boolean }
 export interface Profile {
   readonly h: number
-  readonly start?: { readonly joint: number; readonly length: number | 'all' }
-  readonly end?: { readonly joint: number; readonly length: number }
+  readonly start?: EndEase & { readonly length: number | 'all' }
+  readonly end?: EndEase & { readonly length: number }
 }
 
 /** What a piece of ink is drawn for: a line, or an arc join's arc (which belongs to both its lines). */
@@ -264,8 +267,9 @@ function radiiAlong(points: readonly Vec[], pr: Profile, tol: number): { pts: Ve
   if (pr.end && le > 0) spans.push({ s0: L - le, s1: L, d: Math.abs(pr.h - pr.end.joint) })
   const hAt = (at: number) => {
     let h = pr.h
-    if (pr.start && ls > 0 && at < ls) h += (pr.start.joint - pr.h) * (1 - smoothstep(at / ls))
-    if (pr.end && le > 0 && at > L - le) h += (pr.end.joint - pr.h) * (1 - smoothstep((L - at) / le))
+    const ease = (e: EndEase, u: number) => e.centred ? 2 * (e.joint - pr.h) * smoothstep((1 - u) / 2) : (e.joint - pr.h) * (1 - smoothstep(u))
+    if (pr.start && ls > 0 && at < ls) h += ease(pr.start, at / ls)
+    if (pr.end && le > 0 && at > L - le) h += ease(pr.end, (L - at) / le)
     return h
   }
   const pts: Vec[] = [points[0]!], radii = [hAt(0)]
@@ -528,8 +532,8 @@ export function createInkCache(opts: InkOptions = {}) {
         return e.piece
       }
       // smooth and bound joins between visible lines (Slack 1791804157, dot 1791804198; bound since bowen 1791817201):
-      // unequal widths ease at the joint to the average, h(s) = h_p + (h_i − h_p)·σ(s/λ), s measured from the joint's
-      // end of each line, λ = half the zone's 限长后长度 when the view's zones are given (default wider² / narrower,
+      // unequal widths ease through one S-curve centred on the joint (the average there), on each line
+      // h(s) = h_i + 2 (h_p − h_i)·σ((1 − s/λ) / 2), s measured from the joint's end (`centred`; bowen 1791817874), λ = half the zone's 限长后长度 when the view's zones are given (default wider² / narrower,
       // manual per view; already ≤ each line's length / 3), else min(3 × the wider full width, each line's length / 3)
       // — the same λ on both sides. The rule enters the line's cache key, so a neighbour's new width or visibility
       // rebuilds this line too. Several such joins at one end: the first rules the easing (all of them join the group).
@@ -537,7 +541,7 @@ export function createInkCache(opts: InkOptions = {}) {
       const curveOf = new Map(geometry.lines.map(g => [g.id, g.curve] as const)), lengthOf = new Map<string, number>()
       const length = (id: string) => lengthOf.get(id) ?? lengthOf.set(id, ((ps: Vec[]) => ps.slice(1).reduce((t, p, i) => t + len(sub(p, ps[i]!)), 0))(flatten(curveOf.get(id)!, 0.01).points)).get(id)!
       const smooth = (snapshot.joins ?? []).filter(j => (j.mode === 'smooth' || j.mode === 'bound') && visible(j.lines[0]) && visible(j.lines[1]) && curveOf.has(j.lines[0]) && curveOf.has(j.lines[1]))
-      const ends = new Map<string, { start?: { joint: number; length: number }; end?: { joint: number; length: number } }>()
+      const ends = new Map<string, { start?: EndEase & { length: number }; end?: EndEase & { length: number } }>()
       for (const j of smooth) {
         const [p, q] = j.lines.map(id => visible(id)!), hp = (p.stroke.width + q.stroke.width) / 4
         if (p.stroke.width === q.stroke.width) continue
@@ -546,7 +550,7 @@ export function createInkCache(opts: InkOptions = {}) {
         if (!(lambda > 0)) continue
         for (const l of [p, q]) {
           const at = l.a === j.point ? 'start' : l.b === j.point ? 'end' : undefined, e = ends.get(l.id) ?? {}
-          if (at && !e[at]) { e[at] = { joint: hp, length: lambda }; ends.set(l.id, e) }
+          if (at && !e[at]) { e[at] = { joint: hp, length: lambda, centred: true }; ends.set(l.id, e) }
         }
       }
       // cusp joins (dot 1791804679): the tip from `cuspTip`; O3 / straight-on unequal widths ease like a smooth join

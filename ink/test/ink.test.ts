@@ -235,12 +235,15 @@ describe('smooth joins — one outline; unequal widths ease to the average at th
     expect(ink.groups.length).toBe(1)
     expect(ink.groups[0]!.loops.length).toBe(1)
   })
-  it('4 and 8: both 6 wide at the joint, 5 at s = λ/2 on the narrow side, back to 4 and 8 beyond λ (λ = min(24, 20, 20) = 20)', () => {
+  it('4 and 8: both 6 wide at the joint, one S-curve centred there — 4 + 4·σ(¼) = 4.625 at s = λ/2 on the narrow side (bowen 1791817874), back to 4 and 8 beyond λ (λ = min(24, 20, 20) = 20)', () => {
     const d = chain([4, 8]), ink = build(d.geometry(), d.snapshot())
     expect(ink.diagnostics.every(x => x.status === 'unproven')).toBe(true)
     expect(section(of(ink, 'l0').loops, 60)).toBeCloseTo(6, 1)
     expect(section(of(ink, 'l1').loops, 60)).toBeCloseTo(6, 1)
-    expect(section(of(ink, 'l0').loops, 50)).toBeCloseTo(5, 1)
+    expect(section(of(ink, 'l0').loops, 50)).toBeCloseTo(4.625, 1)
+    // the joint is the steepest point, the same slope from both lines (no flat step there): widths just either side
+    expect(section(of(ink, 'l1').loops, 61) - 6).toBeCloseTo(6 - section(of(ink, 'l0').loops, 59), 1)
+    expect(section(of(ink, 'l1').loops, 61) - 6).toBeGreaterThan(0.1) // ≈ 0.15 (slope 2 · 1.5 · 1 / 20); the old flat meeting gave ≈ 0.015
     expect(section(of(ink, 'l0').loops, 30)).toBeCloseTo(4, 1)
     expect(section(of(ink, 'l1').loops, 90)).toBeCloseTo(8, 1)
     expect(ink.groups[0]!.loops.length).toBe(1)
