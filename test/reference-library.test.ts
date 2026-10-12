@@ -1,6 +1,7 @@
 // The picture library (docs/reference-images-plan.md §10; bowen 1791725516, 1791726456; dot 1791725852,
 // 1791725888): one copy of each picture's content, placements naming it; version 6, and the one
 // conversion from version 5.
+import { widthsOnLines } from './old-files'
 import { describe, it, expect } from 'vitest'
 import { Core, save, open, Refusal, type ReferenceInput } from '../src'
 
@@ -17,7 +18,7 @@ const VIEWS = ['view:0,0', 'view:-90,0', 'view:90,0', 'view:0,45', 'view:0,-45',
 const all = (d: Core) => VIEWS.flatMap(v => d.in(v).references())
 /** A version-5 file of the same drawing: every picture inline, no library. */
 function asV5(text: string): string {
-  const f = JSON.parse(text), lib = new Map<string, string>(f.document.reference.library.map((a: { id: string; src: string }) => [a.id, a.src]))
+  const f = widthsOnLines(JSON.parse(text)) as ReturnType<typeof JSON.parse>, lib = new Map<string, string>(f.document.reference.library.map((a: { id: string; src: string }) => [a.id, a.src]))
   f.version = 5
   f.document.reference = { images: f.document.reference.images.map(({ asset, ...rest }: { asset: string }) => ({ ...rest, src: lib.get(asset) })) }
   return JSON.stringify(f)

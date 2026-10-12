@@ -91,6 +91,15 @@ export function fromV8(doc: unknown): unknown {
     const widths: Record<string, number> = {}
     for (const p of points) if (typeof p.id === 'string') widths[p.id] = 1
     const seen = new Set<string>()
+    // every old width checked as the version 8 reader checked it, before any is merged: a bad one refuses the file
+    // instead of being covered by a neighbour's width or the default (dot 1791821589)
+    const ok = (w: unknown) => typeof w === 'number' && Number.isFinite(w) && w > 0
+    for (const [id, l] of Object.entries(Ls)) {
+      const st = l && typeof l === 'object' ? l.stroke : undefined
+      if (!st || typeof st !== 'object') continue // refused by the reader as for any file
+      if (!ok(st.width)) throw new Error(`open-failed: line ${id} has a stroke width that is not a positive number in ${String(L.key)}`)
+      if (st.widthB !== undefined && !ok(st.widthB)) throw new Error(`open-failed: line ${id} has a stroke end width that is not a positive number in ${String(L.key)}`)
+    }
     for (const l of lines) {
       const st = typeof l.id === 'string' ? Ls[l.id]?.stroke : undefined
       if (!st || typeof st.width !== 'number') continue

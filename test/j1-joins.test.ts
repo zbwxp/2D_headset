@@ -2,6 +2,7 @@
 // is a join ('bound'), made in the step that connects two lines as one; each point's joins are an
 // ordered list (new on top, a re-set pair keeps its place, reorderable); a bind keeps the removed
 // point's joins; old files gain 'bound' at two-line points.
+import { widthsOnLines } from './old-files'
 import { describe, it, expect } from 'vitest'
 import { Core, save, open, type Vec } from '../src'
 
@@ -120,7 +121,7 @@ describe('save and open', () => {
   it('a version 6 file gains a bound join at each point with exactly two line ends and no join; forks gain none', () => {
     const d = doc()
     d.edit(e => { e.line('a', at('p0', 0), at('p', 10)); e.line('b', 'p', at('p1', 20)); e.line('c', 'p1', at('p2', 30)); e.line('f', 'p1', at('p3', 20, 10)) })
-    const v6 = JSON.parse(save(d))
+    const v6 = widthsOnLines(JSON.parse(save(d))) as ReturnType<typeof JSON.parse>
     v6.version = 6
     v6.document.joins.rows = []
     const opened = open(JSON.stringify(v6))

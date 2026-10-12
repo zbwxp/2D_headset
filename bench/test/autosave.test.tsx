@@ -8,6 +8,7 @@ import { createRoot } from 'react-dom/client'
 import { Core, save, open, type Editor } from '../../src'
 import { App } from '../src/app'
 import { resetPage, CURRENT, type Store } from '../../autosave'
+import { widthsOnLines } from '../../test/old-files'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 class Pt { constructor(public x = 0, public y = 0) {} matrixTransform() { return this } }
@@ -74,7 +75,7 @@ describe('autosave in the bench', () => {
     const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
     const st = storedDrawing(), d = open(st.text)
     for (const v of ['view:0,0', 'view:90,0']) d.editIn(v, e => e.placeReference({ id: `${st.line}-${v}`, view: v, src: PNG, width: 40, height: 20, x: 3, y: 4, scale: 1, angle: 10, opacity: 0.5, visible: true, flipped: v === 'view:90,0' }))
-    const f = JSON.parse(save(d)), lib = new Map(f.document.reference.library.map((a: { id: string; src: string }) => [a.id, a.src]))
+    const f = widthsOnLines(JSON.parse(save(d))) as ReturnType<typeof JSON.parse>, lib = new Map(f.document.reference.library.map((a: { id: string; src: string }) => [a.id, a.src]))
     f.version = 5
     f.document.reference = { images: f.document.reference.images.map(({ asset, ...rest }: { asset: string }) => ({ ...rest, src: lib.get(asset) })) }
     const m = memoryStore(JSON.stringify(f))

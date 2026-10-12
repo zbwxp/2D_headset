@@ -63,6 +63,20 @@ describe('widths belong to points', () => {
     expect(back.in('view:90,0').snapshot().points.map(p => p.width)).toEqual([1, 1, 1])
     expect(JSON.parse(save(back)).version).toBe(9)
   })
+  it('a version 8 file with a bad old width is refused, not opened with another width (dot 1791821589)', () => {
+    const d = pair()
+    const v9 = JSON.parse(save(d)), lines = v9.document.network.lines as { id: string; a: string; b: string }[]
+    for (const L of v9.document.network.shapes.layers) { for (const l of lines) L.lines[l.id].stroke = { width: 1, profile: 'uniform' }; delete L.widths }
+    v9.version = 8
+    const front = v9.document.network.shapes.layers.find((L: { key: string }) => L.key === 'view:0,0')
+    for (const [field, value, why] of [['width', 'wide', /stroke width that is not a positive number/], ['width', -2, /stroke width that is not a positive number/], ['widthB', -1, /end width that is not a positive number/], ['widthB', 'x', /end width that is not a positive number/]] as const) {
+      const f = structuredClone(v9)
+      f.document.network.shapes.layers.find((L: { key: string }) => L.key === 'view:0,0').lines.l1.stroke[field] = value
+      expect(() => open(JSON.stringify(f))).toThrow(why)
+    }
+    expect(front).toBeDefined()
+    expect(() => open(JSON.stringify(v9))).not.toThrow()
+  })
   it('copied and pasted with their points', () => {
     const d = pair()
     d.edit(e => e.lineStroke('l0', { width: 4, widthB: 1, profile: 'uniform' }))
