@@ -20,7 +20,20 @@ export interface InkInput {
   readonly arcs: readonly { readonly key: string; readonly lines: readonly [string, string]; readonly curve: Cubic }[]
 }
 export interface InkLines {
-  readonly lines: readonly { readonly id: string; readonly stroke: { readonly width: number }; readonly state: { readonly visible: boolean } }[]
+  readonly lines: readonly { readonly id: string; readonly a: string; readonly b: string; readonly stroke: { readonly width: number }; readonly state: { readonly visible: boolean } }[]
+  /** The joins; smooth ones join their lines' ink and ease unequal widths (cusp: a later step). */
+  readonly joins?: readonly { readonly point: string; readonly lines: readonly [string, string]; readonly mode: string }[]
+}
+
+/**
+ * A half-width along a centre curve: `h`, except where an end eases — from `joint` at that end to `h` over `length`
+ * of arc length (measured along the flattened curve; 'all' = the whole curve), by smoothstep (slope 0 at both ends of
+ * the span).
+ */
+export interface Profile {
+  readonly h: number
+  readonly start?: { readonly joint: number; readonly length: number | 'all' }
+  readonly end?: { readonly joint: number; readonly length: number }
 }
 
 /** What a piece of ink is drawn for: a line, or an arc join's arc (which belongs to both its lines). */
@@ -236,17 +249,34 @@ const hullOf = (ps: Vec[]): Vec[] => {
   return [...lower.slice(0, -1), ...upper.slice(0, -1)]
 }
 /**
- * A polyline's points with the half-width h(u) = h0 + (h1 − h0)·smoothstep(u) at each, u the fraction of its length,
- * split so that between two points h is within `tol` of its linear interpolation (|h″| ≤ 6|h1 − h0|, so the
- * interpolation error over a step δu is ≤ δu²·6|h1 − h0|/8).
+ * A polyline's points with the profile's half-width at each, split exactly at each span's end (s = λ) and, inside a
+ * span, so that between two points h is within `tol` of its linear interpolation (|h″| ≤ 6|Δh|/λ², so the error over
+ * a step δs is ≤ δs²·6|Δh|/(8λ²)).
  */
-function tapered(points: readonly Vec[], h0: number, h1: number, tol: number): { pts: Vec[]; radii: number[] } {
-  const L = points.slice(1).reduce((t, p, i) => t + len(sub(p, points[i]!)), 0), du = Math.sqrt(8 * tol / (6 * Math.abs(h1 - h0)))
-  const pts: Vec[] = [points[0]!], radii = [h0]
+function radiiAlong(points: readonly Vec[], pr: Profile, tol: number): { pts: Vec[]; radii: number[] } {
+  const L = points.slice(1).reduce((t, p, i) => t + len(sub(p, points[i]!)), 0)
+  const spans: { s0: number; s1: number; d: number }[] = []
+  const ls = pr.start ? (pr.start.length === 'all' ? L : Math.min(pr.start.length, L)) : 0, le = pr.end ? Math.min(pr.end.length, L) : 0
+  if (pr.start && ls > 0) spans.push({ s0: 0, s1: ls, d: Math.abs(pr.h - pr.start.joint) })
+  if (pr.end && le > 0) spans.push({ s0: L - le, s1: L, d: Math.abs(pr.h - pr.end.joint) })
+  const hAt = (at: number) => {
+    let h = pr.h
+    if (pr.start && ls > 0 && at < ls) h += (pr.start.joint - pr.h) * (1 - smoothstep(at / ls))
+    if (pr.end && le > 0 && at > L - le) h += (pr.end.joint - pr.h) * (1 - smoothstep((L - at) / le))
+    return h
+  }
+  const pts: Vec[] = [points[0]!], radii = [hAt(0)]
   let at = 0
   for (let i = 0; i + 1 < points.length; i++) {
-    const a = points[i]!, b = points[i + 1]!, l = len(sub(b, a)), n = L > 0 ? Math.max(1, Math.ceil(l / L / du)) : 1
-    for (let j = 1; j <= n; j++) { pts.push(lerp(a, b, j / n)); radii.push(h0 + (h1 - h0) * smoothstep(L > 0 ? Math.min(1, (at + l * j / n) / L) : 1)) }
+    const a = points[i]!, b = points[i + 1]!, l = len(sub(b, a))
+    const cuts = new Set<number>([1])
+    for (const sp of spans) {
+      if (at + l <= sp.s0 || at >= sp.s1 || !sp.d) continue
+      const step = Math.sqrt(8 * tol / (6 * sp.d)) * (sp.s1 - sp.s0), n = Math.max(1, Math.ceil(l / step))
+      for (let j = 1; j < n; j++) cuts.add(j / n)
+    }
+    for (const sp of spans) for (const x of [sp.s0, sp.s1]) if (l > 0 && x > at && x < at + l) cuts.add((x - at) / l)
+    for (const f of [...cuts].sort((x, y) => x - y)) { pts.push(lerp(a, b, f)); radii.push(hAt(Math.min(L, at + l * f))) }
     at += l
   }
   return { pts, radii }
@@ -256,9 +286,10 @@ function tapered(points: readonly Vec[], h0: number, h1: number, tol: number): {
 export function lineInk(id: string, curve: Cubic, width: number, opts: InkOptions = {}) { return sweep({ kind: 'line', id }, curve, width, opts) }
 
 /** A centre curve swept by a disc of the given width: a line's ink, or an arc's at its lines' width. */
-export function sweep(source: InkSource, curve: Cubic, widths: number | readonly [number, number], opts: InkOptions = {}): { piece?: InkPiece; diagnostic: InkDiagnostic } {
-  if (typeof widths !== 'number' && widths[0] !== widths[1]) return taperedSweep(source, curve, widths, opts)
-  const width = typeof widths === 'number' ? widths : widths[0], h = width / 2
+export function sweep(source: InkSource, curve: Cubic, widths: number | readonly [number, number] | Profile, opts: InkOptions = {}): { piece?: InkPiece; diagnostic: InkDiagnostic } {
+  const pr: Profile = typeof widths === 'number' ? { h: widths / 2 } : 'h' in widths ? widths : { h: widths[1] / 2, start: { joint: widths[0] / 2, length: 'all' } }
+  if ((pr.start && pr.start.joint !== pr.h) || (pr.end && pr.end.joint !== pr.h)) return taperedSweep(source, curve, pr, opts)
+  const width = pr.h * 2, h = pr.h
   if (!(h > 0) || !Number.isFinite(h)) return { diagnostic: { source, status: 'fallback', reason: 'width not usable' } }
   const eps = Math.min(opts.max ?? 0.05, Math.max(opts.min ?? 1e-4, (opts.relative ?? 0.01) * width))
   const flat = flatten(curve, eps / 2)
@@ -309,29 +340,31 @@ export function sweep(source: InkSource, curve: Cubic, widths: number | readonly
 }
 
 /**
- * An arc between lines of different widths (Slack 1791803733, dot 1791803768): the region swept by a disc whose half-width eases
- * from the start's to the end's with u = the arc length accumulated along the flattened arc (not the Bézier parameter),
- * by smoothstep — slope 0 at both ends, so locally the ink meets each line's edges tangentially (a larger disc nearby
- * may still cover the joint: no claim of "no step" for every input). A piecewise approximation of that sweep — the
- * union of the convex hulls of consecutive discs — so the status stays 'unproven'. ε from the narrower
- * width, split as flattening ε/4, the easing's interpolation ε/4, the discs' polygons ε/4, rounding ε/8. Checked by the
- * output checks and the band against a finer reference (flattening and interpolation each ≤ ε/16).
+ * A centre curve whose width eases (`Profile`): an arc between lines of different widths (Slack 1791803733, dot
+ * 1791803768 — over the whole arc, from lines[0]'s width to lines[1]'s), or a line's end at a smooth join with a line
+ * of another width (Slack 1791804157, dot 1791804198 — over λ, to the average at the joint). s is the arc length
+ * accumulated along the flattened curve (not the Bézier parameter); smoothstep has slope 0 at both ends of a span, so
+ * locally the ink meets the constant part tangentially (a larger disc nearby may still cover the joint: no claim of
+ * "no step" for every input). A piecewise approximation of that variable-disc sweep — the union of the convex hulls of
+ * consecutive discs — so the status stays 'unproven'. ε from the narrowest width, split as flattening, the easing's
+ * interpolation, the discs' polygons ε/4 each, rounding ε/8. Checked by the output checks and the band against a finer
+ * reference (flattening and interpolation each ≤ ε/16).
  */
-function taperedSweep(source: InkSource, curve: Cubic, widths: readonly [number, number], opts: InkOptions): { piece?: InkPiece; diagnostic: InkDiagnostic } {
-  const [h0, h1] = [widths[0] / 2, widths[1] / 2], width = Math.min(widths[0], widths[1])
-  if (!(width > 0) || !Number.isFinite(h0) || !Number.isFinite(h1)) return { diagnostic: { source, status: 'fallback', reason: 'width not usable' } }
+function taperedSweep(source: InkSource, curve: Cubic, pr: Profile, opts: InkOptions): { piece?: InkPiece; diagnostic: InkDiagnostic } {
+  const hs = [pr.h, pr.start?.joint ?? pr.h, pr.end?.joint ?? pr.h], width = 2 * Math.min(...hs), hMax = Math.max(...hs)
+  if (!(width > 0) || !hs.every(Number.isFinite)) return { diagnostic: { source, status: 'fallback', reason: 'width not usable' } }
   const eps = Math.min(opts.max ?? 0.05, Math.max(opts.min ?? 1e-4, (opts.relative ?? 0.01) * width))
-  const flat = flatten(curve, eps / 4), t = tapered(flat.points, h0, h1, eps / 4)
-  const maxAbs = Math.max(...t.pts.map(p => Math.max(Math.abs(p.x), Math.abs(p.y)))) + Math.max(h0, h1)
+  const flat = flatten(curve, eps / 4), t = radiiAlong(flat.points, pr, eps / 4)
+  const maxAbs = Math.max(...t.pts.map(p => Math.max(Math.abs(p.x), Math.abs(p.y)))) + hMax
   const s = Math.min(Math.pow(2, Math.floor(Math.log2(2 ** 50 / Math.max(1, maxAbs)))), Math.pow(2, Math.ceil(Math.log2(4 * Math.SQRT2 / eps))))
   const toI = (p: Vec): Point64 => ({ x: Math.round(p.x * s), y: Math.round(p.y * s) })
-  const hulls = t.pts.length < 2 ? [disc(t.pts[0]!, Math.max(h0, h1), eps / 4)]
+  const hulls = t.pts.length < 2 ? [disc(t.pts[0]!, hMax, eps / 4)]
     : t.pts.slice(1).map((b, i) => hullOf([...disc(t.pts[i]!, t.radii[i]!, eps / 4), ...disc(b, t.radii[i + 1]!, eps / 4)]))
   const paths = union(hulls.map(h => h.map(toI)), FillRule.NonZero)
   if (!paths.length) return { diagnostic: { source, status: 'fallback', reason: 'the library returned no outline' } }
   const loops = paths.map(p => p.map(q => ({ x: q.x / s, y: q.y / s })))
   const defect = outputDefect(paths)
-  const ref = tapered(flatten(curve, eps / 16).points, h0, h1, eps / 16)
+  const ref = radiiAlong(flatten(curve, eps / 16).points, pr, eps / 16)
   const bandError = ref.pts.length < 2 ? 0 : band(loops, ref.pts, ref.radii, eps)
   const ok = bandError === null ? 'incomplete' as const : bandError <= eps - eps / 8
   const evidence: InkEvidence = { epsilon: eps, flattening: { bound: flat.bound, floorHit: flat.floorHit }, arcTolerance: eps / 4, scale: s, inputRounding: Math.SQRT2 / (2 * s), bandError, checks: { simple: !defect, band: ok, area: 'n/a' } }
@@ -376,7 +409,7 @@ export function createInkCache(opts: InkOptions = {}) {
     build(geometry: InkInput, snapshot: InkLines): Ink {
       const byId = new Map(snapshot.lines.map(l => [l.id, l] as const)), seen = new Set<string>()
       const pieces: InkPiece[] = [], diagnostics: InkDiagnostic[] = []
-      const one = (source: InkSource, curve: Cubic, width: number | readonly [number, number]) => {
+      const one = (source: InkSource, curve: Cubic, width: number | readonly [number, number] | Profile) => {
         const at = JSON.stringify([source.kind, source.id])
         seen.add(at)
         const key = JSON.stringify([curve, width])
@@ -389,14 +422,34 @@ export function createInkCache(opts: InkOptions = {}) {
         diagnostics.push(e.diagnostic)
         return e.piece
       }
+      // smooth joins between visible lines (Slack 1791804157, dot 1791804198): unequal widths ease at the joint to the
+      // average, h(s) = h_p + (h_i − h_p)·σ(s/λ), s measured from the joint's end of each line, λ = min(3 × the wider
+      // full width, each line's length / 3) — the same λ on both sides. The rule enters the line's cache key, so a
+      // neighbour's new width or visibility rebuilds this line too. Several smooth joins at one end: the first rules
+      // the easing (all of them join the group).
+      const visible = (id: string) => { const l = byId.get(id); return l && l.state.visible ? l : undefined }
+      const curveOf = new Map(geometry.lines.map(g => [g.id, g.curve] as const)), lengthOf = new Map<string, number>()
+      const length = (id: string) => lengthOf.get(id) ?? lengthOf.set(id, ((ps: Vec[]) => ps.slice(1).reduce((t, p, i) => t + len(sub(p, ps[i]!)), 0))(flatten(curveOf.get(id)!, 0.01).points)).get(id)!
+      const smooth = (snapshot.joins ?? []).filter(j => j.mode === 'smooth' && visible(j.lines[0]) && visible(j.lines[1]) && curveOf.has(j.lines[0]) && curveOf.has(j.lines[1]))
+      const ends = new Map<string, { start?: { joint: number; length: number }; end?: { joint: number; length: number } }>()
+      for (const j of smooth) {
+        const [p, q] = j.lines.map(id => visible(id)!), hp = (p.stroke.width + q.stroke.width) / 4
+        if (p.stroke.width === q.stroke.width) continue
+        const lambda = Math.min(3 * Math.max(p.stroke.width, q.stroke.width), length(p.id) / 3, length(q.id) / 3)
+        for (const l of [p, q]) {
+          const at = l.a === j.point ? 'start' : l.b === j.point ? 'end' : undefined, e = ends.get(l.id) ?? {}
+          if (at && !e[at]) { e[at] = { joint: hp, length: lambda }; ends.set(l.id, e) }
+        }
+      }
       const pieceOf = new Map<string, InkPiece>()
       for (const g of geometry.lines) {
         const l = byId.get(g.id)
         if (!l || !l.state.visible) continue
-        const p = one({ kind: 'line', id: g.id }, g.curve, l.stroke.width)
+        const e = ends.get(g.id)
+        const p = one({ kind: 'line', id: g.id }, g.curve, e ? { h: l.stroke.width / 2, ...e } : l.stroke.width)
         if (p) pieceOf.set(g.id, p)
       }
-      // groups: the lines an arc joins, through as many arcs as connect them (union–find over the pieces)
+      // groups: the lines an arc or a smooth join joins, through as many joins as connect them (union–find over the pieces)
       const parent = new Map<InkPiece, InkPiece>()
       const find = (p: InkPiece): InkPiece => { const q = parent.get(p) ?? p; if (q === p) return p; const r = find(q); parent.set(p, r); return r }
       const join = (a: InkPiece, b: InkPiece) => { const ra = find(a), rb = find(b); if (ra !== rb) parent.set(rb, ra) }
@@ -409,6 +462,7 @@ export function createInkCache(opts: InkOptions = {}) {
         if (!p) continue
         for (const id of a.lines) { const q = pieceOf.get(id); if (q) join(p, q) }
       }
+      for (const j of smooth) { const p = pieceOf.get(j.lines[0]), q = pieceOf.get(j.lines[1]); if (p && q) join(p, q) }
       const members = new Map<InkPiece, InkPiece[]>()
       for (const p of pieces) { const r = find(p); (members.get(r) ?? members.set(r, []).get(r)!).push(p) }
       const groups: InkGroup[] = [], live = new Set<string>()

@@ -211,6 +211,66 @@ describe('arc joins — the arc inked at its lines\' width, the lines and the ar
   })
 })
 
+describe('smooth joins — one outline; unequal widths ease to the average at the joint (Slack 1791804157, dot 1791804198)', () => {
+  // the ink's vertical extent at x: where the loops' edges cross the vertical line x
+  const section = (loops: readonly (readonly Vec[])[], x: number) => {
+    const ys: number[] = []
+    for (const l of loops) l.forEach((a, i) => { const b = l[(i + 1) % l.length]!; if ((a.x - x) * (b.x - x) <= 0 && a.x !== b.x) ys.push(a.y + (b.y - a.y) * (x - a.x) / (b.x - a.x)) })
+    return Math.max(...ys) - Math.min(...ys)
+  }
+  /** Collinear lines along y = 0 through x = 0, 60, 120, 180, with the given widths, smooth joins between neighbours. */
+  const chain = (widths: number[]) => {
+    const d = new Core()
+    d.edit(e => {
+      e.layer('L')
+      widths.forEach((_, i) => sk(e).point('p' + i, 'L', P(60 * i))); sk(e).point('p' + widths.length, 'L', P(60 * widths.length))
+      widths.forEach((w, i) => { sk(e).line('l' + i, 'p' + i, 'p' + (i + 1)); e.lineStroke('l' + i, { width: w, profile: 'uniform' } as never) })
+      for (let i = 1; i < widths.length; i++) e.join('p' + i, 'l' + (i - 1), 'l' + i, { mode: 'smooth' })
+    })
+    return d
+  }
+  const of = (ink: ReturnType<typeof build>, id: string) => ink.pieces.find(p => p.source.id === id)!
+  it('equal widths: the two lines are one group, one loop', () => {
+    const ink = build(chain([4, 4]).geometry(), chain([4, 4]).snapshot())
+    expect(ink.groups.length).toBe(1)
+    expect(ink.groups[0]!.loops.length).toBe(1)
+  })
+  it('4 and 8: both 6 wide at the joint, 5 at s = λ/2 on the narrow side, back to 4 and 8 beyond λ (λ = min(24, 20, 20) = 20)', () => {
+    const d = chain([4, 8]), ink = build(d.geometry(), d.snapshot())
+    expect(ink.diagnostics.every(x => x.status === 'unproven')).toBe(true)
+    expect(section(of(ink, 'l0').loops, 60)).toBeCloseTo(6, 1)
+    expect(section(of(ink, 'l1').loops, 60)).toBeCloseTo(6, 1)
+    expect(section(of(ink, 'l0').loops, 50)).toBeCloseTo(5, 1)
+    expect(section(of(ink, 'l0').loops, 30)).toBeCloseTo(4, 1)
+    expect(section(of(ink, 'l1').loops, 90)).toBeCloseTo(8, 1)
+    expect(ink.groups[0]!.loops.length).toBe(1)
+  })
+  it('a chain 4 – 8 – 4: the middle line eases at both ends and is back to 8 in its middle', () => {
+    const d = chain([4, 8, 4]), ink = build(d.geometry(), d.snapshot()), mid = of(ink, 'l1').loops
+    expect(section(mid, 60)).toBeCloseTo(6, 1)
+    expect(section(mid, 90)).toBeCloseTo(8, 1)
+    expect(section(mid, 120)).toBeCloseTo(6, 1)
+    expect(ink.groups.length).toBe(1)
+  })
+  it('a neighbour\'s new width or visibility rebuilds this line\'s ink (the easing rule is in its cache key)', () => {
+    const d = chain([4, 8]), cache = createInkCache(), first = cache.build(d.geometry(), d.snapshot())
+    d.edit(e => e.lineStroke('l1', { width: 6, profile: 'uniform' } as never))
+    const wider = cache.build(d.geometry(), d.snapshot())
+    expect(of(wider, 'l0')).not.toBe(of(first, 'l0'))
+    expect(section(of(wider, 'l0').loops, 60)).toBeCloseTo(5, 1)
+    d.edit(e => e.lineState('l1', { visible: false }))
+    const hidden = cache.build(d.geometry(), d.snapshot())
+    expect(section(of(hidden, 'l0').loops, 59)).toBeCloseTo(4, 1)
+  })
+  it('a smooth join and an arc join on one line: one group', () => {
+    const d = chain([4, 4, 4])
+    d.edit(e => { e.removeJoin('p2', 'l1', 'l2'); e.move([{ id: 'p3', target: P(120, 60) }]); e.join('p2', 'l1', 'l2', { mode: 'arc', radius: 10 }) })
+    const ink = build(d.geometry(), d.snapshot())
+    expect(ink.groups.length).toBe(1)
+    expect(ink.groups[0]!.pieces.map(p => p.source.kind).sort()).toEqual(['arc', 'line', 'line', 'line'])
+  })
+})
+
 describe('the upstream defects, reproduced on the pinned clipper2-ts, are caught by the output checks (dot 1791800973)', () => {
   const fx = (n: string) => JSON.parse(readFileSync(new URL(`./fixtures/upstream-${n}.json`, import.meta.url), 'utf8'))
   it('Clipper2 #1085 (clipper2-ts #30): a union with a zero-width bridge', () => {
