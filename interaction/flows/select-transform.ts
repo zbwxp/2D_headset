@@ -34,6 +34,8 @@ export function selectTransform(ctx: Ctx): SelectTransform {
   // moving the selection is a move/ session (docs/move-plan.md): a drag or a key run, one at a time; what is
   // shown meanwhile is `moving` (the units taken at begin, the offset so far); one translate at the end
   const mover = createMover()
+  /** The selection's arrows: 1 drawing unit, Shift 10, Option / Ctrl 0.1 (bowen 1791733125, 1791733775) — this caller's sizes (bowen 1791769146). */
+  const SELECTION_STEPS = { step: 1, long: 10, short: 0.1 }
   let moving: { core: Core; view: string; units: Unit[]; offset: Vec } | null = null
   /** The selection as a move target: taken at begin (drawing, view, units), re-checked at commit (dot 1791733489). */
   const selectionTarget = (): Target | undefined => {
@@ -163,7 +165,7 @@ export function selectTransform(ctx: Ctx): SelectTransform {
     get dragging() { return !!mover.running || !!box },
     keyDown(key, mods) {
       if (ctx.tool() !== 'V' && ctx.tool() !== 'A') return false
-      return mover.keyDown(selectionTarget, { key, repeat: mods.repeat, shift: mods.shift, alt: mods.alt, ctrl: mods.ctrl })
+      return mover.keyDown(selectionTarget, { key, repeat: mods.repeat, shift: mods.shift, alt: mods.alt, ctrl: mods.ctrl }, SELECTION_STEPS)
     },
     keyUp(key) { mover.keyUp(key) },
     startBox(at, mods, clear) { box = { ...ctx.owned(), from: { x: at.x, y: at.y }, to: { x: at.x, y: at.y }, mods: { ...mods }, clear } },

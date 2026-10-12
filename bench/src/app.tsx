@@ -157,6 +157,9 @@ export function App() {
   // playback (stage 3a): the pose shown, or null when editing; `poseGen` counts entries (a file
   // read started before one is dropped), `openSeq` counts Opens (only the latest may open)
   const [pose, setPose] = useState<null | { yaw: number; pitch: number }>(null)
+  // the newest pose for the key listener, which is installed once per ix (dot 1791769087); set again by each key step
+  const poseRef = useRef(pose)
+  poseRef.current = pose
   const poseGen = useRef(0), openSeq = useRef(0)
   // stage 3b package 5: a playback drag's refusal, shown until the next press, pose change or
   // leaving playback; the drag's ghost (the picked point and where it is dragged); the number
@@ -183,22 +186,32 @@ export function App() {
   const previewNow = useRef(refPreview)
   const [moveRef, setMoveRef] = useState(false)
   const [activeRef, setActiveRef] = useState<null | RefBind>(null)
-  const keyHooks = useRef<{ nudge?: (e: KeyboardEvent) => boolean; afterArrow?: () => void }>({})
+  const keyHooks = useRef<{ nudge?: (e: KeyboardEvent) => boolean; afterArrow?: () => void; poseArrow?: (e: KeyboardEvent) => void }>({})
   // moving by keyboard (docs/move-plan.md): the picture's sessions run here, the selection's in interaction;
   // a key run holds the one gesture slot as `KEYS`, so a canvas press meanwhile is ignored and every cancel path ends it
   const KEYS = -1
   const picMover = useRef(createMover()).current
+  /** The picture's arrows: 1 drawing unit, Shift 10, Option / Ctrl 0.1 — this caller's sizes (bowen 1791769146). */
+  const PICTURE_STEPS = { step: 1, long: 10, short: 0.1 }
+  /**
+   * Playback's arrows turn the view, as the coord grid's point does (bowen 1791768754; docs/keyboard-pose-pan-plan.md):
+   * a `move/` key run whose steps — 1°, Shift 10°, Option / Ctrl 0.1° — each move the pose as it is now.
+   */
+  const poseMover = useRef(createMover()).current
+  const POSE_STEPS = { step: 1, long: 10, short: 0.1 }
   const holdKeys = () => {
     if (gesture.current) return
     const cancel = (why: string) => {
       if (gesture.current?.cancel === cancel) gesture.current = null
-      if (ix.moving() === 'keys') ix.cancel(); else picMover.cancel()
+      if (ix.moving() === 'keys') ix.cancel(); else if (picMover.running) picMover.cancel(); else poseMover.cancel()
       note(`key move cancelled by ${why}`); bump()
     }
     gesture.current = { id: KEYS, right: false, cancel }
   }
   // after every render: a key run that has ended (committed, or ended inside interaction by an undo or a selection change) gives the slot back
-  useEffect(() => { if (gesture.current?.id === KEYS && ix.moving() !== 'keys' && picMover.running !== 'keys') gesture.current = null })
+  useEffect(() => { if (gesture.current?.id === KEYS && ix.moving() !== 'keys' && picMover.running !== 'keys' && poseMover.running !== 'keys') gesture.current = null })
+  /** A press during a pose key run is not ignored: it ends the run (the pose stays) and acts (dot 1791769205). */
+  const endPoseRun = () => { if (gesture.current?.id === KEYS && poseMover.running === 'keys') gesture.current.cancel('a press') }
   // this App's read-only flag and its own logged wrapper: another App mounting, posing or
   // unmounting never touches them (dot 1791686247)
   const posing = useRef(false) // set only by startPose / stopPose, with the pose state
@@ -396,6 +409,7 @@ export function App() {
   const BUTTON_BIT = [1, 4, 2] // button 0 → buttons bit 1 (left), 1 → 4 (middle), 2 → 2 (right)
   const CLICK = 2 // screen px a press may move and still be a click (v1: 7205381 DrawingRoom zoom)
   const onDown = (e: React.PointerEvent) => {
+    endPoseRun()
     if (gesture.current) {
       if (gesture.current.id !== e.pointerId) return // another pointer while a gesture runs: ignored
       gesture.current.cancel('a new press of the same pointer') // its earlier release was missed
@@ -549,13 +563,14 @@ export function App() {
     if (gesture.current && gesture.current.id !== KEYS) return true // a drag runs: one session at a time
     if (!picMover.running && previewNow.current) return true // a panel preview is open
     picMover.keyDown(() => { const r = refNow(activeRef); return r ? pictureTarget(r, { core, gen: refGen.current, id: r.id, src: r.src }, () => true, 'picture move dropped: the picture changed underneath') : undefined },
-      { key: e.key, repeat: e.repeat, shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey })
+      { key: e.key, repeat: e.repeat, shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey }, PICTURE_STEPS)
     if (picMover.running === 'keys') holdKeys()
     return true
   }
   /** The selection's arrows (with V / A): interaction runs them; the bench gives the run the one gesture slot. */
   keyHooks.current.afterArrow = () => { if (ix.moving() === 'keys') holdKeys() }
   const onPoseDown = (e: React.PointerEvent) => {
+    endPoseRun()
     if (gesture.current) {
       if (gesture.current.id !== e.pointerId) return
       gesture.current.cancel('a new press of the same pointer')
@@ -635,12 +650,45 @@ export function App() {
    * updates during its drag never cancel that drag; any other source (a slider, a field) ends a running
    * gesture first — a correction drag (dot 1791696847) or a pad drag. A field being typed into keeps its text.
    */
-  const changePose = (next: { yaw: number; pitch: number }, source: 'pad' | 'slider' | 'yaw-field' | 'pitch-field') => {
-    if (source !== 'pad') gesture.current?.cancel('a pose change')
+  const changePose = (next: { yaw: number; pitch: number }, source: 'pad' | 'keys' | 'slider' | 'yaw-field' | 'pitch-field') => {
+    // the pad's and the keys' own steps never end their own gesture; any other source ends a running one
+    if (source !== 'pad' && source !== 'keys') gesture.current?.cancel('a pose change')
     setCorrRefusal(null); setPose(next)
     setPoseText(t => ({ yaw: source === 'yaw-field' ? t.yaw : String(next.yaw), pitch: source === 'pitch-field' ? t.pitch : String(next.pitch) }))
   }
   const LIMITS = { yaw: 90, pitch: 45 } as const
+  /** The decimal places of a number (up to 10), so a step adds without a float tail and without losing the pose's own decimals. */
+  const places = (n: number) => { for (let d = 0; d <= 10; d++) if (Number(n.toFixed(d)) === n) return d; return 10 }
+  const SHORT_PLACES = places(POSE_STEPS.short)
+  /**
+   * The pose's key run (docs/keyboard-pose-pan-plan.md §1): each preview is turned into the step it adds and applied to
+   * the pose as it is now, on the moved axis only, clamped — no dead travel at a limit (dot 1791769205); ending keeps
+   * the last pose (commit and cancel alike), as the grid does.
+   */
+  const poseTarget = (): Target | undefined => {
+    if (!poseRef.current) return undefined
+    let last = { x: 0, y: 0 }
+    const add = (v: number, d: number, limit: number) => (d === 0 ? v : Math.max(-limit, Math.min(limit, Number((v + d).toFixed(Math.max(places(v), SHORT_PLACES))))))
+    return {
+      begin: () => true,
+      preview: o => {
+        const now = poseRef.current
+        const dx = Number((o.x - last.x).toFixed(SHORT_PLACES)), dy = Number((o.y - last.y).toFixed(SHORT_PLACES))
+        last = o
+        if (!now) return
+        const next = { yaw: add(now.yaw, dx, LIMITS.yaw), pitch: add(now.pitch, -dy, LIMITS.pitch) } // ↑ is +pitch: the grid's top is +45
+        if (next.yaw === now.yaw && next.pitch === now.pitch) return
+        poseRef.current = next
+        changePose(next, 'keys')
+      },
+      commit: () => {},
+      cancel: () => {},
+    }
+  }
+  keyHooks.current.poseArrow = (e: KeyboardEvent) => {
+    poseMover.keyDown(poseTarget, { key: e.key, repeat: e.repeat, shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey }, POSE_STEPS)
+    if (poseMover.running === 'keys') holdKeys()
+  }
   /** A number field's text, and the pose only when it parses to a finite angle in range; "", "-" and the like change nothing. */
   const typePose = (axis: 'yaw' | 'pitch', text: string) => {
     setPoseText(t => ({ ...t, [axis]: text }))
@@ -683,6 +731,14 @@ export function App() {
       if (e.key.toLowerCase() === 'z' && !e.metaKey && !e.ctrlKey && !e.altKey) { if (!e.repeat) toggleZoom(); e.preventDefault(); return }
       // then the write gates: restoring and playback take no other shortcut (dot 1791704242, 1791683911)
       if (restoringNow.current) return
+      // playback: a plain arrow on the canvas turns the view; its default is prevented even when it changes nothing
+      // (a limit, a gesture running), so the page never scrolls; ⌘ + arrow keeps its own behaviour (dot 1791769087)
+      if (posing.current && isArrow(e.key) && !(e.metaKey && !e.ctrlKey)) {
+        e.preventDefault()
+        if (gesture.current && gesture.current.id !== KEYS) return // a drag runs: ignored, and its repeats never start a run
+        keyHooks.current.poseArrow?.(e)
+        return
+      }
       if (posing.current) return
       if (keyHooks.current.nudge?.(e)) return
       if (isArrow(e.key) && gesture.current && gesture.current.id !== KEYS) { e.preventDefault(); return } // a drag runs: one session at a time
@@ -694,7 +750,7 @@ export function App() {
     // a key release ends a key run wherever focus is: no typing check here (dot 1791733489)
     const up = (e: KeyboardEvent) => {
       if ((e.key === 'Shift' || e.key === 'Alt') && hoverAt.current) { hoverAt.current.mods = mods(e); rehover.current() }
-      if (!isArrow(e.key)) return; ix.keyUp(e.key); picMover.keyUp(e.key) }
+      if (!isArrow(e.key)) return; ix.keyUp(e.key); picMover.keyUp(e.key); poseMover.keyUp(e.key) }
     // a key run ends on leaving the window, and when focus moves inside the page to a field or a slider
     const blur = () => { if (gesture.current?.id === KEYS) gesture.current.cancel('leaving the window') }
     const focus = (e: FocusEvent) => {
@@ -771,7 +827,9 @@ export function App() {
             {/* yaw and pitch on one grid (bowen 1791727397): its drag takes the one gesture slot, ending the old gesture first */}
             <PosePad yaw={pose.yaw} pitch={pose.pitch} limits={LIMITS}
               onStart={d => {
-                // as on the canvas: another pointer's running gesture keeps the slot, the press is ignored (dot 1791731833)
+                // as on the canvas: another pointer's running gesture keeps the slot, the press is ignored (dot 1791731833);
+                // a pose key run is ended instead (the pose stays), and the press acts (dot 1791769205)
+                endPoseRun()
                 if (gesture.current && gesture.current.id !== d.pointerId) return false
                 gesture.current?.cancel('a pose pad press'); gesture.current = { id: d.pointerId, right: false, cancel: d.cancel }; return true
               }}

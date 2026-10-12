@@ -16,11 +16,20 @@ export interface Target {
   cancel(): void
 }
 
-/** Arrow keys: 1 unit; Shift ×10; Option (Alt) or Ctrl ×0.1 — the factors multiply (bowen 1791733125, 1791733775). */
-export const STEP = 1
-/** A step in tenths of a unit, a whole number, so a run that comes back to its start sums to exactly zero. */
-const tenthsOf = (mods: { shift?: boolean; alt?: boolean; ctrl?: boolean }) => STEP * 10 * (mods.shift ? 10 : 1) / (mods.alt || mods.ctrl ? 10 : 1)
-export const stepOf = (mods: { shift?: boolean; alt?: boolean; ctrl?: boolean }): number => tenthsOf(mods) / 10
+/**
+ * A key run's sizes, passed in by its caller (bowen 1791769146): the single step, the long one (Shift) and the
+ * short one (Option / Ctrl). `move/` knows the three kinds, never what they measure; Shift with Option / Ctrl
+ * together is the single step.
+ */
+export interface Steps { readonly step: number; readonly long: number; readonly short: number }
+const kindOf = (mods: { shift?: boolean; alt?: boolean; ctrl?: boolean }): keyof Steps =>
+  mods.shift && (mods.alt || mods.ctrl) ? 'step' : mods.shift ? 'long' : mods.alt || mods.ctrl ? 'short' : 'step'
+/** The decimal places of a size (at most 10), or a refusal: sizes are finite, > 0, and decimal (dot 1791769354). */
+function decimalsOf(n: number): number {
+  if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0) throw new Error(`A move step must be a finite number above 0, not ${String(n)}`)
+  for (let d = 0; d <= 10; d++) if (Number(n.toFixed(d)) === n) return d
+  throw new Error(`A move step has at most 10 decimal places, not ${n}`)
+}
 const DIRECTION: Record<string, Vec> = { ArrowLeft: { x: -1, y: 0 }, ArrowRight: { x: 1, y: 0 }, ArrowUp: { x: 0, y: -1 }, ArrowDown: { x: 0, y: 1 } }
 export const isArrow = (key: string) => Object.hasOwn(DIRECTION, key)
 
@@ -36,9 +45,10 @@ export interface Mover {
   release(at: Vec): void
   /**
    * An arrow key went down. A first, real press (not a repeat) with no session running starts a key run on
-   * `target()`; a press or a repeat adds a step to a running key run. True if the key was taken.
+   * `target()` with the sizes `steps` (fixed for the run, checked here: a bad size throws); a real press, or a
+   * repeat of a key whose real press this run took, adds a step. True if the key was taken.
    */
-  keyDown(target: () => Target | undefined, k: KeyInput): boolean
+  keyDown(target: () => Target | undefined, k: KeyInput, steps: Steps): boolean
   /** An arrow key came up: when no arrow is held any more, the key run commits (nothing for a net zero). */
   keyUp(key: string): void
   /** Ends the running session without writing (Esc, blur, a tool or view change, …). */
@@ -48,8 +58,12 @@ export interface Mover {
 }
 
 export function createMover(): Mover {
-  /** A key run counts in whole tenths (`tenths`); a drag's offset is the pointer's displacement. */
-  let session: null | { kind: 'drag' | 'keys'; target: Target; start: Vec; offset: Vec; tenths: { x: number; y: number }; held: Set<string> } = null
+  /**
+   * A key run counts in whole units of 10^-d (`count`), d the most decimal places of its sizes, so mixed sizes
+   * that come back to the start sum to exactly zero (dot 1791769354); a drag's offset is the pointer's displacement.
+   */
+  type Run = { per: number; units: Record<keyof Steps, number>; count: { x: number; y: number }; held: Set<string> }
+  let session: null | { kind: 'drag' | 'keys'; target: Target; start: Vec; offset: Vec; run: Run | null } = null
   /** Ends the session first, then commits: a commit that re-enters or throws finds it ended (dot 1791733489). */
   const finish = (write: boolean) => {
     const s = session
@@ -62,7 +76,7 @@ export function createMover(): Mover {
     get running() { return session?.kind ?? null },
     press(target, at) {
       if (session || !target.begin()) return false
-      session = { kind: 'drag', target, start: { x: at.x, y: at.y }, offset: { x: 0, y: 0 }, tenths: { x: 0, y: 0 }, held: new Set() }
+      session = { kind: 'drag', target, start: { x: at.x, y: at.y }, offset: { x: 0, y: 0 }, run: null }
       return true
     },
     drag(at) {
@@ -75,26 +89,36 @@ export function createMover(): Mover {
       session.offset = { x: at.x - session.start.x, y: at.y - session.start.y }
       finish(true)
     },
-    keyDown(target, k) {
+    keyDown(target, k, steps) {
       if (!isArrow(k.key)) return false
       if (session?.kind === 'drag') return true // one session at a time: keys during a drag are taken and ignored
       if (!session) {
         if (k.repeat) return true // a repeat never starts a session: after a cancel a real press is needed (dot 1791733489)
+        // the sizes are fixed and checked as the run begins (dot 1791769354)
+        const d = Math.max(decimalsOf(steps.step), decimalsOf(steps.long), decimalsOf(steps.short)), per = 10 ** d
+        const units = { step: Math.round(steps.step * per), long: Math.round(steps.long * per), short: Math.round(steps.short * per) }
+        // whole units must stay exact: a size whose count is beyond the safe integers is refused (dot 1791769551)
+        for (const u of Object.values(units)) if (!Number.isSafeInteger(u)) throw new Error(`A move step is too large to count exactly: ${steps.step} / ${steps.long} / ${steps.short}`)
         const t = target()
         if (!t || !t.begin()) return false
-        session = { kind: 'keys', target: t, start: { x: 0, y: 0 }, offset: { x: 0, y: 0 }, tenths: { x: 0, y: 0 }, held: new Set() }
+        session = { kind: 'keys', target: t, start: { x: 0, y: 0 }, offset: { x: 0, y: 0 }, run: { per, units, count: { x: 0, y: 0 }, held: new Set() } }
       }
-      const d = DIRECTION[k.key]!, step = tenthsOf(k)
-      session.held.add(k.key)
-      session.tenths = { x: session.tenths.x + d.x * step, y: session.tenths.y + d.y * step }
-      session.offset = { x: session.tenths.x / 10 || 0, y: session.tenths.y / 10 || 0 }
+      const run = session.run!
+      // a repeat moves only for a key whose real press this run took: an old key's repeats are not this run's (dot 1791769354)
+      if (k.repeat && !run.held.has(k.key)) return true
+      const d = DIRECTION[k.key]!, n = run.units[kindOf(k)]
+      run.held.add(k.key)
+      const count = { x: run.count.x + d.x * n, y: run.count.y + d.y * n }
+      if (!Number.isSafeInteger(count.x) || !Number.isSafeInteger(count.y)) return true // past exact counting: the step is not taken
+      run.count = count
+      session.offset = { x: run.count.x / run.per || 0, y: run.count.y / run.per || 0 }
       session.target.preview(session.offset)
       return true
     },
     keyUp(key) {
       if (session?.kind !== 'keys' || !isArrow(key)) return
-      session.held.delete(key)
-      if (session.held.size === 0) finish(true)
+      session.run!.held.delete(key)
+      if (session.run!.held.size === 0) finish(true)
     },
     cancel() { finish(false) },
   }
