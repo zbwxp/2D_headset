@@ -41,7 +41,8 @@ angles.forEach((deg, r) => cols.forEach(([k0, k1, k], c) => {
     let crossings = 0
     for (let i = 0; i < segs.length; i++) for (let j = i + 1; j < segs.length; j++) if (segCross(segs[i][0], segs[i][1], segs[j][0], segs[j][1])) crossings++
     const rot = rr => P => { const v = sub(P, p); return add(p, [v[0] * Math.cos(rr) - v[1] * Math.sin(rr), v[0] * Math.sin(rr) + v[1] * Math.cos(rr)]) }
-    const rotBad = [0.37, 0.63, 1.1, 1.9, 2.71, 4.4].filter(rr => { const u = unionOutline(pieces.map(q => q.map(rot(rr)))); return !(u.loops.length === 1 && !u.openChains.length && !u.badVertices) })
+    const rotO = rr => P => [P[0] * Math.cos(rr) - P[1] * Math.sin(rr), P[0] * Math.sin(rr) + P[1] * Math.cos(rr)]
+    const rotBad = [0.37, 0.63, 1.1, 1.9, 2.71, 4.4].flatMap(rr => [['', rot(rr)], ['O', rotO(rr)]].filter(([, fn]) => { const u = unionOutline(pieces.map(q => q.map(fn))); return !(u.loops.length === 1 && !u.openChains.length && !u.badVertices) }).map(([tag]) => tag + rr))
     // a fold: the bridge turning back against its chord somewhere (its derivative's projection on the chord ≤ 0)
     const folds = [Bo, Bi].map(B => { const ch = sub(B[3], B[0]); let n = 0; for (let i = 0; i <= 96; i++) if (dot(dcubic(...B, i / 96), ch) <= 0) n++; return n })
     // the width across the zone: from each outer bridge sample to the nearest point of the inner bridge
@@ -49,7 +50,7 @@ angles.forEach((deg, r) => cols.forEach(([k0, k1, k], c) => {
     const wmin = Math.min(...widths), wmax = Math.max(...widths), lo = 2 * Math.min(h0, h1), hi = 2 * Math.max(h0, h1)
     const bulge = wmax > hi + 1e-6 || wmin < lo - 1e-6
     label = 'O3 — no tip: a smooth width transition (experiment)'
-    note = `loops ${loops.length} · open ${openChains.length} · bad ${badVertices} · crossings ${crossings} · rotations ${rotBad.length ? 'FAIL ' + rotBad.join(',') : 'ok ×6'} · folds ${folds.join('/')} · width in zone ${wmin.toFixed(2)}–${wmax.toFixed(2)} (lines ${lo}, ${hi})${bulge ? ' BULGE' : ''}`
+    note = `loops ${loops.length} · open ${openChains.length} · bad ${badVertices} · crossings ${crossings} · rotations ${rotBad.length ? 'FAIL ' + rotBad.join(',') : 'ok ×12 (joint + sheet origin)'} · folds ${folds.join('/')} · width in zone ${wmin.toFixed(2)}–${wmax.toFixed(2)} (lines ${lo}, ${hi})${bulge ? ' BULGE' : ''}`
     body += `<path d="${loops.map(l => 'M' + l.map(f).join(' L') + ' Z').join(' ')}" fill="#111"/>`
     for (const ch of openChains) body += `<path d="M${ch.map(f).join(' L')}" fill="none" stroke="#e00"/>`
   }

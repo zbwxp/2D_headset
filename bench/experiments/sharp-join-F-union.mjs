@@ -57,12 +57,16 @@ angles.forEach((deg, r) => cols.forEach(([k0, k1, k], c) => {
     // the rotation regression (dot 1791783896): the same pieces turned about p; each must give one closed loop too
     const rot = r => P => { const v = sub(P, p); return add(p, [v[0] * Math.cos(r) - v[1] * Math.sin(r), v[0] * Math.sin(r) + v[1] * Math.cos(r)]) }
     const sweep = [0.37, 0.63, 1.1, 1.9, 2.71, 4.4].map(r => { const u = unionOutline(pieces.map(q => q.map(rot(r)))); return { r, ok: u.loops.length === 1 && !u.openChains.length && !u.badVertices } })
+    // dot 1791783960's exact reproduction: every vertex turned 0.63 rad about the SHEET's origin (0, 0), after the
+    // pieces are built and before the extraction — larger coordinates, other rounding than a turn about the joint
+    const rotO = rr => P => [P[0] * Math.cos(rr) - P[1] * Math.sin(rr), P[0] * Math.sin(rr) + P[1] * Math.cos(rr)]
+    for (const rr of [0.63, 0.37, 1.1, 1.9, 2.71, 4.4]) { const u = unionOutline(pieces.map(q => q.map(rotO(rr)))); sweep.push({ r: `O${rr}`, ok: u.loops.length === 1 && !u.openChains.length && !u.badVertices }) }
     const rotBad = sweep.filter(x => !x.ok).map(x => x.r)
     let crossings = 0
     for (let i = 0; i < segs.length; i++) for (let j = i + 1; j < segs.length; j++) if (segCross(segs[i][0], segs[i][1], segs[j][0], segs[j][1])) crossings++
     const onOutline = P => segs.some(([S0, S1]) => { const d = sub(S1, S0), t = Math.max(0, Math.min(1, dot(sub(P, S0), d) / (dot(d, d) || 1))); return len(sub(P, add(S0, mul(d, t)))) < 1e-6 })
     const shown = corners.filter(([, P]) => onOutline(P)).map(([n]) => n)
-    note = `${note}${note ? ' · ' : ''}loops ${loops.length} · open ${openChains.length} · bad vertices ${badVertices} · crossings ${crossings} · corners shown: ${shown.length ? shown.join(', ') : 'none'} · rotations ${rotBad.length ? 'FAIL at ' + rotBad.join(', ') : 'ok ×' + sweep.length}`
+    note = `${note}${note ? ' · ' : ''}loops ${loops.length} · open ${openChains.length} · bad vertices ${badVertices} · crossings ${crossings} · corners shown: ${shown.length ? shown.join(', ') : 'none'} · rotations ${rotBad.length ? 'FAIL at ' + rotBad.join(', ') : 'ok ×' + sweep.length + ' (6 about the joint, 6 about the sheet origin)'}`
     // drawn from the extracted outline alone (one path, its loops), not from the pieces — seams must not show
     body += `<path d="${loops.map(l => 'M' + l.map(f).join(' L') + ' Z').join(' ')}" fill="#111" fill-rule="nonzero"/>`
     for (const c of openChains) body += `<path d="M${c.map(f).join(' L')}" fill="none" stroke="#e00" stroke-width="1"/>` // open: drawn as a red line, not filled
