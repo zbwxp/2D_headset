@@ -167,6 +167,19 @@ describe('keys on the thumb — a move/ key run', () => {
     await t.key(t.thumb(), 'ArrowRight'); await act(async () => { t.thumb().dispatchEvent(new FocusEvent('focusout', { bubbles: true })) }); await t.up(t.thumb(), 'ArrowRight')
     expect([t.writes(), t.log.filter(x => x.startsWith('cancel'))]).toEqual([[], ['cancel keys', 'cancel keys']])
   })
+  it('the module ends its own thumb run when the window loses focus: the later key up writes nothing; its blur listener removed (dot 1791772430)', async () => {
+    const l = track()
+    try {
+      const t = await mount()
+      await t.key(t.thumb(), 'ArrowRight')
+      expect(l.count()).toBe(1)
+      await act(async () => { window.dispatchEvent(new Event('blur')) })
+      await t.up(t.thumb(), 'ArrowRight')
+      expect([t.writes(), t.log.at(-1), l.count()]).toEqual([[], 'cancel keys', 0])
+      await act(async () => { t.slot()?.() }) // the app's own cancel after it: nothing more
+      expect(t.log.filter(x => x.startsWith('cancel'))).toEqual(['cancel keys'])
+    } finally { l.restore() }
+  })
   it('the app may refuse the start: nothing previews', async () => {
     const t = await mount({ refuse: true })
     await t.key(t.thumb(), 'ArrowRight')

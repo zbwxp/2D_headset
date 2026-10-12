@@ -52,6 +52,7 @@ export function Slider(props: SliderProps) {
   const drag = useRef<null | { off(): void }>(null)
   const bar = useRef<HTMLDivElement | null>(null)
   const keyEnding = useRef(false) // a thumb run's last key up is under way
+  const keysOff = useRef<null | (() => void)>(null) // a thumb run's window listener
   const scale = props.scale ?? 'linear'
 
   const toTrack = (v: number) => (p.current.scale === 'log' ? Math.log10(v) : v)
@@ -130,13 +131,22 @@ export function Slider(props: SliderProps) {
     const done = (write: boolean) => {
       const v = getValue(), start = from.start
       drag.current?.off(); drag.current = null
+      keysOff.current?.(); keysOff.current = null
       reset()
       p.current.onEnd(cancelSession)
       if (write && v !== start) writeValue(v, input)
       else p.current.onCancel(input)
     }
     return {
-      begin: () => { const ok = p.current.onStart({ input, cancel: cancelSession }); if (ok) sessionStart.current = from.start; return ok },
+      begin: () => {
+        const ok = p.current.onStart({ input, cancel: cancelSession })
+        if (!ok) return false
+        sessionStart.current = from.start
+        // the module ends its own thumb run when the window loses focus (dot 1791772430), whatever the app does;
+        // a second cancel from the app finds it ended
+        if (input === 'keys') { const blur = () => mover.cancel(); window.addEventListener('blur', blur); keysOff.current = () => window.removeEventListener('blur', blur) }
+        return true
+      },
       preview: () => {},
       commit: () => done(true),
       cancel: () => done(!!onCancelled?.()),
@@ -205,7 +215,7 @@ export function Slider(props: SliderProps) {
     const expected = last.current !== null ? last.current : sessionStart.current
     if ((field.current || mover.running) && props.value !== expected) cancelAll()
   }, [props.value]) // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => () => { if (field.current) closeField(false); if (mover.running) mover.cancel(); drag.current?.off() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => { if (field.current) closeField(false); if (mover.running) mover.cancel(); drag.current?.off(); keysOff.current?.() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const value = shown ?? props.value
   const fieldText = text ?? String(value)
