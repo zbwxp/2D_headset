@@ -52,5 +52,9 @@ bound pair draws "a big circle over a small one" (bowen's 22:58 screenshot: ever
   single centred S-curve (each side keeps today's smoothstep to the average — the shape of J2's draft is paused).
 - **The tip's length** (bowen 1791817399): at most **2 × the lines' average width** from p (the natural tip at 30° is
   h / sin 15° ≈ 1.93 w); a longer tip is shortened (today 5 × (h0 + h1) = 2.5 × the width sum).
+- **The tip below 30°** (bowen 1791817869): L(θ) = min(natural miter, 2 × (h0 + h1) · smoothstep(θ / 30°)), θ the angle
+  between the lines (0 = folding back) — 2 × the width at 30° (natural there ≈ 1.93 w), shrinking to 0 at 0° by the
+  smoothstep of bowen's F rule (1791809376); never shorter than the bevel A0–A1, so a tiny angle shows a flat bevel, not
+  a notch between the flat ends.
 - Flows: the 22:58 eye (all bound, 3 / 4 / 4 / 2) on 5199 with images; an equal-width bound chain looks as today;
   manual zone in one view changes only that view; hide one line of a pair → the other's end is round at its own width.
