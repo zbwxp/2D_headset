@@ -95,16 +95,15 @@ rows.forEach(([kind, deg], r) => cols.forEach(([k0, k1, k], c) => {
   const bodyOf = (s, z) => [...s.O.slice(0, z + 1), ...s.I.slice(0, z + 1).reverse()], endOf = (s, z) => [...s.O.slice(z), ...s.I.slice(z).reverse()]
   const kept = [bodyOf(s0, z0), bodyOf(s1, z1), capOf(s0), capOf(s1)]
   const o = deg === 180 ? { cls: 'straight' } : outerOf(s0, s1, p, limit)
-  const quad = (P0, C, P1) => Array.from({ length: 24 }, (_, i) => { const t = (i + 1) / 24, u = 1 - t; return add(add(mul(P0, u * u), mul(C, 2 * u * t)), mul(P1, t * t)) })
   let tipMid = []
   if (o.cls === 'O1') tipMid = [o.M]
-  // O2's control points: where each outer edge's ray (from A along dA, from B along dB) meets the limit circle — solved
-  // in general, as the sampled direction need not be perpendicular to A − p (dot 1791785288)
-  const onCircle = (P, d) => { const w = sub(P, p), bb = dot(d, w), cc = dot(w, w) - limit * limit; return add(P, mul(d, -bb + Math.sqrt(bb * bb - cc))) }
-  if (o.cls === 'O2') { const X = add(p, mul(sub(o.M, p), limit / len(sub(o.M, p)))); tipMid = [...quad(o.A, onCircle(o.A, o.dA), X), ...quad(X, onCircle(o.B, o.dB), o.B).slice(0, -1)] }
+  // No O2 branch: O3 needs θ ≥ 180° − arccos(1/r) > 90°, and after easing both half widths at p are h_p with h′ = 0,
+  // so the tip is h_p / sin(θ/2) < √2·h_p, far below the limit 5 × 2h_p = 10·h_p. An O2 here would be unexpected and is
+  // reported as not covered, not drawn with untested code (dot 1791785485).
   let cls, spec = null, note = '', qInfo = null
   if (!without.startsWith('O3')) { cls = `not O3 here (${without} without easing) — F applies, not drawn`; note = 'not drawn' }
   else if (o.cls === 'straight') { cls = '180°: eased widths, no corner'; spec = { plain: [...kept, endOf(s0, z0), endOf(s1, z1)], trims: [] } }
+  else if (o.cls === 'O2') { cls = 'O2 after easing — UNEXPECTED, not covered'; note = 'not covered' }
   else if (o.cls === 'O3') { cls = 'O3 even after easing — not covered'; note = 'not covered' }
   else {
     let Q = null, q0 = -1, q1 = -1
@@ -157,7 +156,7 @@ rows.forEach(([kind, deg], r) => cols.forEach(([k0, k1, k], c) => {
     body += view + [...kept, endOf(s0, z0), endOf(s1, z1)].map(q => `<path d="M${q.map(f).join(' L')} Z" fill="#111" opacity="0.35"/>`).join('') + '</g></g>'
   }
   body += `<text x="${ox + 6}" y="${oy + 14}" font-size="9" fill="${spec ? '#363' : '#a50'}">${cls}</text>`
-  body += readingLines(ox + 6, oy + cell - 78, note, { maxChars: 54, fill: /FAIL|OVER|DIFFERS|NOT O3|NOT ON|TOO LONG|open [1-9]|bad [1-9]|crossings [1-9]|shown: C|folds [1-9]/.test(note) ? '#e00' : '#555' })
+  body += readingLines(ox + 6, oy + cell - 78, note, { maxChars: 54, fill: /FAIL|OVER|DIFFERS|NOT O3|NOT ON|TOO LONG|UNEXPECTED|open [1-9]|bad [1-9]|crossings [1-9]|shown: C|folds [1-9]/.test(note) ? '#e00' : '#555' })
   body += `<rect x="${ox}" y="${oy}" width="${cell - 6}" height="${cell - 6}" fill="none" stroke="#ddd"/>`
 }))
 rows.forEach(([kind, deg], r) => { body += `<text x="${pad}" y="${pad + 50 + r * cell + cell / 2}" font-size="12">${kind} ${deg}°</text>` })
