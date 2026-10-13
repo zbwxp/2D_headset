@@ -175,9 +175,12 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId, o
   const Thumb = ({ lines }: { lines: Id[] }) => {
     const set = new Set(lines)
     return <svg width={38} height={28} viewBox={`${box.x - pad} ${box.y - pad} ${box.w + 2 * pad} ${box.h + 2 * pad}`} preserveAspectRatio="xMidYMid meet" style={{ background: C.thumb, flex: 'none', border: `1px solid ${C.line}` }}>
-      {g.fills.filter(f => f.visible && s.loops.find(l => l.id === f.id)?.route.every(u => set.has(u.line))).map(f =>
-        <path key={f.id} d={f.parts.map((p, i) => (i ? path(p.curve).replace(/^M[^C]*/, '') : path(p.curve))).join(' ') + ' Z'} fill={f.color} />)}
-      {g.lines.filter(l => set.has(l.id)).map(l => <path key={l.id} d={path(l.curve)} fill="none" stroke="#111" strokeWidth={Math.max(box.w, box.h) / 40 + 0.5} />)}
+      {/* in the canvas's order: curve by curve, bottom → top, each its fills then its lines */}
+      {s.groups.filter(gr => gr.lines.some(id => set.has(id))).map(gr => <g key={gr.id}>
+        {g.fills.filter(f => f.visible && s.loops.find(l => l.id === f.id)?.route.every(u => set.has(u.line) && gr.lines.includes(u.line))).map(f =>
+          <path key={f.id} d={f.parts.map((p, i) => (i ? path(p.curve).replace(/^M[^C]*/, '') : path(p.curve))).join(' ') + ' Z'} fill={f.color} />)}
+        {g.lines.filter(l => set.has(l.id) && gr.lines.includes(l.id)).map(l => <path key={l.id} d={path(l.curve)} fill="none" stroke="#111" strokeWidth={Math.max(box.w, box.h) / 40 + 0.5} />)}
+      </g>)}
     </svg>
   }
 

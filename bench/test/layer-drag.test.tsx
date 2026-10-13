@@ -12,7 +12,7 @@ if (!Blob.prototype.text) Blob.prototype.text = function (this: Blob) { return n
 class Pt { constructor(public x = 0, public y = 0) {} matrixTransform() { return this } }
 ;(globalThis as { DOMPoint?: unknown }).DOMPoint ??= Pt
 
-type B = { core: Core }
+type B = { core: Core; refresh(): void }
 const bench = () => (window as unknown as { bench: B }).bench
 const snap = () => bench().core.snapshot()
 
@@ -125,6 +125,29 @@ describe('layers panel drag (bowen 1791865224)', () => {
     expect(groups('A')).toEqual(['a1', 'a2', 'a3'])
     expect(groups('C')).toEqual(['c1'])
     expect(bench().core.canUndo).toBe(undoable)
+  })
+
+  it('the canvas paints in the panel\'s order: a layer or curve dragged up is drawn over those below it, its fill with it (dot 1791866043)', async () => {
+    const host = await setup()
+    // B's line closed into a filled triangle
+    await act(async () => {
+      bench().core.edit(e => { e.line('b2', 'qB1', { id: 'rB', layer: 'B', position: { x: 50, y: 120 } }); e.line('b3', 'rB', 'pB1') })
+      const loops = snap().loops
+      bench().core.edit(e => loops.forEach(l => e.fill(l.id, 'red')))
+      bench().refresh()
+    })
+    expect(snap().loops.filter(l => l.filled)).toHaveLength(1)
+    const painted = () => [...host.querySelectorAll('[data-paint-group]')].map(el => [...snap().groups.find(g => g.id === el.getAttribute('data-paint-group'))!.lines].sort()[0])
+    expect(painted()).toEqual(['a1', 'a2', 'a3', 'b1', 'c1', 'd1'])
+    const bPaint = () => host.querySelector(`[data-paint-group="${groupOf('b1')}"]`)!
+    expect(bPaint().firstElementChild!.hasAttribute('data-fill')).toBe(true) // the fill under its own lines
+    expect(bPaint().children.length).toBeGreaterThan(1)
+    await dragTo(layerRow(host, 'B'), () => layerRow(host, 'D'), 'above')
+    expect(painted()).toEqual(['a1', 'a2', 'a3', 'c1', 'd1', 'b1'])
+    await dragTo(groupRow(host, 'a1'), () => groupRow(host, 'a3'), 'above')
+    expect(painted()).toEqual(['a2', 'a3', 'a1', 'c1', 'd1', 'b1'])
+    await dragTo(groupRow(host, 'a2'), () => groupRow(host, 'b1'), 'above')
+    expect(painted()).toEqual(['a3', 'a1', 'c1', 'd1', 'b1', 'a2'])
   })
 
   it('a drop on a row other than the marked one moves nothing', async () => {

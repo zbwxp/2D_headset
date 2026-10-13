@@ -1093,23 +1093,6 @@ export function App() {
               transform={`rotate(${r.angle} ${r.x} ${r.y})${r.flipped ? ` translate(${r.x} ${r.y}) scale(-1 1) translate(${-r.x} ${-r.y})` : ''}`} onError={() => { const at = core; setRefBroken(b => (b.some(x => x.core === at && x.id === r.id && x.src === r.src) ? b : [...b, { core: at, id: r.id, src: r.src }])) }} />
           })}
           <line x1={s.axis} x2={s.axis} y1={box.y - 1e4} y2={box.y + 1e4} stroke="#9cf" strokeDasharray={`${6 * px} ${4 * px}`} strokeWidth={px} />
-          {g.fills.filter(f => f.visible).map(f => <path key={f.id} d={f.parts.map((p, i) => (i ? path(p.curve).replace(/^M[^C]*/, '') : path(p.curve))).join(' ') + ' Z'}
-            fill={f.color} opacity={cutLines.size && s.loops.find(l => l.id === f.id)?.route.every(u => cutLines.has(u.line)) ? 0.35 : 1}
-            stroke={!pose && isSel({ kind: 'fill', id: f.id }) ? '#06f' : 'none'} strokeWidth={2 * px} />)}
-          {/* the selection box (bowen 1791558733): solid blue = wholly inside (dragged right), dashed green = touching (dragged left) */}
-          {!pose && pv.box && <rect x={Math.min(pv.box.from.x, pv.box.to.x)} y={Math.min(pv.box.from.y, pv.box.to.y)} width={Math.abs(pv.box.to.x - pv.box.from.x)} height={Math.abs(pv.box.to.y - pv.box.from.y)}
-            fill={pv.box.whole ? 'rgba(42,127,255,0.08)' : 'rgba(40,170,90,0.08)'} stroke={pv.box.whole ? '#2a7fff' : '#28aa5a'} strokeWidth={px}
-            strokeDasharray={pv.box.whole ? undefined : `${5 * px} ${3 * px}`} />}
-          {/* the selection reads at a glance (bowen 1791558186): a wide blue halo under each selected line, and a dashed box around it all —
-              one box, one extent (dot 1791737043, 1791737260): where the selection box is drawn (V / A) it is that box; elsewhere
-              (another tool, Move picture) the same frame — core's bounds of what a transform moves — without handles */}
-          {!pose && g.lines.filter(G => selLines.includes(G.id)).map(G => <path key={'halo' + G.id} d={path(G.curve)} fill="none" stroke="#2a7fff" strokeOpacity={0.3}
-            strokeWidth={Math.max(line(G.id).stroke.width, line(G.id).stroke.widthB ?? 0) + 8 * px} strokeLinecap="round" />)}
-          {!pose && !boxShown && (() => {
-            const units = sel.filter(u => u.kind === 'line' || u.kind === 'point' || u.kind === 'handle'), b = units.length ? core.in(shown).selectionBounds(units) : null
-            return b && <rect data-selection-outline="" x={b.min.x} y={b.min.y} width={b.max.x - b.min.x} height={b.max.y - b.min.y}
-              fill="none" stroke="#2a7fff" strokeWidth={px} strokeDasharray={`${3 * px} ${2 * px}`} pointerEvents="none" />
-          })()}
           {(() => {
             const paintOf = (id: string) => {
               const l = line(id), on = selLines.includes(l.id), picked = pv.pick?.kind === 'line' && pv.pick.id === l.id
@@ -1130,27 +1113,56 @@ export function App() {
               else arcsAlone.push(...gr.pieces.filter(p => p.source.kind !== 'line'))
             }
             for (const p of ink?.pieces ?? []) if (p.source.kind !== 'line' && !(ink?.groups ?? []).some(gr => gr.pieces.includes(p))) arcsAlone.push(p)
+            // the canvas paints in the panel's order (dot 1791866043): layers bottom → top, each layer's curves bottom → top
+            // (s.groups is that order), each curve its fills, then the halo of its selected lines, then its lines
+            const rank = new Map(s.groups.flatMap((gr, i) => gr.lines.map(l => [l, i] as const)))
+            const groupOfLoop = (id: string) => rank.get(s.loops.find(l => l.id === id)?.route[0]?.line ?? '') ?? -1
+            const groupOfArc = (key: string) => rank.get(g.arcs.find(a => a.key === key)?.lines[0] ?? '') ?? -1
+            const lineEl = (G: (typeof g.lines)[number]) => {
+              const l = line(G.id), stroke = paintOf(G.id)
+              const u = uniform.get(G.id)
+              if (u) {
+                if (!u.first) return null
+                const d = loopsD(u.group.loops), key = u.group.pieces.map(p => p.source.id).join(' ')
+                return <g key={G.id}><path data-ink-group={key} d={d} fill={u.paint} fillRule="nonzero" stroke="none" />
+                  {defectMark(key, d, u.group.status === 'defect' ? u.group.reason : undefined)}
+                  {u.group.pieces.map(p => defectMark(p.source.id, loopsD(p.loops), inkDefects.get(p.source.id)))}</g>
+              }
+              const piece = l.state.visible ? inkOf.get(l.id) : undefined
+              if (piece) {
+                const d = loopsD(piece.loops)
+                return <g key={G.id}><path data-ink={l.id} d={d} fill={stroke} fillRule="nonzero" stroke="none" />{defectMark(l.id, d, inkDefects.get(l.id))}</g>
+              }
+              return <path key={G.id} d={path(G.curve)} fill="none" stroke={stroke} strokeWidth={(l.stroke.width + (l.stroke.widthB ?? l.stroke.width)) / 2}
+                strokeDasharray={l.state.visible ? undefined : `${4 * px} ${4 * px}`} opacity={l.state.visible ? 1 : 0.35} strokeLinecap="round" />
+            }
             return <>
-              {arcsAlone.map(p => { const d = loopsD(p.loops); return <g key={p.source.id}><path data-ink={p.source.id} d={d} fill="#111" stroke="none" />{defectMark(p.source.id, d, inkDefects.get(p.source.id))}</g> })}
-              {g.lines.map(G => {
-                const l = line(G.id), stroke = paintOf(G.id)
-                const u = uniform.get(G.id)
-                if (u) {
-                  if (!u.first) return null
-                  const d = loopsD(u.group.loops), key = u.group.pieces.map(p => p.source.id).join(' ')
-                  return <g key={G.id}><path data-ink-group={key} d={d} fill={u.paint} fillRule="nonzero" stroke="none" />
-                    {defectMark(key, d, u.group.status === 'defect' ? u.group.reason : undefined)}
-                    {u.group.pieces.map(p => defectMark(p.source.id, loopsD(p.loops), inkDefects.get(p.source.id)))}</g>
-                }
-                const piece = l.state.visible ? inkOf.get(l.id) : undefined
-                if (piece) {
-                  const d = loopsD(piece.loops)
-                  return <g key={G.id}><path data-ink={l.id} d={d} fill={stroke} fillRule="nonzero" stroke="none" />{defectMark(l.id, d, inkDefects.get(l.id))}</g>
-                }
-                return <path key={G.id} d={path(G.curve)} fill="none" stroke={stroke} strokeWidth={(l.stroke.width + (l.stroke.widthB ?? l.stroke.width)) / 2}
-                  strokeDasharray={l.state.visible ? undefined : `${4 * px} ${4 * px}`} opacity={l.state.visible ? 1 : 0.35} strokeLinecap="round" />
-              })}
+              {/* nothing should lie outside a curve; if something does, it is drawn at the bottom rather than lost */}
+              {arcsAlone.filter(p => groupOfArc(p.source.id) === -1).map(p => <path key={p.source.id} data-ink={p.source.id} d={loopsD(p.loops)} fill="#111" stroke="none" />)}
+              {g.lines.filter(G => !rank.has(G.id)).map(lineEl)}
+              {s.groups.map((gr, i) => <g key={'paint' + gr.id} data-paint-group={gr.id}>
+                {g.fills.filter(f => f.visible && groupOfLoop(f.id) === i).map(f => <path key={f.id} data-fill={f.id} d={f.parts.map((p, i) => (i ? path(p.curve).replace(/^M[^C]*/, '') : path(p.curve))).join(' ') + ' Z'}
+                  fill={f.color} opacity={cutLines.size && s.loops.find(l => l.id === f.id)?.route.every(u => cutLines.has(u.line)) ? 0.35 : 1}
+                  stroke={!pose && isSel({ kind: 'fill', id: f.id }) ? '#06f' : 'none'} strokeWidth={2 * px} />)}
+                {/* the selection reads at a glance (bowen 1791558186): a wide blue halo under each selected line */}
+                {!pose && g.lines.filter(G => rank.get(G.id) === i && selLines.includes(G.id)).map(G => <path key={'halo' + G.id} d={path(G.curve)} fill="none" stroke="#2a7fff" strokeOpacity={0.3}
+                  strokeWidth={Math.max(line(G.id).stroke.width, line(G.id).stroke.widthB ?? 0) + 8 * px} strokeLinecap="round" />)}
+                {arcsAlone.filter(p => groupOfArc(p.source.id) === i).map(p => { const d = loopsD(p.loops); return <g key={p.source.id}><path data-ink={p.source.id} d={d} fill="#111" stroke="none" />{defectMark(p.source.id, d, inkDefects.get(p.source.id))}</g> })}
+                {g.lines.filter(G => rank.get(G.id) === i).map(lineEl)}
+              </g>)}
             </>
+          })()}
+          {/* the selection box (bowen 1791558733): solid blue = wholly inside (dragged right), dashed green = touching (dragged left) */}
+          {!pose && pv.box && <rect x={Math.min(pv.box.from.x, pv.box.to.x)} y={Math.min(pv.box.from.y, pv.box.to.y)} width={Math.abs(pv.box.to.x - pv.box.from.x)} height={Math.abs(pv.box.to.y - pv.box.from.y)}
+            fill={pv.box.whole ? 'rgba(42,127,255,0.08)' : 'rgba(40,170,90,0.08)'} stroke={pv.box.whole ? '#2a7fff' : '#28aa5a'} strokeWidth={px}
+            strokeDasharray={pv.box.whole ? undefined : `${5 * px} ${3 * px}`} />}
+          {/* the selection reads at a glance (bowen 1791558186): a wide blue halo under each selected line (drawn with its curve), and a dashed box around it all —
+              one box, one extent (dot 1791737043, 1791737260): where the selection box is drawn (V / A) it is that box; elsewhere
+              (another tool, Move picture) the same frame — core's bounds of what a transform moves — without handles */}
+          {!pose && !boxShown && (() => {
+            const units = sel.filter(u => u.kind === 'line' || u.kind === 'point' || u.kind === 'handle'), b = units.length ? core.in(shown).selectionBounds(units) : null
+            return b && <rect data-selection-outline="" x={b.min.x} y={b.min.y} width={b.max.x - b.min.x} height={b.max.y - b.min.y}
+              fill="none" stroke="#2a7fff" strokeWidth={px} strokeDasharray={`${3 * px} ${2 * px}`} pointerEvents="none" />
           })()}
           {/* the arcs' debug centre line while the ink switch is off, and for an arc with no ink to draw (its diagnostic says why) */}
           {g.arcs.filter(a => !ink || (!inkOf.has(a.key) && ink.diagnostics.some(d => d.source.id === a.key))).map(a => <path key={a.key} data-arc-fallback={ink ? a.key : undefined} d={path(a.curve)} fill="none" stroke="#a50" strokeWidth={2} />)}
