@@ -4498,3 +4498,23 @@ No graph rows yet (bowen 1791603861).
 3. **Targets: lines and fills, now.** bowen's case: the side-face line, and the side-nose line + its fill, are **mutual inverse masks** — the nose (line + fill) area hides the side-face line; the face area hides the side-nose line and its fill. Stroke intervals come later, with display intervals.
 
 Not yet written as graph rows — waiting for bowen's "写".
+
+**bowen 1791901604 (the source):**
+
+> 我想了一下暂时只用填充吧。 这样蒙版会因为填充的开闭而生效失效，便于检查。
+
+4. **Sources: fills only, for now.** A mask acts only while its source fill is on (filled and shown); turning the fill off turns the mask off — easy to check. *This replaces v2's "a hidden source still masks" (dot 1791281457) for v3.* Lines' stroke areas as sources: not now.
+
+### Draft graph rows (for bowen's review; not written until bowen says 写)
+
+| Subject | Relation | Object | Status | Source |
+|---|---|---|---|---|
+| Mask | is | A relation in the drawing's data: one or more source fills, one target (a line or a closed curve's fill), a mode | proposed | bowen 1791901391 (1 甲) |
+| Mask source | is | A closed curve's fill only (for now). The mask acts only while that fill is on (filled and shown); a fill turned off turns its masks off | proposed | bowen 1791901604 |
+| Mask, inverse | hides | The part of its target inside the sources' area | proposed | bowen 1791901391 (3) |
+| Mask, normal | shows | Only the part of its target inside the sources' area (shadow in base colour, pupil in eye white) | proposed | v2 doc 18 §1.7b |
+| Mask geometry | is | Each view's own geometry, every source read before any mask applies — so mutual masks do not loop; no per-view switch | proposed | bowen 1791901391 (2); dot 1791901344 |
+| Mask | does not | Change draw order, or read colour and opacity | proposed | v2 doc 18 §1.7b |
+| Mutual mask | example | The side-face line, and the side-nose line + nose fill: the nose fill hides the side-face line; the face fill hides the side-nose line and the nose fill | proposed | bowen 1791901391 (3), 1791901604 |
+| Mask module | belongs to | The visual 显隐 category; line display intervals join it later | proposed | bowen 1791901097 |
+| Mask references | on delete / copy / paste / rename | To be designed explicitly (open) | open | dot 1791901344 |
