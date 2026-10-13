@@ -4473,15 +4473,18 @@ No graph rows yet (bowen 1791603861).
 
 **v3 today:** no masks anywhere (headset-core; the reference-image plan lists masks as later, bowen 1791701099). The graph's rows: in a layer, cover is list order only (bowen 1791390897, Q18); a fill is a closed curve's attribute. Line display intervals are not in v3 yet (bowen: same 显隐 category, later).
 
-**What v3 gives that v2 lacked:** the ink is drawn as outline polygons (headset-core `ink/`, clipper2 union). A mask can then be **exact polygon geometry** — the target's ink outline minus (inverse) or intersected with (normal) the source's area — computed before drawing, with no anti-aliased residue, and the same polygons serve picking.
+**What v3 gives that v2 lacked:** the ink is drawn as outline polygons (headset-core `ink/`, clipper2 union). A mask can then be **polygon geometry** — the target's ink outline minus (inverse) or intersected with (normal) the source's area, computed before drawing. That removes the cause of v2's "draw, then erase" residue, but **it guarantees neither no residue nor correct picking by itself**: drawing and picking must actually be wired to the same masked result (dot 1791901344).
+- **A premise from today's ink (dot 1791901344):** the ink unites joined lines into one outline per join group. A mask whose target is one line must keep that line's own extent within the group, so that clipping it does not clip its neighbours in the same group.
 
 ### Mapping to v3 (Claude; candidates, nothing written to the graph)
 
 - **A module of the visual 显隐 category (bowen):** it reads the evaluated geometry and the ink outlines, applies the mask relations, and hands the visible result to drawing and picking. Line display intervals later join the same module.
+- **Kept from v2:** every source is read **before any mask applies**, so mutual and chained masks cannot loop (dot 1791901344).
+- **Each view uses its own geometry:** a mask is computed from the current view's shapes, so the shapes changing with the angle already change what is covered (dot 1791901344).
 - **A relation** = sources (closed curves' fill areas, optionally plus lines' stroke areas), a target (a line, or a closed curve's fill; stroke intervals later with display intervals), a mode (inverse / normal), on/off.
 
 ### To decide (bowen)
 
-1. **Where a mask relation is stored.** 甲 (Claude recommends): as a relation in the drawing's data, like joins and links, so delete / copy / paste / rename keep it right; the 显隐 module only computes. 乙: kept by the 显隐 module itself, saved beside the drawing.
-2. **Views.** In the front view the nose lines lie inside the face's fill: an always-on "face hides the side-nose line" would hide the nose there. So the relation probably needs to be **on in some views and off in others** (like a join's radius, a per-view value), or its strength must come from the angle. Which?
+1. **Where a mask relation is stored.** 甲 (Claude and dot recommend): as a relation in the drawing's data, like joins and links; the 显隐 module only computes. Storing it there does **not** make delete / copy / paste / rename right by itself: what happens to a relation when its source or target is deleted, copied or pasted must be designed and tested explicitly (dot 1791901344). 乙: kept by the 显隐 module itself, saved beside the drawing.
+2. **Views — only if the geometry does not already decide (dot 1791901344).** Each view masks with its own shapes. Extra view control is needed only for this kind of wish: *in the front view the nose still lies inside the face's fill but must show; in the side view it lies inside and must hide.* bowen: is that what you want for the nose and face? If so, the relation needs to be on in some views and off in others. A fade by angle is a different effect (transparency, not a geometric clip) and is not proposed from this example.
 3. **Smallest target.** Lines and fills first (Claude recommends), stroke intervals (the collar's back half) when display intervals arrive — or intervals now.
