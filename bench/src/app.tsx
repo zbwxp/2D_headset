@@ -1194,8 +1194,9 @@ export function App() {
             return b && <rect data-selection-outline="" x={b.min.x} y={b.min.y} width={b.max.x - b.min.x} height={b.max.y - b.min.y}
               fill="none" stroke="#2a7fff" strokeWidth={px} strokeDasharray={`${3 * px} ${2 * px}`} pointerEvents="none" />
           })()}
-          {/* the pending mark (stage 2): an orange dot on each line whose front differs from the baseline */}
-          {!pose && g.lines.filter(G => pending.includes(G.id)).map(G => { const m = mid(G.curve); return <circle key={'pending' + G.id} data-pending={G.id} cx={m.x} cy={m.y} r={4 * px} fill="#f80" stroke="#fff" strokeWidth={px} /> })}
+          {/* the pending mark (stage 2): an orange dot on each line whose front differs from the baseline — on the selected
+              layers only: nothing is drawn on a layer that is not selected (bowen 1791899291, 1791553331) */}
+          {!pose && g.lines.filter(G => pending.includes(G.id) && selLayers.includes(s.points.find(p => p.id === line(G.id).a)?.layer ?? '')).map(G => { const m = mid(G.curve); return <circle key={'pending' + G.id} data-pending={G.id} cx={m.x} cy={m.y} r={4 * px} fill="#f80" stroke="#fff" strokeWidth={px} /> })}
           {/* playback on a line: the pickable points, and the drag's ghost at start + displacement (stage 3b package 5) */}
           {pose && onLine && (() => s.points.filter(p => shownEnds.has(p.id)).map(p => <circle key={'pp' + p.id} data-pickable={p.id} cx={p.position.x} cy={p.position.y} r={3 * px} fill="#fff" stroke="#333" strokeWidth={px} />))()}
           {pose && corrGhost && shownLines.filter(l => l.a === corrGhost.id || l.b === corrGhost.id).map(l => {

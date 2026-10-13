@@ -248,3 +248,17 @@ describe('hide every layer, show one alone (bowen 1791865192; Photoshop / Illust
     expect(visible()).toEqual({ lA: false, lB: true, lC: false, lD: true })
   })
 })
+
+describe('nothing is drawn on a layer that is not selected (bowen 1791899291)', () => {
+  it('a line\'s pending mark shows only while its layer is selected', async () => {
+    const host = await setup()
+    await act(async () => { bench().core.edit(e => e.move([{ id: 'pA', target: { x: 5, y: 3 } }])); bench().refresh() })
+    const mark = () => !!host.querySelector('[data-pending="lA"]')
+    await row(host, 'B')
+    expect(mark()).toBe(false)
+    await row(host, 'A')
+    expect(mark()).toBe(true)
+    await row(host, 'C'); await row(host, 'A', { metaKey: true })
+    expect(mark()).toBe(true)
+  })
+})
