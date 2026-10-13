@@ -21,8 +21,6 @@ export interface LoopView { id: Id; layer: Id; route: net.LoopUse[]; filled: boo
 export const filledIds = (f: FillsState): Set<Id> => new Set(S(f).loops.map(l => l.id))
 export const create = (): FillsState => ({ loops: [], order: [] }) as Store as unknown as FillsState
 export const order = (f: FillsState): Id[] => [...S(f).order]
-/** Whether a filled loop is locked. */
-export const isLocked = (f: FillsState, id: Id): boolean => find(f, id).locked
 
 function find(f: FillsState, id: Id): FilledLoop {
   const l = S(f).loops.find(x => x.id === id)

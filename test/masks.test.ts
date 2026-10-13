@@ -59,17 +59,13 @@ describe('masks in the drawing', () => {
     for (const [f, why] of bad) { expect(f).toThrow(why); expect(save(d)).toBe(before) }
   })
 
-  it('a locked target: its masks are not made or removed; a locked source may be used (dot 1791903786)', () => {
+  it('locks are not consulted: a locked target or source takes masks and loses them (bowen 1791903940)', () => {
     const d = scene(), sq = loopOf(d, 'ab'), tri = loopOf(d, 'ef')
     d.edit(e => e.mask('m1', [sq], line('xy'), 'inverse'))
     d.edit(e => { e.lineState('xy', { locked: true }); e.fillState(tri, { locked: true }) })
-    const before = save(d)
-    expect(() => d.edit(e => e.mask('m2', [sq], line('xy'), 'normal'))).toThrow(/locked/)
-    expect(() => d.edit(e => e.removeMask('m1'))).toThrow(/locked/)
-    expect(() => d.edit(e => e.mask('m2', [sq], { kind: 'fill', id: tri }, 'normal'))).toThrow(/locked/)
-    expect(save(d)).toBe(before)
-    d.edit(e => e.mask('m3', [tri], line('qr'), 'inverse'))
-    expect(masks(d).map(m => m.id)).toEqual(['m1', 'm3'])
+    d.edit(e => { e.mask('m2', [sq], line('xy'), 'normal'); e.mask('m3', [sq], { kind: 'fill', id: tri }, 'normal'); e.mask('m4', [tri], line('qr'), 'inverse') })
+    d.edit(e => e.removeMask('m1'))
+    expect(masks(d).map(m => m.id)).toEqual(['m2', 'm3', 'm4'])
   })
 })
 

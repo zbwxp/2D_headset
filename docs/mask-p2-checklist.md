@@ -4,7 +4,7 @@ Package 1 (geometry and drawing, accepted by dot 1791903553 at 29baaf3) drew mas
 
 ## 1. A core module `masks` (data only; the computing stays in `visibility/`)
 - A relation: `{ id, sources: fill ids (≥ 1, no repeats), target: { kind: 'line' | 'fill', id }, mode: 'inverse' | 'normal' }`. Shared by every view (each view computes with its own geometry). A list in creation order; the order means nothing (each relation only removes).
-- **Editor operations** (one edit each, undoable): `mask(id, sources, target, mode)` — refused for an unknown fill or target, a source that is the target fill itself, a repeated source, or an id in use; `removeMask(id)`. Declared in `src/document/effects.ts` (writes the shared `masks`; no geometry). **A locked target:** its masks are not made or removed (revised, dot 1791903786: a mask changes the visible ink, so it follows "locked = unchanged"; an exception like the show / hide state would be bowen's call). A locked source may be used (the source's own ink does not change).
+- **Editor operations** (one edit each, undoable): `mask(id, sources, target, mode)` — refused for an unknown fill or target, a source that is the target fill itself, a repeated source, or an id in use; `removeMask(id)`. Declared in `src/document/effects.ts` (writes the shared `masks`; no geometry). **Locks are not consulted** (bowen 1791903940: editing is limited to the selected layers; locks to be removed later — ledger row 21): a locked target or source takes and loses masks like any other.
 - **The snapshot** lists the relations (`masks`), for the bench.
 
 ## 2. Reference upkeep (dot 1791901344: designed, not assumed) — each by the same path as fills' and joins'

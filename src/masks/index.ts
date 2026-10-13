@@ -38,12 +38,6 @@ export function add(s: MasksState, n: net.NetworkState, filled: ReadonlySet<Id>,
   } else throw new Error(`Mask ${id}: the target must be a line or a fill`)
   S(s).masks.push({ id, sources, target: { kind, id: tid }, mode: m.mode })
 }
-/** One mask by id. */
-export function get(s: MasksState, id: Id): Mask {
-  const m = list(s).find(x => x.id === id)
-  if (!m) throw new Error(`No mask ${id}`)
-  return m
-}
 export function remove(s: MasksState, id: Id) {
   if (!S(s).masks.some(m => m.id === id)) throw new Error(`No mask ${id}`)
   S(s).masks = S(s).masks.filter(m => m.id !== id)

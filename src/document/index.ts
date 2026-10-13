@@ -380,15 +380,9 @@ export class Editor {
 
   // masks (显隐; graph "显隐 — masks", preliminary; docs/mask-p2-checklist.md)
   /** A mask: `sources` (filled closed curves) hide part of `target` (a line or a filled closed curve) — inverse: inside them; normal: all but inside them. Shared by every view. */
-  mask(id: Id, sources: Id[], target: masks.Target, mode: masks.Mode) {
-    const filled = fills.filledIds(this.s.fills)
-    masks.add(this.s.masks, this.s.network, filled, { id, sources, target, mode })
-    maskTargetUnlocked(this.s, target)
-  }
-  removeMask(id: Id) {
-    maskTargetUnlocked(this.s, masks.get(this.s.masks, id).target)
-    masks.remove(this.s.masks, id)
-  }
+  // locks are not consulted (bowen 1791903940: editing is limited to the selected layers; locks to be removed later)
+  mask(id: Id, sources: Id[], target: masks.Target, mode: masks.Mode) { masks.add(this.s.masks, this.s.network, fills.filledIds(this.s.fills), { id, sources, target, mode }) }
+  removeMask(id: Id) { masks.remove(this.s.masks, id) }
 
   // fills (closed loops)
   fill(loop: Id, color: string) { for (const id of this.loops(loop)) fills.fill(this.s.fills, this.s.network, id, color) }
@@ -1072,12 +1066,6 @@ const viewKeys = (s: State): string[] => net.shapeLayers(s.network).filter(l => 
  * then fills → groups → names → selection; then the mirror check off the front, names,
  * locks (every view).
  */
-/** A mask changes what its target shows: a locked target's masks are not changed (dot 1791903786: as every lock). */
-function maskTargetUnlocked(s: State, t: masks.Target) {
-  const locked = t.kind === 'line' ? net.line(s.network, t.id).state.locked : fills.isLocked(s.fills, t.id)
-  if (locked) throw new net.Refusal('locked', `${t.kind === 'line' ? 'Line' : 'Fill'} ${t.id} is locked`, [{ kind: t.kind, id: t.id }])
-}
-
 function commit(s: State, ch: net.Changes, published: State, appliedFrom: ReadonlyMap<Id, locks.View>, layer: string, mode: CommitMode = 'full') {
   if (mode === 'full') settle(s, ch, layer)
   else {
