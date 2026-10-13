@@ -52,6 +52,7 @@ dot's summary (dot 1791463344), checked against the rows:
 - **Expressions:** two levels (angle, expression); expressions start from the front; combination fixes off by default.
 - **Room and broadcast:** one room with modes; only the front keeps hidden baselines (angle, expression); broadcast applies the front's change to the chosen angles or expressions and updates only the matching baseline; fit drops it; each is one undoable edit.
 - **Matching:** within one type, ranked, user picks.
+- **显隐 (visibility; masks, preliminary):** an independent visual module; a mask is a relation in the drawing's data whose source fills, while on, hide (inverse) or keep only (normal) part of a line or a fill, each view with its own geometry.
 
 Defaults and algorithm limits are not principles; they are listed in the core README (dot 1791463344).
 
@@ -263,6 +264,23 @@ Defaults and algorithm limits are not principles; they are listed in the core RE
 | Subject | Relation | Object | Status | Source |
 |---|---|---|---|---|
 | Finding the closest 元组件 | searches | Only within the same type; the user picks from ranked candidates. A score suggests "probably less work", not "fewest edits". | confirmed | bowen 1791645259, 1791645279; dot 1791644993 |
+
+### 显隐 — masks (module `visibility`; preliminary, bowen 1791902281; Q33)
+
+Written as **preliminary** principles on bowen 1791902281 ("总结个初步原则然后先记下来吧，然后先代码实现看看"): few rules, shown in code, revised from what the drawings show — no chasing corner cases.
+
+| Subject | Relation | Object | Status | Source |
+|---|---|---|---|---|
+| 显隐 module | is | An independent module of the visual category; masks now, line display intervals later | preliminary | bowen 1791901097 |
+| Mask | is | A relation in the drawing's data (like joins and links): one or more source fills, one target (a line or a closed curve's fill), a mode. The module only computes | preliminary | bowen 1791901391 (1 甲) |
+| Mask source | is | A closed curve's fill only (for now). It acts only while that fill is on — filled and shown, read **before any mask**: a source fill that another mask clips still masks with its whole area | preliminary | bowen 1791901604; dot 1791901708 |
+| Mask sources, several | combine as | The union of the relation's sources that are on. All off = the relation is off (not an empty area). A source that is on with an empty area takes part as empty. Several relations on one target all apply | preliminary | dot 1791901708, 1791902445 |
+| Mask, inverse | hides | The part of its target inside the sources' area | preliminary | bowen 1791901391 (3) |
+| Mask, normal | shows | Only the part of its target inside the sources' area (a shadow in its base colour, a pupil in the eye white) | preliminary | v2 doc 18 §1.7b |
+| Mask geometry | is | Each view's own geometry; no per-view switch; every source read before any mask, so mutual masks do not loop | preliminary | bowen 1791901391 (2); dot 1791901344 |
+| Mask | does not | Change draw order, or read colour and opacity | preliminary | v2 doc 18 §1.7b |
+| Mutual mask | example | The side-face line, and the side-nose line + nose fill: the nose fill hides the side-face line; the face fill hides the side-nose line and the nose fill (126.json; effect confirmed bowen 1791902206) | preliminary | bowen 1791901391 (3), 1791901604, 1791902206 |
+| Mask references | on delete / copy / paste / rename | To be designed explicitly | open | dot 1791901344 |
 
 ### Reference images and views (Q3)
 
