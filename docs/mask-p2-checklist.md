@@ -23,7 +23,7 @@ Package 1 (geometry and drawing, accepted by dot 1791903553 at 29baaf3) drew mas
 - **9 → 10 approved by bowen (1791907933)**, as the earlier conversions: a version-9 drawing opens converted and is autosaved in version 10. The interim autosave protections (backup, hold; dot 1791906394 / 1791906782 / 1791907011) were removed with the approval — old-format support stays only in `src/legacy`, deletable for a release (bowen 1791907735).
 
 ## 4. The bench (replaces package 1's temporary store)
-- The drawing's own masks are drawn, behind the same 「蒙版（实验）」 switch (still needs 墨迹轮廓).
+- The drawing's own masks are drawn, behind the same 「蒙版（实验）」 switch (still needs 墨迹轮廓) — **on by default** (bowen 1791908448: left off after a refresh, it looked like masks that do not work).
 - **Making one (minimal; bowen 1791903762 "按成熟的蒙版构建逻辑来", dot 1791905577):** the mature order (Illustrator's opacity mask, Photoshop's layer mask): the target first, then the mask area, then the mode. In the properties panel a 「蒙版」 section for the subject:
   - **The targets:** a line → that line; a continuous curve → its lines (and its filled loops with 「填充也遮」 ticked); a layer → all its lines (and its filled loops with 「填充也遮」) — as Illustrator masks a whole group: one relation per target, all made in one edit, so 126.json is two adds, not ten. Fills are opt-in because two layers masking each other with their fills too leave the overlap empty (126.json through the panel, 2026-10-13; shown to bowen).
   - **The list:** the masks on those targets, each as 目标 ← 来源（图层 · 曲线）· 反向/正常, with × (one edit each).

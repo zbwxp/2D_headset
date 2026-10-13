@@ -31,6 +31,8 @@ async function setup() {
   const input = host.querySelector('[data-testid="open"]') as HTMLInputElement
   Object.defineProperty(input, 'files', { value: [new File([save(d)], 'd.json')], configurable: true })
   await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); await new Promise(r => setTimeout(r, 50)) })
+  // these cases start with the 蒙版 switch off and turn it on themselves (it is on by default)
+  { const m = host.querySelector('[data-testid="masks"]') as HTMLInputElement; if (m.checked) await act(async () => { m.click() }) }
   const fillId = bench().core.snapshot().loops[0]!.id
   await act(async () => { bench().core.edit(e => e.mask('mx', [fillId], { kind: 'line', id: 'x' }, 'inverse')); bench().refresh() })
   const ink = () => host.querySelector('[data-ink="x"]')?.getAttribute('d') ?? ''
@@ -41,6 +43,12 @@ async function setup() {
 }
 
 describe('蒙版（实验） in the bench (masks package 1)', () => {
+  it('on by default (bowen 1791908448)', async () => {
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const root = createRoot(host); roots.push(root)
+    await act(async () => { root.render(<App />) })
+    expect((host.querySelector('[data-testid="masks"]') as HTMLInputElement).checked).toBe(true)
+  })
   it('the masks are the drawing\'s: saved with it, undone with it; the temporary store is gone', async () => {
     const t = await setup()
     await act(async () => { (t.host.querySelector('[data-testid="masks"]') as HTMLInputElement).click() })

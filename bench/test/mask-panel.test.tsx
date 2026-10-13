@@ -31,6 +31,8 @@ async function setup() {
   const input = host.querySelector('[data-testid="open"]') as HTMLInputElement
   Object.defineProperty(input, 'files', { value: [new File([save(d)], 'd.json')], configurable: true })
   await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); await new Promise(r => setTimeout(r, 50)) })
+  // these cases start with the 蒙版 switch off and turn it on themselves (it is on by default)
+  { const m = host.querySelector('[data-testid="masks"]') as HTMLInputElement; if (m.checked) await act(async () => { m.click() }) }
   const s = () => bench().core.snapshot()
   const fillOf = (line: string) => s().loops.find(l => l.route.some(u => u.line === line))!.id
   const q = (sel: string) => host.querySelector(sel) as HTMLElement | null

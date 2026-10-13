@@ -34,6 +34,8 @@ async function setup() {
   const input = host.querySelector('[data-testid="open"]') as HTMLInputElement
   Object.defineProperty(input, 'files', { value: [new File([save(d)], 'd.json')], configurable: true })
   await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); await new Promise(r => setTimeout(r, 50)) })
+  // these cases start with the 蒙版 switch off and turn it on themselves (it is on by default)
+  { const m = host.querySelector('[data-testid="masks"]') as HTMLInputElement; if (m.checked) await act(async () => { m.click() }) }
   const svg = host.querySelector('[data-testid="canvas"]') as SVGSVGElement
   ;(svg as unknown as { getScreenCTM: () => unknown }).getScreenCTM = () => ({ inverse: () => ({}) })
   await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', bubbles: true })) })

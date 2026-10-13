@@ -195,7 +195,8 @@ export function App() {
   const [inkOn, setInkOn] = useState(true)
   // 蒙版（实验）, masks package 1 (docs/mask-p1-checklist.md §3): the relations come from a temporary bench store until
   // package 2 stores them in the drawing; this switch turns their drawing on
-  const [masksOn, setMasksOn] = useState(false)
+  // on by default: the masks are the drawing's (package 2); off only to compare (bowen 1791908448: a switch left off looked like broken masks)
+  const [masksOn, setMasksOn] = useState(true)
   const [canvasPicks, setCanvasPicks] = useState(0)
   const inkCache = useRef(createInkCache())
   const [activeRef, setActiveRef] = useState<null | RefBind>(null)
@@ -1020,7 +1021,7 @@ export function App() {
             })
           }} /></label>
           <label title="实验：用墨迹轮廓画线（单线，与今天的圆头描边同形）"><input type="checkbox" data-testid="ink-outline" checked={inkOn} onChange={e => setInkOn(e.target.checked)} /> 墨迹轮廓（实验）{ink && <span data-testid="ink-diagnostics"> · 已验证 {ink.diagnostics.filter(d => d.status === 'verified').length} · 未完全证明 {ink.diagnostics.filter(d => d.status === 'unproven').length} · 瑕疵 {ink.diagnostics.filter(d => d.status === 'defect').length} · 回退 {ink.diagnostics.filter(d => d.status === 'fallback').length}</span>}</label>
-          <label title="实验：画出画稿里的蒙版（需要墨迹轮廓开着）" style={{ color: inkOn ? undefined : '#999' }}><input type="checkbox" data-testid="masks" disabled={!inkOn} checked={masksOn && inkOn} onChange={e => setMasksOn(e.target.checked)} /> 蒙版（实验）{!inkOn && ' · 需要墨迹轮廓'}</label>
+          <label title="画出画稿里的蒙版（默认开；需要墨迹轮廓开着）" style={{ color: inkOn ? undefined : '#999' }}><input type="checkbox" data-testid="masks" disabled={!inkOn} checked={masksOn && inkOn} onChange={e => setMasksOn(e.target.checked)} /> 蒙版（实验）{!inkOn && ' · 需要墨迹轮廓'}</label>
           <label><input type="checkbox" data-testid="move-picture" checked={moveRef} onChange={e => { if (!e.target.checked) { gesture.current?.cancel('Move picture turned off'); setActiveRef(null) } cancelPreview(); setMoveRef(e.target.checked) }} /> Move picture (drag it, or arrow keys; Shift ×10)</label>
           {core.in(shown).references().map(r => {
             const live = refPreview && refPreview.id === r.id && refNow(refPreview) ? { ...r, ...refPreview.props } : r
