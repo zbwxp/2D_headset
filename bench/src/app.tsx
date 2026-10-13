@@ -909,15 +909,15 @@ export function App() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2 }} data-testid="views">
           {[45, 0, -45].flatMap(pitch => [-90, 0, 90].map(yaw => {
             const k = `view:${yaw},${pitch}`, on = k === shown
-            return <button key={k} data-view={k} title={applyFrom ? (on ? '当前视角' : `把 ${k} 里选中图层的形状应用到当前视角`) : k} disabled={applyFrom && on}
+            return <button key={k} data-view={k} title={applyFrom ? (on ? '当前视角' : `把 ${k} 里选中图层的曲线搬到当前视角`) : k} disabled={applyFrom && on}
               style={{ fontWeight: on ? 700 : 400, background: on ? '#cde' : applyFrom ? '#fec' : undefined }}
               onClick={() => { if (!applyFrom) { chooseView(k); return } setApplyFrom(false); run(e => e.applyFromView([...env.current.layers], k)) }}>{yaw},{pitch}</button>
           }))}
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
           <button data-testid="apply-from" style={{ fontWeight: applyFrom ? 700 : 400, background: applyFrom ? '#fec' : undefined, whiteSpace: 'nowrap' }} onClick={() => setApplyFrom(a => !a)}
-            title="把另一个视角里选中图层的形状（位置、手柄、宽度、轮廓、端点笔触、圆弧半径、手动过渡区）原样应用到当前视角，一步可撤销">从视角应用…</button>
-          {applyFrom && <span style={{ color: '#a60' }}>选一个视角，把它的形状应用到选中的图层（Esc 取消）</span>}
+            title="把另一个视角里选中图层的曲线（端点位置和两个手柄）原样搬到当前视角；宽度等其他都不动；一步可撤销">从视角应用…</button>
+          {applyFrom && <span style={{ color: '#a60' }}>选一个视角，把它的曲线搬到选中的图层（Esc 取消）</span>}
         </div>
         <b>Edit</b>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>

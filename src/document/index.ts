@@ -440,65 +440,43 @@ export class Editor {
     views.draftCorners(this.s.network, this.tx.changes, lines)
   }
   /**
-   * Apply from another view (bowen 1791878160; docs/apply-from-view-checklist.md): the given layers as
-   * they are in view `from` — each point's position and width, each line's handles and profile, the end
-   * strokes at those points, their joins' arc radii and manual zones — written into this view, every
-   * value read before anything is written. In the front, mirror partners follow as with their own edits;
-   * elsewhere only the given layers are written (as the diagonal draft writes its views). Points of other
-   * layers linked to the given ones follow, as after a move: the one exception to "only the given layers".
-   * Copied unchanged, or refused (dot 1791878532): a locked line in the given layers is refused before
-   * anything is written; then the edit is settled as its commit would be, and unless the given layers
-   * show exactly the source's values, with no point merged, no shared structure and no other view
-   * changed, the whole edit is refused. From this view itself: nothing to do.
+   * Apply from another view (bowen 1791878160, 1791878923: a quick start for a view, "only the 4
+   * parameters"; docs/apply-from-view-checklist.md): every line of the given layers takes its curve as
+   * it is in view `from` — its end points' positions and its two handles — in this view, every value
+   * read before anything is written. Nothing else is copied (widths, profiles, end strokes, radii, zones
+   * stay). No mirror sync: only the given layers are written; in the front a mirror link still keeps its
+   * partner mirrored, as it does after any move. Points of other layers linked to the given ones follow,
+   * as after a move. Copied unchanged, or refused (dot 1791878532): a locked line in the given layers is
+   * refused before anything is written; then the edit is settled as its commit would be, and unless the
+   * given layers show exactly the source's curves, with no point merged, no shared structure and no other
+   * view changed, the whole edit is refused. From this view itself: nothing to do.
    */
   applyFromView(layers: Id[], from: string) {
     if (!views.isView(from)) throw new Error(`Not a view key: ${String(from)}`)
     const n = this.s.network, chosen = new Set(layers)
     for (const L of chosen) if (!net.hasLayer(n, L)) throw new Error(`No layer ${L}`)
     if (from === this.tx.layer) return
-    const src = net.of(n, from), front = this.tx.layer === views.FRONT
+    const src = net.of(n, from)
     const lines = net.lines(n).filter(l => chosen.has(net.layerOfLine(n, l.id)))
-    const points = [...new Set(lines.flatMap(l => [l.a, l.b]))]
     const locked = lines.filter(l => l.state.locked).map(l => l.id)
     if (locked.length) throw new net.Refusal('locked', `Locked lines would change (${locked.join(', ')}); nothing was published`, net.lineObjects(locked))
     // every value read before anything is written, with what must not change
     const structure = (x: State) => JSON.stringify([net.points(x.network).map(p => [p.id, p.layer]), net.lines(x.network).map(l => [l.id, l.a, l.b]), joins.modes(x.joins)])
-    const shapeIn = (x: State, k: string) => { const h = net.of(x.network, k); return JSON.stringify([net.points(h).map(p => [p.position, net.pointWidth(h, p.id)]), net.lines(h).map(l => [l.ha, l.hb, l.stroke])]) }
+    const shapeIn = (x: State, k: string) => { const h = net.of(x.network, k); return JSON.stringify([net.points(h).map(p => p.position), net.lines(h).map(l => [l.ha, l.hb])]) }
     const shared = structure(this.s), others = new Map(viewKeys(this.s).filter(k => k !== this.tx.layer).map(k => [k, shapeIn(this.s, k)]))
-    const moves = points.map(p => ({ id: p, target: net.point(src, p).position }))
+    const moves = [...new Set(lines.flatMap(l => [l.a, l.b]))].map(p => ({ id: p, target: net.point(src, p).position }))
     const handles = lines.flatMap(l => (['a', 'b'] as const).map(end => ({ id: l.id, end, v: net.handle(net.line(src, l.id), end) })))
-    const widths = points.map(p => ({ p, w: net.pointWidth(src, p), end: joins.endStroke(this.s.joins, src, p) }))
-    const profiles = lines.map(l => ({ id: l.id, profile: net.line(src, l.id).stroke.profile }))
-    const rows = points.flatMap(p => joins.rowsAt(this.s.joins, src, p))
-    // the item first, then its mirror partner (apply.paired*): the partner only in the front
-    const each = <T>(items: T[]) => (front ? items : items.slice(0, 1))
-    const a = this.s.apply, j = this.s.joins
     if (moves.length) this.move(moves)
     for (const h of handles) this.moveHandle(h.id, h.end, h.v)
-    for (const { p, w, end } of widths) for (const q of each(apply.pairedPoints(a, n, p))) {
-      net.setPointWidth(n, q, w)
-      if (end) joins.setEndStroke(j, n, q, end); else joins.clearEndStroke(j, n, q)
-    }
-    for (const { id, profile } of profiles) for (const x of each(apply.pairedLines(a, n, id))) net.setLineProfile(n, x, profile)
-    for (const r of rows) for (const [p, l1, l2] of each(apply.pairedJoins(a, n, r.point, r.lines[0], r.lines[1]))) {
-      if (r.mode === 'arc' && r.radius !== undefined) joins.setRadiusHere(j, n, p, l1, l2, r.radius)
-      joins.setZoneHere(j, n, p, l1, l2, r.zone ?? null)
-    }
     // the check: settled as the commit would settle it
     const scratch = structuredClone(this.s), sch = structuredClone(this.tx.changes)
     settle(scratch, sch, this.tx.layer)
     const t = net.of(scratch.network, this.tx.layer), off: string[] = []
     if (structure(scratch) !== shared) off.push('points merged or the structure changed')
     for (const k of viewKeys(scratch)) if (k !== this.tx.layer && shapeIn(scratch, k) !== others.get(k)) off.push(`view ${k} changed`)
-    const eq = (x: unknown, y: unknown) => JSON.stringify(x) === JSON.stringify(y)
+    const eq = (x: Vec, y: Vec) => x.x === y.x && x.y === y.y
     for (const m of moves) if (!net.hasPoint(t, m.id) || !eq(net.point(t, m.id).position, m.target)) off.push(`point ${m.id}`)
     for (const h of handles) if (!net.hasLine(t, h.id) || !eq(net.handle(net.line(t, h.id), h.end), h.v)) off.push(`line ${h.id} handle ${h.end}`)
-    for (const { p, w, end } of widths) if (net.hasPoint(t, p) && (net.pointWidth(t, p) !== w || !eq(joins.endStroke(scratch.joins, t, p), end))) off.push(`point ${p} width or end stroke`)
-    for (const { id, profile } of profiles) if (net.hasLine(t, id) && net.line(t, id).stroke.profile !== profile) off.push(`line ${id} profile`)
-    for (const r of rows) {
-      const now = joins.rowsAt(scratch.joins, t, r.point).find(x => eq(x.lines, r.lines))
-      if (!now || now.radius !== r.radius || now.zone !== r.zone) off.push(`join at ${r.point}`)
-    }
     if (off.length) throw new net.Refusal('apply-from-not-exact', `apply-from-not-exact: the layers would not equal ${from} after settling (${[...new Set(off)].slice(0, 6).join('; ')}); nothing was published`)
   }
   /** Fit (stage 2 rule 4): the chosen lines' baseline takes the front; no view changes; it stands alone in its edit. */

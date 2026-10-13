@@ -1,6 +1,6 @@
-// Apply from another view (bowen 1791878160; docs/apply-from-view-checklist.md): the chosen layers'
-// shapes in view `from` — positions, widths, handles, profiles, end strokes, arc radii, manual zones —
-// written into the edited view; one edit; other layers and views unchanged.
+// Apply from another view (bowen 1791878160, 1791878923 "only the 4 parameters"; docs/apply-from-view-checklist.md):
+// every line of the chosen layers takes its curve in view `from` — end points and handles — in the edited view;
+// widths, profiles, end strokes, radii and zones stay; one edit; other layers and views unchanged.
 import { describe, it, expect } from 'vitest'
 import { Core, type Vec } from '../src'
 
@@ -33,39 +33,42 @@ function doc() {
   })
   return d
 }
-/** What of layer L a view shows: points (position, width, end stroke), lines (handles, stroke), joins (radius, zone). */
+/** A layer's curves in a view: points' positions, lines' handles. */
 const shapeOf = (d: Core, k: string, layer = 'L') => {
   const s = d.in(k).snapshot(), ps = new Set(s.points.filter(p => p.layer === layer).map(p => p.id))
-  return {
-    points: s.points.filter(p => ps.has(p.id)).map(p => ({ id: p.id, position: p.position, width: p.width, end: p.endStroke })),
-    lines: s.lines.filter(l => ps.has(l.a)).map(l => ({ id: l.id, ha: l.ha, hb: l.hb, stroke: l.stroke })),
-    joins: s.joins.filter(j => ps.has(j.point)),
-  }
+  return { points: s.points.filter(p => ps.has(p.id)).map(p => ({ id: p.id, position: p.position })), lines: s.lines.filter(l => ps.has(l.a)).map(l => ({ id: l.id, ha: l.ha, hb: l.hb })) }
+}
+/** Everything else of a layer in a view: widths, end strokes, strokes, joins' radii and zones. */
+const restOf = (d: Core, k: string, layer = 'L') => {
+  const s = d.in(k).snapshot(), ps = new Set(s.points.filter(p => p.layer === layer).map(p => p.id))
+  return { points: s.points.filter(p => ps.has(p.id)).map(p => [p.width, p.endStroke]), lines: s.lines.filter(l => ps.has(l.a)).map(l => l.stroke), joins: s.joins.filter(j => ps.has(j.point)) }
 }
 const every = (d: Core) => JSON.stringify(d.views().map(k => [k, d.in(k).snapshot()]))
 
 describe('apply from another view', () => {
-  it('the side view\'s layer L becomes exactly the front\'s; M and every other view are unchanged; one undo step', () => {
+  it('the side view\'s layer L takes exactly the front\'s curves, and keeps its own widths, strokes, end strokes, radius, zone; M and every other view are unchanged; one undo step', () => {
     const d = doc()
     expect(shapeOf(d, SIDE)).not.toEqual(shapeOf(d, FRONT))
-    const front = shapeOf(d, FRONT), sideM = shapeOf(d, SIDE, 'M')
+    expect(restOf(d, SIDE)).not.toEqual(restOf(d, FRONT))
+    const front = shapeOf(d, FRONT), sideM = shapeOf(d, SIDE, 'M'), rest = restOf(d, SIDE)
     const others = JSON.stringify(d.views().filter(k => k !== SIDE).map(k => [k, d.in(k).snapshot()]))
     const before = every(d)
     d.editIn(SIDE, e => e.applyFromView(['L'], FRONT))
     expect(shapeOf(d, SIDE)).toEqual(front)
-    expect(d.in(SIDE).geometry().lines.filter(l => l.id !== 'mn')).toEqual(d.in(FRONT).geometry().lines.filter(l => l.id !== 'mn'))
+    expect(restOf(d, SIDE)).toEqual(rest)
     expect(shapeOf(d, SIDE, 'M')).toEqual(sideM)
     expect(JSON.stringify(d.views().filter(k => k !== SIDE).map(k => [k, d.in(k).snapshot()]))).toBe(others)
     d.undo()
     expect(every(d)).toBe(before)
   })
 
-  it('the other way, into the front: a manual zone and an end stroke absent in the source are cleared', () => {
+  it('the other way, into the front: the curves only; the front keeps its manual zone and end strokes', () => {
     const d = doc()
-    const side = shapeOf(d, SIDE)
+    const side = shapeOf(d, SIDE), rest = restOf(d, FRONT)
     d.edit(e => e.applyFromView(['L'], SIDE))
     expect(shapeOf(d, FRONT)).toEqual(side)
-    expect(shapeOf(d, FRONT).joins[0]!.zone).toBeUndefined()
+    expect(restOf(d, FRONT)).toEqual(rest)
+    expect(restOf(d, FRONT).joins[0]!.zone).toBe(6)
   })
 
   it('two layers at once; a view with no lines in the layers, or the view itself, changes nothing', () => {
@@ -99,7 +102,7 @@ describe('apply from another view', () => {
     expect(at(SIDE, 'm')).toEqual(at(SIDE, 'a'))
   })
 
-  it('in the front, a mirror partner follows: mirrored shape, the same widths and end strokes', () => {
+  it('in the front, the mirror link keeps the partner mirrored (as after any move); its widths and end strokes are not touched', () => {
     const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })
     d.edit(e => {
       e.layer('R', 'R')
@@ -115,8 +118,8 @@ describe('apply from another view', () => {
     const pt = (p: string) => d.snapshot().points.find(x => x.id === p)!
     expect(pt('p2').position).toEqual(P(-30, 12))
     expect(pt('q2').position).toEqual(P(30, 12))
-    expect([pt('q1').width, pt('q2').width, pt('q2').endStroke]).toEqual([4, 4, { taper: 5 }])
-    expect(d.snapshot().lines.find(l => l.id === 'r')!.stroke.profile).toBe('taper')
+    expect([pt('p2').width, pt('q2').width, pt('q2').endStroke]).toEqual([1, 1, undefined])
+    expect(d.snapshot().lines.find(l => l.id === 'r')!.stroke.profile).toBe('uniform')
   })
 
   it('off the front, only the chosen layer is written: its mirror partner keeps its own values', () => {
