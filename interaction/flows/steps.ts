@@ -79,7 +79,8 @@ export function steps(ctx: Ctx): Steps {
     // the smallest loop in the tool's scope, chosen among all candidates (not the smallest overall, then
     // dropped: a loop of another layer inside it must not hide it; dot 1791556061)
     const s = ctx.snap(), of = ctx.layerOf(s)
-    const loop = ctx.reader().loopsAt(at).find(id => ctx.inScope(of.line(s.loops.find(l => l.id === id)?.route[0]?.line ?? '')))
+    // a fill cut away at the click is skipped: the next loop under it is taken (docs/mask-p3-checklist.md §2)
+    const loop = ctx.reader().loopsAt(at).find(id => ctx.inScope(of.line(s.loops.find(l => l.id === id)?.route[0]?.line ?? '')) && !ctx.env.cut?.({ kind: 'fill', id }, at, 0))
     if (!loop) return false
     const color = ctx.options().color
     ctx.commit(e => (mods.shift ? e.clearFill(loop) : e.fill(loop, color)))

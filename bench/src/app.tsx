@@ -15,7 +15,7 @@ import { labelsFor, middleOf, type Kind as LabelKind } from '../../name-labels'
 import { createMover, isArrow, type Target } from '../../move'
 import { Slider } from '../../slider'
 import { createInkCache } from '../../ink'
-import { apply as maskApply, area as maskArea, type Area, type Relation as MaskRelation } from '../../visibility'
+import { apply as maskApply, area as maskArea, contains as maskContains, distance as maskDistance, type Area, type Relation as MaskRelation } from '../../visibility'
 
 type Id = string
 type Unit = Snapshot['selection'][number]
@@ -236,7 +236,11 @@ export function App() {
   // this App's read-only flag and its own logged wrapper: another App mounting, posing or
   // unmounting never touches them (dot 1791686247)
   const posing = useRef(false) // set only by startPose / stopPose, with the pose state
-  const logged = useRef(loggedFor(() => (restoringNow.current ? 'locked' : posing.current ? 'playback' : 'edit'), () => saver.current?.want())).current
+  // picking follows the picture (docs/mask-p3-checklist.md): what the last render drew of each masked line and fill, kept
+  // with its drawing and view and dropped by every write, so a click between a write and the next render never uses an
+  // old cut (dot 1791907635); interaction asks through env.cut
+  const cutRef = useRef<{ core: Core; view: string; lines: Map<string, Area>; fills: Map<string, Area> } | null>(null)
+  const logged = useRef(loggedFor(() => (restoringNow.current ? 'locked' : posing.current ? 'playback' : 'edit'), () => { cutRef.current = null; saver.current?.want() })).current
   const svg = useRef<SVGSVGElement>(null)
   // one screen pixel in document units, from the canvas's real size (the viewBox is fitted, so the
   // larger ratio wins); the old fixed 900-pixel width made picking about half as wide as meant
@@ -304,6 +308,11 @@ export function App() {
   }
   const ink = inkOn ? inkCache.current.build(g, { ...s, zones }, masksOf.size ? maskCut : undefined) : null, inkOf = new Map((ink?.pieces ?? []).map(p => [p.source.id, p] as const))
   const inkDefects = new Map((ink?.diagnostics ?? []).filter(d => d.status === 'defect').map(d => [d.source.id, d.reason ?? ''] as const))
+  cutRef.current = !masksOf.size ? null : {
+    core, view: shown,
+    lines: new Map(s.lines.filter(l => masksOf.has(`line:${l.id}`)).map(l => [l.id, (inkOf.get(l.id)?.loops ?? []) as Area])),
+    fills: new Map(g.fills.filter(f => masksOf.has(`fill:${f.id}`)).map(f => [f.id, maskApply(maskArea(f.parts.map(p => p.curve as unknown as [Vec, Vec, Vec, Vec])), masksOf.get(`fill:${f.id}`)!)])),
+  }
   // one visibility rule for the playback drag's picking, its point marks and its ghost, computed once
   // per frame (dot 1791697776; docs/stage3b-pkg5-problems.md): the visible lines and the points they end at
   const shownLines = s.lines.filter(l => l.state.visible), shownEnds = new Set(shownLines.flatMap(l => [l.a, l.b]))
@@ -313,7 +322,13 @@ export function App() {
   const selLayers = [...new Set([...layers.filter(id => s.layers.some(l => l.id === id)), ...(drawLayer ? [drawLayer] : [])])]
   const env = useRef({ layer: drawLayer, layers: selLayers, px, view: shown })
   env.current = { layer: drawLayer, layers: selLayers, px, view: shown }
-  const ix = useRef(createInteraction({ core: () => logged(core), view: () => env.current.view, newId: nid, layer: () => env.current.layer || undefined, layers: () => env.current.layers, pixel: () => env.current.px })).current
+  const ix = useRef(createInteraction({ core: () => logged(core), view: () => env.current.view, newId: nid, layer: () => env.current.layer || undefined, layers: () => env.current.layers, pixel: () => env.current.px,
+    cut: (t, at, reach) => {
+      const c = cutRef.current
+      if (!c || c.core !== core || c.view !== env.current.view) return false
+      const a = (t.kind === 'line' ? c.lines : c.fills).get(t.id)
+      return a !== undefined && (t.kind === 'line' ? maskDistance(a, at) > reach : !maskContains(a, at))
+    } })).current
   useEffect(() => ix.subscribe(bump), [ix])
   // autosave: restore first (an Open of the stored text), then save every change in order; a late
   // restore after unmount applies nothing (the package checks its owner)

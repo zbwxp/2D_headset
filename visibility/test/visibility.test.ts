@@ -1,6 +1,6 @@
 // visibility package 1 (docs/mask-p1-checklist.md §4): masks on plain areas.
 import { describe, it, expect } from 'vitest'
-import { apply, area, size, type Area, type Cubic } from '..'
+import { apply, area, size, contains, distance, type Area, type Cubic } from '..'
 
 const P = (x: number, y: number) => ({ x, y })
 const rect = (x0: number, y0: number, x1: number, y1: number): Area => [[P(x0, y0), P(x1, y0), P(x1, y1), P(x0, y1)]]
@@ -73,5 +73,19 @@ describe('a fill\'s area', () => {
   it('a non-finite boundary or tolerance is refused', () => {
     expect(() => area([[P(0, 0), P(NaN, 0), P(1, 1), P(2, 2)]])).toThrow(/not finite/)
     expect(() => area([], 0)).toThrow(/tolerance/)
+  })
+})
+
+describe('a point against an area (picking, docs/mask-p3-checklist.md)', () => {
+  const sq = [[{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }]]
+  const holed = apply(sq, [{ mode: 'inverse', sources: [[[{ x: 3, y: 3 }, { x: 7, y: 3 }, { x: 7, y: 7 }, { x: 3, y: 7 }]]] }])
+  it('contains: inside, outside, and inside a hole cut by a mask', () => {
+    expect([contains(sq, { x: 5, y: 5 }), contains(sq, { x: 15, y: 5 }), contains(holed, { x: 5, y: 5 }), contains(holed, { x: 1, y: 1 })]).toEqual([true, false, false, true])
+  })
+  it('distance: 0 inside, to the nearest edge outside (a hole\'s edge too), Infinity for nothing', () => {
+    expect(distance(sq, { x: 5, y: 5 })).toBe(0)
+    expect(distance(sq, { x: 13, y: 14 })).toBeCloseTo(5, 9)
+    expect(distance(holed, { x: 5, y: 5 })).toBeCloseTo(2, 5)
+    expect(distance([], { x: 0, y: 0 })).toBe(Infinity)
   })
 })

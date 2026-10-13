@@ -25,6 +25,12 @@ export interface Env {
   layer: () => Id | undefined
   layers?: () => Id[]
   pixel: () => number
+  /**
+   * Masks (the 显隐 module; docs/mask-p3-checklist.md): whether `target` as drawn is out of reach of the pointer `at`
+   * because masks cut it — a line: its masked ink farther than `reach`; a fill: `at` outside its masked area. Interaction
+   * only asks; without it, picking is by geometry.
+   */
+  cut?: (target: { kind: 'line' | 'fill'; id: Id }, at: Vec, reach: number) => boolean
 }
 
 /**
@@ -194,6 +200,8 @@ export function createCtx(env: Env, state: { tool(): Tool; options(): Options })
       const layer = (x: ReturnType<Core['nearby']>[number]) => (x.kind === 'point' ? of.point(x.id) : of.line(x.kind === 'line' ? x.id : x.line))
       return ctx.reader().nearby(at, Math.max(REACH.point, REACH.handle, REACH.line) * px)
         .filter(x => x.visible && x.distance <= REACH[x.kind] * px && ctx.inScope(layer(x)))
+        // a line cut away where the pointer is drops out, so what lies under it can be picked (docs/mask-p3-checklist.md §2)
+        .filter(x => x.kind !== 'line' || !env.cut?.({ kind: 'line', id: x.id }, at, REACH.line * px))
         .sort((a, b) => ORDER[a.kind] - ORDER[b.kind] || a.distance - b.distance)
     },
     hitPoint: at => { const h = ctx.shown(at).find(x => x.kind === 'point'); return h && h.kind === 'point' ? h.id : undefined },

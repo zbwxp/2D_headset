@@ -54,6 +54,28 @@ export function apply(target: Area, relations: readonly Relation[]): Area {
 }
 
 /** The area of a region (non-zero), for tests and checks. */
+/** Whether `p` is inside an area (the non-zero rule, as areas are read). */
+export function contains(a: Area, p: Vec): boolean {
+  let winding = 0
+  for (const l of a) for (let i = 0; i < l.length; i++) {
+    const u = l[i]!, v = l[(i + 1) % l.length]!
+    if (u.y <= p.y) { if (v.y > p.y && (v.x - u.x) * (p.y - u.y) - (p.x - u.x) * (v.y - u.y) > 0) winding++ }
+    else if (v.y <= p.y && (v.x - u.x) * (p.y - u.y) - (p.x - u.x) * (v.y - u.y) < 0) winding--
+  }
+  return winding !== 0
+}
+/** How far `p` is from an area: 0 inside, else the distance to its nearest edge; Infinity for an empty area. */
+export function distance(a: Area, p: Vec): number {
+  if (contains(a, p)) return 0
+  let best = Infinity
+  for (const l of a) for (let i = 0; i < l.length; i++) {
+    const u = l[i]!, v = l[(i + 1) % l.length]!, dx = v.x - u.x, dy = v.y - u.y, len = dx * dx + dy * dy
+    const t = len ? Math.max(0, Math.min(1, ((p.x - u.x) * dx + (p.y - u.y) * dy) / len)) : 0
+    best = Math.min(best, Math.hypot(p.x - u.x - t * dx, p.y - u.y - t * dy))
+  }
+  return best
+}
+
 export function size(a: Area): number {
   const u = unionD(toD(a), [], FillRule.NonZero, PRECISION)
   return u.reduce((s, l) => { let t = 0; for (let i = 0; i < l.length; i++) { const p = l[i]!, q = l[(i + 1) % l.length]!; t += p.x * q.y - q.x * p.y } return s + t / 2 }, 0)
