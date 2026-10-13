@@ -325,6 +325,10 @@ export function App() {
       },
       current: () => save(core),
       changed: () => bump(),
+      // the 9 → 10 conversion (masks) waits for bowen (asked 1791906737): until then a version-9 record is not replaced
+      // (dot 1791906782); remove this once approved
+      conversionApproved: text => { try { return (JSON.parse(text) as { version?: unknown }).version !== 9 } catch { return true } },
+      conversionHeld: '旧格式画稿（第 9 版）：升级到第 10 版还没确认，自动保存暂停，原记录没动；要留住改动请用 Save 下载',
     })
     saver.current = a
     let live = true

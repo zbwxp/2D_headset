@@ -71,6 +71,18 @@ describe('autosave in the bench', () => {
     expect(cursor()).toContain('data:image/svg+xml') // the Pen again
   })
 
+  it('a version-9 record (9 → 10 not yet approved by bowen): opened, autosave off with the reason, the record untouched (dot 1791906782)', async () => {
+    const st = storedDrawing(), f = JSON.parse(st.text) as { version: number; document: Record<string, unknown> }
+    f.version = 9; delete f.document.masks
+    const m = memoryStore(JSON.stringify(f))
+    const t = await mount(m.store)
+    await m.release()
+    expect(t.status()).toMatch(/^✗ autosave off: 旧格式画稿（第 9 版）/)
+    expect(bench().core.snapshot().lines.map(l => l.id)).toContain(st.line)
+    expect(m.writes).toEqual([])
+    expect(m.data[CURRENT]).toBe(JSON.stringify(f))
+  })
+
   it('a version-5 record is restored converted (not backed up as unreadable, not empty), its original kept, then saved again in the current version, 10 (bowen 1791726456, 1791808493; dot 1791906394)', async () => {
     const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
     const st = storedDrawing(), d = open(st.text)

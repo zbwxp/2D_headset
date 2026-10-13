@@ -54,6 +54,13 @@ export interface Options {
   changed(): void
   /** The time for a backup record's name (tests fix it). */
   now?(): number
+  /**
+   * For a stored text that opened converted (an older format): whether that conversion may replace the record. False:
+   * autosave goes off and the record stays exactly as stored. Absent: allowed (after a backup).
+   */
+  conversionApproved?(stored: string): boolean
+  /** The reason shown when a conversion is not approved. */
+  conversionHeld?: string
 }
 
 export interface Autosave {
@@ -183,6 +190,8 @@ export function createAutosave(store: Store, o: Options): Autosave {
         // opened, but not as it was stored (an older format, converted on opening): the original is kept before the first
         // write replaces it, so a conversion not yet approved never rewrites the only copy (dot 1791906394)
         if (opened && o.current() !== stored) {
+          // not approved yet: nothing is written, the record stays as stored (dot 1791906782)
+          if (o.conversionApproved?.(stored) === false) { off(o.conversionHeld ?? 'the saved drawing is in an older format; saving it in the new one is not approved yet'); return }
           const key = `before-upgrade-${(o.now ?? Date.now)()}`
           try { await op(() => store.put(key, stored!)) } catch (e) { off(`the saved drawing was converted on opening and its original could not be backed up: ${(e as Error)?.message ?? e}`); return }
           if (!accepting()) return
