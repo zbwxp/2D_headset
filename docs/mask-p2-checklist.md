@@ -31,6 +31,7 @@ Package 1 (geometry and drawing, accepted by dot 1791903553 at 29baaf3) drew mas
   - Shown only where it can be used (the panel edits: `run` given).
 - `window.bench.setMasks` goes.
 - **The panel's draft** (ticked sources, mode) belongs to one drawing and one target: another subject, another drawing, or the target gone drops it — never added to an old target (dot 1791903786).
+- **The same rule once** (bowen 1791908041): a mask with the same target, mode and source set as an existing one is refused by `mask` (`mask-exists`); the panel leaves out targets that already have it and turns 添加 off when none is left (「已经加过」). A file is read as stored (duplicates already saved are listed and can be removed with ×).
 - No 停用 switch for now (dot 1791905577).
 
 ## 5. Evidence
