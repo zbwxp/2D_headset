@@ -121,6 +121,7 @@ export const EFFECTS: Record<string, Effect> = {
   deleteSelection: full({ reads: 'settled-trial', shapes: 'all-views', records: true, shared: STRUCTURAL_RESPONSES }),
   // stage 2: read the draft's geometry, which their settle-free companions leave unchanged
   broadcastShape: { reads: 'draft', intents: 'non-front', shapes: 'non-front', records: true, shared: [], autoStructure: false, settle: 'non-front-positions', alone: true, companion: false },
+  applyFromView: full({ reads: 'draft', intents: 'edited', shapes: 'edited', shared: [] }),
   draftCorners: { reads: 'draft', intents: 'corners', shapes: 'corners', records: false, shared: [], autoStructure: false, settle: 'non-front-positions', alone: true, companion: false },
   fit: { reads: 'draft', intents: 'none', shapes: 'none', records: true, shared: [], autoStructure: false, settle: 'none', alone: true, companion: false },
   // reference pictures: their own part only; an edit of these (and selections) never settles (dot 1791701244)

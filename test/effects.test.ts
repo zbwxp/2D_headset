@@ -126,6 +126,8 @@ const CASES: Case[] = [
   { op: 'flip', args: () => [sel('xy')] },
   { op: 'broadcastShape', args: () => [sel('ab')], views: [FRONT] },
   { op: 'draftCorners', args: () => [sel('ab')] },
+  // b differs between the front and the side: applied from the side, the edited view takes the side's L (in the side itself: nothing)
+  { op: 'applyFromView', args: () => [['L'], 'view:90,0'] },
   { op: 'fit', args: () => [sel('ab')] },
   // b differs between the front (11, 1) and the side (10, 0): the correction at yaw 45 writes knots on that edge (stage 3b package 3)
   { op: 'correct', args: () => [{ yaw: 45, pitch: 0 }, { points: [{ id: 'b', position: P(10.4, 0.7) }] }] },

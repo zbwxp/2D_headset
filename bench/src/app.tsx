@@ -146,6 +146,9 @@ export function App() {
   const [layers, setLayers] = useState<Id[]>(['layer-1']) // the selected layers (docs/layer-scope-plan.md §1)
   // Z is a view tool: the camera is the app's, so it lives here, not in interaction (bowen 1791554415)
   const [zoomTool, setZoomTool] = useState(false)
+  // 从视角应用 (bowen 1791878160): on, the nine view buttons pick the view to apply from; Esc cancels
+  const [applyFrom, setApplyFrom] = useState(false), applyFromOn = useRef(false)
+  applyFromOn.current = applyFrom
   // the one display kind of the name labels (docs/name-labels-plan.md; bowen 1791731823; dot 1791732110): set only
   // when A / V actually hit a line, a layers row is clicked or a name is found; nothing else changes it
   const [labelKind, setLabelKind] = useState<LabelKind>('line')
@@ -660,7 +663,7 @@ export function App() {
    */
   const startPose = () => {
     gesture.current?.cancel('entering playback')
-    ix.cancelAll()
+    ix.cancelAll(); setApplyFrom(false)
     posing.current = true; poseGen.current++; refGen.current++
     const [yaw, pitch] = shown.slice('view:'.length).split(',').map(Number)
     setPose({ yaw: yaw!, pitch: pitch! }); setCorrRefusal(null)
@@ -755,6 +758,7 @@ export function App() {
       if ((e.key === 'Shift' || e.key === 'Alt') && hoverAt.current) { hoverAt.current.mods = mods(e); rehover.current() }
       // Esc first: it cancels a gesture even in playback and with a field focused (dot 1791696958)
       if (e.key === 'Escape' && gesture.current) { gesture.current.cancel('Esc'); e.preventDefault(); return }
+      if (e.key === 'Escape' && applyFromOn.current) { setApplyFrom(false); e.preventDefault(); return }
       // only a field that takes typing keeps its keys (dot 1791544530), an input method its own (dot 1791727663);
       // a focused button never blocks a shortcut (bowen 1791556992: after clicking Flip or Zoom, V / A / ⌘Z still work)
       const t = e.target as HTMLElement
@@ -905,8 +909,15 @@ export function App() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2 }} data-testid="views">
           {[45, 0, -45].flatMap(pitch => [-90, 0, 90].map(yaw => {
             const k = `view:${yaw},${pitch}`, on = k === shown
-            return <button key={k} data-view={k} title={k} style={{ fontWeight: on ? 700 : 400, background: on ? '#cde' : undefined }} onClick={() => chooseView(k)}>{yaw},{pitch}</button>
+            return <button key={k} data-view={k} title={applyFrom ? (on ? '当前视角' : `把 ${k} 里选中图层的形状应用到当前视角`) : k} disabled={applyFrom && on}
+              style={{ fontWeight: on ? 700 : 400, background: on ? '#cde' : applyFrom ? '#fec' : undefined }}
+              onClick={() => { if (!applyFrom) { chooseView(k); return } setApplyFrom(false); run(e => e.applyFromView([...env.current.layers], k)) }}>{yaw},{pitch}</button>
           }))}
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+          <button data-testid="apply-from" style={{ fontWeight: applyFrom ? 700 : 400, background: applyFrom ? '#fec' : undefined, whiteSpace: 'nowrap' }} onClick={() => setApplyFrom(a => !a)}
+            title="把另一个视角里选中图层的形状（位置、手柄、宽度、轮廓、端点笔触、圆弧半径、手动过渡区）原样应用到当前视角，一步可撤销">从视角应用…</button>
+          {applyFrom && <span style={{ color: '#a60' }}>选一个视角，把它的形状应用到选中的图层（Esc 取消）</span>}
         </div>
         <b>Edit</b>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
