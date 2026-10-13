@@ -71,7 +71,7 @@ describe('autosave in the bench', () => {
     expect(cursor()).toContain('data:image/svg+xml') // the Pen again
   })
 
-  it('a version-5 record is restored converted (not backed up, not empty), then saved again in the current version, 10 (bowen 1791726456, 1791808493)', async () => {
+  it('a version-5 record is restored converted (not backed up as unreadable, not empty), its original kept, then saved again in the current version, 10 (bowen 1791726456, 1791808493; dot 1791906394)', async () => {
     const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
     const st = storedDrawing(), d = open(st.text)
     for (const v of ['view:0,0', 'view:90,0']) d.editIn(v, e => e.placeReference({ id: `${st.line}-${v}`, view: v, src: PNG, width: 40, height: 20, x: 3, y: 4, scale: 1, angle: 10, opacity: 0.5, visible: true, flipped: v === 'view:90,0' }))
@@ -81,8 +81,13 @@ describe('autosave in the bench', () => {
     const m = memoryStore(JSON.stringify(f))
     const t = await mount(m.store)
     await m.release()
-    expect(t.status()).toBe('autosave: saved')
+    expect(t.status()).toMatch(/^autosave: saved · the saved drawing was opened in the current format; the original was kept as before-upgrade-/)
     expect(m.writes.filter(k => k.startsWith('unreadable'))).toEqual([]) // never backed up as unreadable
+    // the original kept before the converted drawing replaces it (dot 1791906394)
+    const kept = m.writes.filter(k => k.startsWith('before-upgrade-'))
+    expect(kept.length).toBe(1)
+    expect(m.data[kept[0]!]).toBe(JSON.stringify(f))
+    expect(m.writes.indexOf(kept[0]!)).toBeLessThan(m.writes.indexOf(CURRENT))
     expect(bench().core.snapshot().lines.map(l => l.id)).toContain(st.line)
     expect(['view:0,0', 'view:90,0'].flatMap(v => bench().core.in(v).references())).toEqual(['view:0,0', 'view:90,0'].flatMap(v => d.in(v).references()))
     expect(JSON.parse(m.data[CURRENT]!).version).toBe(10) // the record is replaced only after the converted drawing is open

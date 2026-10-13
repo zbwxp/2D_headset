@@ -42,7 +42,7 @@ export function indexedDbStore(dbName = 'headset-bench'): Store {
 }
 
 export type State = 'restoring' | 'saved' | 'saving' | 'failed' | 'off'
-/** `notice`: an unreadable saved drawing was kept as a backup (shown, not an error). */
+/** `notice`: an unreadable, or converted, saved drawing was kept as a backup (shown, not an error). */
 export interface Status { readonly state: State; readonly error?: string; readonly notice?: string }
 
 export interface Options {
@@ -171,13 +171,22 @@ export function createAutosave(store: Store, o: Options): Autosave {
       try { stored = await op(() => store.get(CURRENT)) } catch (err) { off(`could not read the saved drawing: ${(err as Error)?.message ?? err}`); return }
       if (!accepting()) return
       if (stored !== undefined) {
-        try { o.apply(stored); disk = stored }
+        let opened = false
+        try { o.apply(stored); disk = stored; opened = true }
         catch (err) {
           // never overwritten silently: backed up first; if the backup fails, autosave stays off
           const key = `unreadable-${(o.now ?? Date.now)()}`
           try { await op(() => store.put(key, stored!)) } catch (e) { off(`the saved drawing does not open and could not be backed up: ${(e as Error)?.message ?? e}`); return }
           if (!accepting()) return
           notice = `the saved drawing did not open (${(err as Error)?.message ?? err}); it was kept as ${key}`
+        }
+        // opened, but not as it was stored (an older format, converted on opening): the original is kept before the first
+        // write replaces it, so a conversion not yet approved never rewrites the only copy (dot 1791906394)
+        if (opened && o.current() !== stored) {
+          const key = `before-upgrade-${(o.now ?? Date.now)()}`
+          try { await op(() => store.put(key, stored!)) } catch (e) { off(`the saved drawing was converted on opening and its original could not be backed up: ${(e as Error)?.message ?? e}`); return }
+          if (!accepting()) return
+          notice = `the saved drawing was opened in the current format; the original was kept as ${key}`
         }
       }
       state = 'saved'; notify()
