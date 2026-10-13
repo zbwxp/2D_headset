@@ -25,6 +25,8 @@ export interface InkLines {
   readonly joins?: readonly { readonly point: string; readonly lines: readonly [string, string]; readonly mode: string }[]
   /** The joins' zones of this view (core `zones()`): a smooth / bound join eases over half its 限长后长度 each side. */
   readonly zones?: readonly { readonly point: string; readonly lines: readonly [string, string]; readonly limited: number }[]
+  /** Points' end strokes: `taper` = a free end's taper length as a multiple of its width (absent 3, 0 none). */
+  readonly points?: readonly { readonly id: string; readonly endStroke?: { readonly taper?: number | string } }[]
 }
 
 /**
@@ -33,8 +35,9 @@ export interface InkLines {
  * the span). `centred`: the end is one half of a single S-curve centred on the joint (principle §1.3; bowen 1791817874 —
  * two smoothsteps meeting flat at the joint read as a lump): h = h + 2 (joint − h) · smoothstep((1 − s / length) / 2),
  * so the joint is the S-curve's middle (steepest, the same slope from both lines) and the far end meets h flat.
+ * `tip`: a free end tapering to a point (bowen 1791853511; joint 0): h − h_end · (1 − s / length)², reaching 0 at the end.
  */
-export interface EndEase { readonly joint: number; readonly centred?: boolean }
+export interface EndEase { readonly joint: number; readonly centred?: boolean; readonly tip?: boolean }
 export interface Profile {
   /** The half-width at the start; `hEnd` the half-width at the end, linear in between along the arc length (two end
    *  widths, bowen 1791818995); absent = `h`. The ends' easing is added on top, relative to that end's own width. */
@@ -271,7 +274,8 @@ function radiiAlong(points: readonly Vec[], pr: Profile, tol: number): { pts: Ve
   if (pr.end && le > 0) spans.push({ s0: L - le, s1: L, d: Math.abs(h1 - pr.end.joint) })
   const hAt = (at: number) => {
     let h = L > 0 ? h0 + (h1 - h0) * Math.min(1, at / L) : h0 // linear between the two end widths (exact between points)
-    const ease = (e: EndEase, base: number, u: number) => e.centred ? 2 * (e.joint - base) * smoothstep((1 - u) / 2) : (e.joint - base) * (1 - smoothstep(u))
+    // a free end's tip (bowen 1791853511): h · (2u − u²) — slope 0 into the body, a pointed tip with a finite angle
+    const ease = (e: EndEase, base: number, u: number) => e.tip ? -base * (1 - u) * (1 - u) : e.centred ? 2 * (e.joint - base) * smoothstep((1 - u) / 2) : (e.joint - base) * (1 - smoothstep(u))
     if (pr.start && ls > 0 && at < ls) h += ease(pr.start, h0, at / ls)
     if (pr.end && le > 0 && at > L - le) h += ease(pr.end, h1, (L - at) / le)
     return h
@@ -585,6 +589,23 @@ export function createInkCache(opts: InkOptions = {}) {
         tips.push({ j, polygon: r.kind === 'tip' ? r.polygon : undefined, width: Math.min(w0, w1), i2b: r.kind === 'tip' && r.i2b })
         // J3-min (bowen 1791816534): both ends drawn flat at p, so no round cap shows beside the tip
         for (const l of [p, q]) flats.set(l.id, { ...flats.get(l.id), [l.a === j.point ? 'start' : 'end']: true })
+      }
+      // free ends taper to a point (bowen 1791853511, dot 1791821792 / 1791821836): an end where exactly one line end lies,
+      // counting every line, hidden ones too; length = taper × the end's width (taper absent 3, 0 none), at most half the line
+      const endCount = new Map<string, number>()
+      for (const l of snapshot.lines) for (const p of [l.a, l.b]) endCount.set(p, (endCount.get(p) ?? 0) + 1)
+      const taperOf = new Map((snapshot.points ?? []).map(p => [p.id, p.endStroke?.taper] as const))
+      for (const g of geometry.lines) {
+        const l = byId.get(g.id)
+        if (!l || !l.state.visible) continue
+        for (const at of ['start', 'end'] as const) {
+          const point = at === 'start' ? l.a : l.b
+          if (endCount.get(point) !== 1) continue
+          const t = taperOf.get(point), k = typeof t === 'number' && Number.isFinite(t) && t >= 0 ? t : 3
+          const w = at === 'start' ? l.stroke.width : l.stroke.widthB ?? l.stroke.width, len = Math.min(k * w, length(g.id) / 2)
+          const e = ends.get(g.id) ?? {}
+          if (len > 0 && !e[at]) { e[at] = { joint: 0, length: len, tip: true }; ends.set(g.id, e) }
+        }
       }
       const pieceOf = new Map<string, InkPiece>()
       for (const g of geometry.lines) {

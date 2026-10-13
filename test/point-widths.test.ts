@@ -121,3 +121,16 @@ describe('widths belong to points', () => {
     expect(d.in('view:0,0').zones().find(x => x.point === 'p')!.desired).toBeCloseTo(3, 9)
   })
 })
+
+describe('a free end\'s taper (bowen 1791853511): endStroke.taper is a multiple of the end width, 0 or more', () => {
+  it('accepted 0 and above, kept per view; a negative or non-number taper is refused', () => {
+    const d = pair()
+    d.edit(e => e.endStroke('a', { taper: 0 }))
+    d.edit(e => e.endStroke('c', { taper: 6 }))
+    expect(d.snapshot().points.find(p => p.id === 'c')!.endStroke).toEqual({ taper: 6 })
+    expect(d.in('view:90,0').snapshot().points.find(p => p.id === 'c')!.endStroke).toBeUndefined()
+    expect(() => d.edit(e => e.endStroke('a', { taper: -1 }))).toThrow(/0 or more/)
+    expect(() => d.edit(e => e.endStroke('a', { taper: 'long' as unknown as number }))).toThrow(/0 or more/)
+    expect(save(open(save(d)))).toBe(save(d))
+  })
+})

@@ -149,6 +149,7 @@ describe('arc joins — the arc inked at its lines\' width, the lines and the ar
       sk(e).line('ab', 'a', 'b'); sk(e).line('bc', 'b', 'c')
       e.lineStroke('ab', { width: 4, profile: 'uniform' } as never); e.lineStroke('bc', { width: 4, profile: 'uniform' } as never)
       e.join('b', 'ab', 'bc', { mode: 'arc', radius: 10 })
+      e.endStroke('a', { taper: 0 }); e.endStroke('c', { taper: 0 }) // round free ends: the areas below count their caps
     })
     return d
   }
@@ -283,9 +284,9 @@ describe('smooth joins — one outline; unequal widths ease to the average at th
 
 describe('two end widths (bowen 1791818995): a line tapers linearly from its a-end width to its b-end width', () => {
   const across = (loops: readonly (readonly Vec[])[], x: number) => { const ys = loops.flatMap(l => l.flatMap((a, i) => { const b = l[(i + 1) % l.length]!; return (a.x - x) * (b.x - x) <= 0 && a.x !== b.x ? [a.y + (b.y - a.y) * (x - a.x) / (b.x - a.x)] : [] })); return Math.max(...ys) - Math.min(...ys) }
-  it('one line 4 → 1: the width linear along it, round free ends of the two radii', () => {
+  it('one line 4 → 1: the width linear along it, round free ends (taper 0) of the two radii', () => {
     const d = new Core()
-    d.edit(e => { e.layer('L'); sk(e).point('a', 'L', P(0)); sk(e).point('b', 'L', P(60)); sk(e).line('l', 'a', 'b'); e.lineStroke('l', { width: 4, widthB: 1, profile: 'uniform' } as never) })
+    d.edit(e => { e.layer('L'); sk(e).point('a', 'L', P(0)); sk(e).point('b', 'L', P(60)); sk(e).line('l', 'a', 'b'); e.lineStroke('l', { width: 4, widthB: 1, profile: 'uniform' } as never); e.endStroke('a', { taper: 0 }); e.endStroke('b', { taper: 0 }) })
     const ink = build(d.geometry(), d.snapshot()), l = ink.pieces.find(p => p.source.id === 'l')!
     for (const x of [6, 30, 54]) expect(across(l.loops, x)).toBeCloseTo(4 - 3 * x / 60, 1)
     expect(Math.min(...l.loops.flat().map(v => v.x))).toBeCloseTo(-2, 1)
@@ -334,6 +335,52 @@ describe('two end widths (bowen 1791818995): a line tapers linearly from its a-e
   })
 })
 
+describe('free ends taper to a point (bowen 1791853511): length = taper × the end width (3 by default), at most half the line', () => {
+  const across = (loops: readonly (readonly Vec[])[], x: number) => { const ys = loops.flatMap(l => l.flatMap((a, i) => { const b = l[(i + 1) % l.length]!; return (a.x - x) * (b.x - x) <= 0 && a.x !== b.x ? [a.y + (b.y - a.y) * (x - a.x) / (b.x - a.x)] : [] })); return ys.length ? Math.max(...ys) - Math.min(...ys) : 0 }
+  const one = (len: number, w: number, taper?: [number, number]) => {
+    const d = new Core()
+    d.edit(e => {
+      e.layer('L'); sk(e).point('a', 'L', P(0)); sk(e).point('b', 'L', P(len)); sk(e).line('l', 'a', 'b'); e.lineStroke('l', { width: w, profile: 'uniform' } as never)
+      if (taper) { e.endStroke('a', { taper: taper[0] }); e.endStroke('b', { taper: taper[1] }) }
+    })
+    return d
+  }
+  it('a line 60 long, width 4: both ends pointed at the end points, over 12 (3 × 4); the brush shape h · (2u − u²); the body full width', () => {
+    const d = one(60, 4), l = build(d.geometry(), d.snapshot()).pieces.find(p => p.source.id === 'l')!
+    const xs = l.loops.flat().map(v => v.x)
+    expect(Math.min(...xs)).toBeCloseTo(0, 1) // no cap past the end point
+    expect(Math.max(...xs)).toBeCloseTo(60, 1)
+    expect(across(l.loops, 30)).toBeCloseTo(4, 1)
+    expect(across(l.loops, 13)).toBeCloseTo(4, 1)
+    expect(across(l.loops, 6)).toBeCloseTo(4 * (2 * 0.5 - 0.25), 1) // u = ½ → 3
+    expect(across(l.loops, 1)).toBeLessThan(1)
+  })
+  it('taper 0: the round end of before; taper 6: a longer tip; per end', () => {
+    const d = one(60, 4, [0, 6]), l = build(d.geometry(), d.snapshot()).pieces.find(p => p.source.id === 'l')!
+    expect(Math.min(...l.loops.flat().map(v => v.x))).toBeCloseTo(-2, 1)
+    expect(across(l.loops, 60 - 12)).toBeCloseTo(4 * (2 * 0.5 - 0.25), 1) // 24 long: u = ½ at 12 from the end
+  })
+  it('a short line (10 long, width 4): each tip at most half the line — they meet in the middle, never overlap', () => {
+    const d = one(10, 4), l = build(d.geometry(), d.snapshot()).pieces.find(p => p.source.id === 'l')!
+    expect(across(l.loops, 5)).toBeCloseTo(4, 1)
+    // at u = ½ the formula gives 3; the swept outline is the envelope of the discs, a little wider where the width
+    // changes this fast (a tip 5 long on a width of 4)
+    const w = across(l.loops, 2.5)
+    expect(w).toBeGreaterThan(2.9)
+    expect(w).toBeLessThan(3.4)
+    expect(Math.min(...l.loops.flat().map(v => v.x))).toBeCloseTo(0, 1)
+  })
+  it('a joined end is not a free end, nor when its neighbour is hidden; the other end stays pointed', () => {
+    const d = one(60, 4)
+    d.edit(e => { sk(e).point('c', 'L', P(120)); sk(e).line('m', 'b', 'c') })
+    const ink = () => build(d.geometry(), d.snapshot()).pieces.find(p => p.source.id === 'l')!
+    expect(Math.max(...ink().loops.flat().map(v => v.x))).toBeCloseTo(62, 1) // b joined: its round end shows past b
+    d.edit(e => e.lineState('m', { visible: false }))
+    expect(Math.max(...ink().loops.flat().map(v => v.x))).toBeCloseTo(62, 1) // the hidden neighbour still counts
+    expect(Math.min(...ink().loops.flat().map(v => v.x))).toBeCloseTo(0, 1) // a stays pointed
+  })
+})
+
 describe('sharp (cusp) joins — the lines\' ink plus v103\'s tip (Slack 1791804643, dot 1791804679)', () => {
   /** Two lines meeting at p = (0, 0): l0 from (−50, 0) into p, l1 from p out at the interior angle θ (degrees). */
   const corner = (theta: number, w0: number, w1: number) => {
@@ -343,6 +390,7 @@ describe('sharp (cusp) joins — the lines\' ink plus v103\'s tip (Slack 1791804
       sk(e).point('a', 'L', P(-50)); sk(e).point('p', 'L', P(0)); sk(e).point('c', 'L', P(-50 * Math.cos(t), 50 * Math.sin(t)))
       sk(e).line('l0', 'a', 'p'); sk(e).line('l1', 'p', 'c')
       e.join('p', 'l0', 'l1', { mode: 'cusp' })
+      e.endStroke('a', { taper: 0 }); e.endStroke('c', { taper: 0 }) // round free ends: only the corner is under test
     })
     setW(d, 'l0', w0); setW(d, 'l1', w1)
     return build(d.geometry(), snap(d))

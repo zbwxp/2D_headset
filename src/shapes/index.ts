@@ -164,6 +164,8 @@ function slotIn(slot: Slot, v: unknown): number | Record<string, number | string
     const x = o[k]
     if (x === undefined) continue
     if (typeof x === 'number' ? !Number.isFinite(x) : typeof x !== 'string') throw new Error('End stroke values must be finite numbers or strings')
+    // `taper`: a free end's taper length as a multiple of its width (bowen 1791853511): a number, 0 or more
+    if (k === 'taper' && (typeof x !== 'number' || x < 0)) throw new Error('An end taper must be a number, 0 or more (a multiple of the end width)')
     put(out, k, x)
   }
   return out

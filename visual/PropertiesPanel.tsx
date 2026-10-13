@@ -40,6 +40,7 @@ export function PropertiesPanel({ s, subject, zones = [], run, slider, toolRadiu
   let title = '未选择', rows: [string, string][] = [], lists: { label: string; point: Id; line?: Id }[] = []
   // widths belong to points (bowen 1791820396): each field edits one point's width in this view
   let widthRows: { label: string; point: Id; value: number; attr: string }[] = []
+  let taperOf: { point: Id; value: number; end?: Snapshot["points"][number]["endStroke"] } | null = null
   if (subject?.kind === 'layer' && s.layers.some(l => l.id === subject.id)) {
     const ids = s.lines.filter(l => layerOf.get(l.a) === subject.id).map(l => l.id)
     title = `图层 · ${layerName(subject.id)}`
@@ -94,6 +95,10 @@ export function PropertiesPanel({ s, subject, zones = [], run, slider, toolRadiu
     title = `点 · ${subject.id}`
     rows = [['图层', layerName(layerOf.get(subject.id))], ['相接的线', at.map(l => l.name).join('、') || '—'], ...(run ? [] : [['宽度', String(s.points.find(p => p.id === subject.id)!.width)] as [string, string]])]
     if (run) widthRows = [{ label: '宽度', point: subject.id, value: s.points.find(p => p.id === subject.id)!.width, attr: 'data-point-width' }]
+    // a free end (exactly one line end here, hidden lines counted) tapers to a point: its length as a multiple of its
+    // width, this view (bowen 1791853511; absent = 3, 0 = a round end)
+    const ends = s.lines.reduce((n, l) => n + Number(l.a === subject.id) + Number(l.b === subject.id), 0)
+    if (run && ends === 1) { const e = s.points.find(p => p.id === subject.id)!.endStroke; taperOf = { point: subject.id, value: typeof e?.taper === 'number' ? e.taper : 3, end: e } }
     lists.push({ label: '接法', point: subject.id })
   }
 
@@ -114,6 +119,13 @@ export function PropertiesPanel({ s, subject, zones = [], run, slider, toolRadiu
               onCommit={v => { run?.(e => e.pointWidth(w.point, v)) }} onCancel={() => {}} />
             <span style={{ color: C.dim, fontSize: 11 }} title="宽度属于点：接在这个点上的线一起变">本视角 · 点 {w.point}</span>
           </div>)}
+        {taperOf && <div style={{ display: 'flex', gap: 8, padding: '2px 0', alignItems: 'center' }}>
+          <span style={{ color: C.key, width: 64, flex: 'none' }}>收尖</span>
+          <Slider value={taperOf.value} identity={`${scope ?? ''}|${taperOf.point}|taper`} accept={v => v >= 0} track={null} steps={{ step: 1, long: 10, short: 0.1 }}
+            fieldAttrs={{ 'data-point-taper': taperOf.point }} {...(slider ?? { onStart: () => true, onEnd: () => {}, onField: () => {} })} onPreview={() => {}}
+            onCommit={v => { const t = taperOf!; run?.(e => e.endStroke(t.point, { ...t.end, taper: v })) }} onCancel={() => {}} />
+          <span style={{ color: C.dim, fontSize: 11 }} title="收尖长度 = 这个数 × 端点宽度；0 = 圆头">× 宽 · 本视角</span>
+        </div>}
         {lists.map(x => <div key={x.label + x.point}>
           <div style={{ color: C.key, padding: '4px 0 0' }}>{x.label}</div>
           <JoinList s={s} zones={zones} point={x.point} line={x.line} run={run} slider={slider} toolRadius={toolRadius} scope={scope} />
