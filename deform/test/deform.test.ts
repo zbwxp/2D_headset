@@ -37,7 +37,7 @@ function randomCase(r: () => number) {
 const tRect = (r: D.Rect) => ({ min: T(r.min), max: T(r.max) })
 const tBend = (b: D.Bend) => ({ enabled: b.enabled, handles: b.handles.map(e => e.map(T)) as unknown as C.BendHandles })
 
-describe('the port equals v103 on random inputs (to 1e-9)', () => {
+describe('the port equals v103 on random inputs (mixed absolute / relative tolerance 1e-9)', () => {
   it('300 cases: the homography, the composed field, the fitted cubic, its parameters and maxError; the same refusals', () => {
     const r = rng(1791891109)
     let compared = 0, refused = 0, fitted = 0
@@ -165,9 +165,27 @@ describe('corner cases', () => {
     expect(() => D.quadProjection({ min: P(NaN, 0), max: P(100, 50) }, quad)).toThrow(/四角不能交叉或压扁/)
     expect(() => D.quadProjection({ min: P(0, 0), max: P(Infinity, 50) }, quad)).toThrow(/四角不能交叉或压扁/)
     expect(() => D.quadProjection(rect, [P(0, 0), P(110, NaN), P(95, 60), P(5, 50)])).toThrow(/四角不能交叉或压扁/)
-    expect(() => f.map(P(NaN, 3))).toThrow(/四角不能交叉或压扁/)
+    expect(() => f.map(P(NaN, 3))).toThrow(/不是有限数/)
     expect(() => D.fitDeformedCubic([P(10, 10), P(NaN, 10), P(60, 40), P(90, 20)], f)).toThrow()
   })
+  it('every public function refuses a non-finite input and never returns one (dot 1791891870)', () => {
+    const f = D.quadProjection(rect, quad), bend = D.neutralBend(), off = { ...bend, enabled: false }, I: D.Matrix3 = [1, 0, 0, 0, 1, 0, 0, 0, 1]
+    const bad = [
+      () => f.vector(P(10, 10), P(NaN, 1)), // a NaN direction
+      () => D.map3([NaN, 0, 0, 0, 1, 0, 0, 0, 1], P(1, 1)), // a NaN numerator, a fine denominator
+      () => f.map(P(0, Infinity)), () => f.denominator(P(Infinity, 0)), // an infinite point (and so denominator)
+      () => D.inverse3([1, 0, 0, 0, NaN, 0, 0, 0, 1]), () => D.map3(I, P(NaN, 0)),
+      () => D.bendPoint(off, P(NaN, 0)), () => D.bendVector(off, P(0, 0), P(Infinity, 0)), () => D.inverseBend(off, P(NaN, 0)), // the disabled-bend paths too
+      () => D.bendPoint(bend, P(0.5, NaN)), () => D.rectQuad({ min: P(0, NaN), max: P(1, 1) }),
+      () => D.bendEdges({ enabled: true, handles: D.neutralHandles().map(e => e.map(() => P(NaN, 0))) as unknown as D.BendHandles }),
+      () => D.deformParameter(NaN, 1), () => D.mappedParameter(NaN), () => D.sourceParameter(Infinity), () => D.mappedParameterSlope(NaN), () => D.sourceParameterSlope(NaN),
+      () => D.fitCubicTarget({ point: () => P(0, 0), handles: [P(NaN, 0), P(1, 0)] }),
+    ]
+    for (const b of bad) expect(b).toThrow(/不是有限数/)
+    // finite inputs: unchanged
+    expect(D.bendPoint(off, P(0.3, 0.4))).toEqual(P(0.3, 0.4)); expect(D.map3(I, P(2, 3))).toEqual(P(2, 3))
+  })
+
   it('a control point outside the frame is mapped as it is, not clamped into the frame', () => {
     const f = D.quadProjection(rect, quad), c: D.Cubic = [P(10, 10), P(-30, 80), P(140, -20), P(90, 20)]
     const affine = D.quadProjection(rect, [P(0, 0), P(200, 0), P(200, 100), P(0, 100)])

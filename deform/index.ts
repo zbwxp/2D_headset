@@ -17,24 +17,31 @@ const length = (a: Vec) => Math.hypot(a.x, a.y)
 const dot = (a: Vec, b: Vec) => a.x * b.x + a.y * b.y
 const cross = (a: Vec, b: Vec) => a.x * b.y - a.y * b.x
 const clamp = (x: number) => Math.max(0, Math.min(1, x))
+// finite values only, in and out of every public function (dot 1791891870): refused, never passed on — beyond
+// v103, which lets NaN and Infinity run through; finite inputs compute exactly as v103 does
+const notFinite = () => Error('变形输入或结果不是有限数。')
+const fv = (p: Vec): Vec => { if (!(p && Number.isFinite(p.x) && Number.isFinite(p.y))) throw notFinite(); return p }
+const fn = (x: number): number => { if (!Number.isFinite(x)) throw notFinite(); return x }
 
 // ---- homography (homography.ts) ---------------------------------------------------------------
 
 export type Matrix3 = [number, number, number, number, number, number, number, number, number]
 export function inverse3(m: Matrix3): Matrix3 {
+  m.forEach(fn)
   const [a, b, c, d, e, f, g, h, i] = m, A = e * i - f * h, B = f * g - d * i, C = d * h - e * g, det = a * A + b * B + c * C
   if (!Number.isFinite(det) || Math.abs(det) < 1e-10) throw Error('当前图层接近侧立，请转回一些角度再调整四角。')
-  return [A, c * h - b * i, b * f - c * e, B, a * i - c * g, c * d - a * f, C, b * g - a * h, a * e - b * d].map(v => v / det) as Matrix3
+  return [A, c * h - b * i, b * f - c * e, B, a * i - c * g, c * d - a * f, C, b * g - a * h, a * e - b * d].map(v => fn(v / det)) as Matrix3
 }
 export function map3(m: Matrix3, p: Vec): Vec {
+  m.forEach(fn); fv(p)
   const w = m[6] * p.x + m[7] * p.y + m[8]
   if (!Number.isFinite(w) || Math.abs(w) < 1e-8) throw Error('透视超出有效范围。')
-  return { x: (m[0] * p.x + m[1] * p.y + m[2]) / w, y: (m[3] * p.x + m[4] * p.y + m[5]) / w }
+  return fv({ x: (m[0] * p.x + m[1] * p.y + m[2]) / w, y: (m[3] * p.x + m[4] * p.y + m[5]) / w })
 }
 
 // ---- the four-corner homography (cageField.ts quadProjection) ----------------------------------
 
-export const rectQuad = (r: Rect): Quad => [{ ...r.min }, { x: r.max.x, y: r.min.y }, { ...r.max }, { x: r.min.x, y: r.max.y }]
+export const rectQuad = (r: Rect): Quad => { fv(r.min); fv(r.max); return [{ ...r.min }, { x: r.max.x, y: r.min.y }, { ...r.max }, { x: r.min.x, y: r.max.y }] }
 const invalid = () => Error('四角不能交叉或压扁；已保留最后有效位置。')
 
 export interface Field {
@@ -69,25 +76,28 @@ export function quadProjection(rect: Rect, quad: Quad): Field & { matrix: Matrix
   }
   const a = rows.map(r => r[8]!)
   const coords = (p: Vec): [number, number] => [(p.x - rect.min.x) / w, (p.y - rect.min.y) / h]
-  const denominator = (p: Vec) => { const [u, v] = coords(p); return a[6]! * u + a[7]! * v + 1 }
+  const denominator = (p: Vec) => { const [u, v] = coords(fv(p)); return fn(a[6]! * u + a[7]! * v + 1) }
   function map(p: Vec): Vec {
     const [u, v] = coords(p), den = denominator(p)
-    if (!(den >= 1e-4)) throw invalid() // v103: den < 1e-4; written so that a non-finite point is refused too
-    return add(quad[0], mul({ x: (a[0]! * u + a[1]! * v + a[2]!) / den, y: (a[3]! * u + a[4]! * v + a[5]!) / den }, scale))
+    if (den < 1e-4) throw invalid() // v103's rule, the positive side only; a non-finite den is refused above
+    return fv(add(quad[0], mul({ x: (a[0]! * u + a[1]! * v + a[2]!) / den, y: (a[3]! * u + a[4]! * v + a[5]!) / den }, scale)))
   }
   function vector(p: Vec, v: Vec): Vec {
+    fv(v)
     const [u, s] = coords(p), den = denominator(p), x = (a[0]! * u + a[1]! * s + a[2]!) / den, y = (a[3]! * u + a[4]! * s + a[5]!) / den
-    return mul({ x: (a[0]! - x * a[6]!) * v.x / w + (a[1]! - x * a[7]!) * v.y / h, y: (a[3]! - y * a[6]!) * v.x / w + (a[4]! - y * a[7]!) * v.y / h }, scale / den)
+    return fv(mul({ x: (a[0]! - x * a[6]!) * v.x / w + (a[1]! - x * a[7]!) * v.y / h, y: (a[3]! - y * a[6]!) * v.x / w + (a[4]! - y * a[7]!) * v.y / h }, scale / den))
   }
   rectQuad(rect).forEach(map)
   // the exact row-major homography
   const x0 = (scale * a[0]! + quad[0].x * a[6]!) / w, x1 = (scale * a[1]! + quad[0].x * a[7]!) / h
   const y0 = (scale * a[3]! + quad[0].y * a[6]!) / w, y1 = (scale * a[4]! + quad[0].y * a[7]!) / h
   const z0 = a[6]! / w, z1 = a[7]! / h
+  a.forEach(fn)
   const matrix: Matrix3 = [
     x0, x1, scale * a[2]! + quad[0].x - x0 * rect.min.x - x1 * rect.min.y,
     y0, y1, scale * a[5]! + quad[0].y - y0 * rect.min.x - y1 * rect.min.y,
     z0, z1, 1 - z0 * rect.min.x - z1 * rect.min.y]
+  matrix.forEach(fn)
   return { map, vector, denominator, matrix, affine: Math.abs(a[6]!) + Math.abs(a[7]!) < 1e-10 }
 }
 
@@ -99,13 +109,13 @@ export interface Bend { readonly handles: BendHandles; readonly enabled: boolean
 const corners: Vec[] = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }]
 export const neutralHandles = (): BendHandles => corners.map((a, i) => { const b = corners[(i + 1) % 4]!; return [1 / 3, 2 / 3].map(t => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t })) }) as unknown as BendHandles
 export const neutralBend = (): Bend => ({ handles: neutralHandles(), enabled: true })
-export const bendEdges = (value: Bend): Cubic[] => corners.map((p, i) => [p, ...value.handles[i]!, corners[(i + 1) % 4]!] as unknown as Cubic)
+export const bendEdges = (value: Bend): Cubic[] => { value.handles.flat().forEach(fv); return corners.map((p, i) => [p, ...value.handles[i]!, corners[(i + 1) % 4]!] as unknown as Cubic) }
 const straight = neutralHandles()
 /** Only the exact neutral value bypasses the nonlinear fit, keeping the homography exact. */
 export const isNeutralBend = (value: Bend) => !value.enabled || value.handles.every((edge, i) => edge.every((p, j) => p.x === straight[i]![j]!.x && p.y === straight[i]![j]!.y))
 /** The bilinearly blended Coons patch in the unit square, as boundary displacements (the identity term cancelled). */
 export function bendPoint(value: Bend, p: Vec): Vec {
-  const u = p.x, v = p.y
+  const u = fv(p).x, v = p.y
   if (!value.enabled) return { x: u, y: v }
   let x = u, y = v
   const ts = [u, v, 1 - u, 1 - v], weights = [1 - v, u, v, 1 - u]
@@ -114,11 +124,11 @@ export function bendPoint(value: Bend, p: Vec): Vec {
     x += a * (H[0].x - S[0].x) + b * (H[1].x - S[1].x)
     y += a * (H[0].y - S[0].y) + b * (H[1].y - S[1].y)
   }
-  return { x, y }
+  return fv({ x, y })
 }
 /** The analytic directional derivative of the same patch. */
 export function bendVector(value: Bend, p: Vec, d: Vec): Vec {
-  const u = p.x, v = p.y, du = d.x, dv = d.y
+  const u = fv(p).x, v = p.y, du = fv(d).x, dv = d.y
   if (!value.enabled) return { x: du, y: dv }
   let x = du, y = dv
   const ts = [u, v, 1 - u, 1 - v], weights = [1 - v, u, v, 1 - u], dt = [du, dv, -du, -dv], dw = [-dv, du, dv, -du]
@@ -128,9 +138,9 @@ export function bendVector(value: Bend, p: Vec, d: Vec): Vec {
     x += a * (H[0].x - S[0].x) + b * (H[1].x - S[1].x)
     y += a * (H[0].y - S[0].y) + b * (H[1].y - S[1].y)
   }
-  return { x, y }
+  return fv({ x, y })
 }
-/** A valid bend: four edges of two finite handles within ±8, and no fold or flattening anywhere inside (17 × 17 samples). */
+/** A valid bend: four edges of two finite handles within ±8, and no fold or flattening at 17 × 17 sample points (a sampled guard, not a guarantee for the whole region). */
 export function assertBend(value: Bend) {
   const ok = (p: Vec) => !!p && Number.isFinite(p.x) && Number.isFinite(p.y) && Math.abs(p.x) <= 8 && Math.abs(p.y) <= 8
   if (!value || typeof value.enabled !== 'boolean' || !Array.isArray(value.handles) || value.handles.length !== 4 || !value.handles.every(e => Array.isArray(e) && e.length === 2 && e.every(ok))) throw Error('曲边变形参数无效')
@@ -142,7 +152,8 @@ export function assertBend(value: Bend) {
   }
 }
 export function inverseBend(value: Bend, target: Vec): Vec {
-  if (!value.enabled) return target
+  if (!value.enabled) return fv(target)
+  fv(target)
   let p: Vec = { ...target }
   for (let k = 0; k < 18; k++) {
     const q = bendPoint(value, p), dx = q.x - target.x, dy = q.y - target.y
@@ -184,7 +195,7 @@ export function deformField(rect: Rect, quad: Quad, bend?: Bend): Field {
 
 const point = (s: Cubic, t: number): Vec => { const u = 1 - t, a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t; return { x: a * s[0].x + b * s[1].x + c * s[2].x + d * s[3].x, y: a * s[0].y + b * s[1].y + c * s[2].y + d * s[3].y } }
 /** Projective reparameterization equalizing the rational cubic's endpoint weights. */
-export const deformParameter = (t: number, scale: number) => scale * t / (1 + (scale - 1) * t)
+export const deformParameter = (t: number, scale: number) => fn(fn(scale) * fn(t) / (1 + (scale - 1) * t))
 export interface CurveParameterMap { values: number[]; sourceKnots?: number[] }
 export function curveParameterSourceKnots(map?: CurveParameterMap): readonly number[] {
   return map?.sourceKnots ?? (map ? map.values.map((_, i) => i / (map.values.length - 1)) : [0, 1])
@@ -196,10 +207,11 @@ const parameterInterval = (knots: readonly number[], value: number) => {
 }
 /** Source t → fitted t. */
 export function mappedParameter(t: number, map?: CurveParameterMap) {
+  fn(t)
   if (!map) return t
-  if (map.sourceKnots) { const value = clamp(t), i = parameterInterval(map.sourceKnots, value); return map.values[i]! + (map.values[i + 1]! - map.values[i]!) * (value - map.sourceKnots[i]!) / (map.sourceKnots[i + 1]! - map.sourceKnots[i]!) }
+  if (map.sourceKnots) { const value = clamp(t), i = parameterInterval(map.sourceKnots, value); return fn(map.values[i]! + (map.values[i + 1]! - map.values[i]!) * (value - map.sourceKnots[i]!) / (map.sourceKnots[i + 1]! - map.sourceKnots[i]!)) }
   const x = clamp(t) * (map.values.length - 1), i = Math.min(map.values.length - 2, Math.floor(x))
-  return map.values[i]! + (map.values[i + 1]! - map.values[i]!) * (x - i)
+  return fn(map.values[i]! + (map.values[i + 1]! - map.values[i]!) * (x - i))
 }
 /** The target a fit follows: the deformed curve as a function of source t, and the deformed end derivatives / 3 (inward at the end). */
 export interface CubicFitTarget { point: (t: number) => Vec; handles: readonly [Vec, Vec]; parameterScale?: number; exactShape?: Cubic }
@@ -243,10 +255,13 @@ function fit(target: CubicFitTarget): { shape: Cubic; parameters: CurveParameter
 }
 /** A fit and its diagnostic: `maxError` over 257 samples (not a certified bound). */
 export function fitCubicTarget(target: CubicFitTarget) {
+  target.handles.forEach(fv)
+  if (target.parameterScale !== undefined) fn(target.parameterScale)
+  target.exactShape?.forEach(fv)
   const result = fit(target)
   let maxError = 0
   for (let i = 0; i <= 256; i++) maxError = Math.max(maxError, length(sub(point(result.shape, mappedParameter(i / 256, result.parameters)), target.point(i / 256))))
-  if (!Number.isFinite(maxError) || !result.shape.every(p => Number.isFinite(p.x) && Number.isFinite(p.y))) throw Error('Cubic fitting produced non-finite geometry.')
+  if (!Number.isFinite(maxError) || !result.shape.every(p => Number.isFinite(p.x) && Number.isFinite(p.y)) || !result.parameters.values.every(Number.isFinite)) throw Error('Cubic fitting produced non-finite geometry.')
   return { ...result, maxError }
 }
 /** One cubic per source cubic under the field (bowen 1791891109, "A"): affine → the control points mapped exactly; otherwise the fit. */
@@ -261,20 +276,23 @@ export function fitDeformedCubic(shape: Cubic, field: Field) {
 }
 /** The inverse of the fitted cubic's increasing source t → fitted t table. */
 export function sourceParameter(t: number, map?: CurveParameterMap): number {
+  fn(t)
   if (!map) return t
   const value = clamp(t), values = map.values
   let lo = 0, hi = values.length - 1
   while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (values[mid]! <= value) lo = mid; else hi = mid }
-  if (map.sourceKnots) return map.sourceKnots[lo]! + (map.sourceKnots[hi]! - map.sourceKnots[lo]!) * (value - values[lo]!) / (values[hi]! - values[lo]!)
-  return (lo + (value - values[lo]!) / (values[hi]! - values[lo]!)) / (values.length - 1)
+  if (map.sourceKnots) return fn(map.sourceKnots[lo]! + (map.sourceKnots[hi]! - map.sourceKnots[lo]!) * (value - values[lo]!) / (values[hi]! - values[lo]!))
+  return fn((lo + (value - values[lo]!) / (values[hi]! - values[lo]!)) / (values.length - 1))
 }
 export function mappedParameterSlope(t: number, map?: CurveParameterMap): number {
+  fn(t)
   if (!map) return 1
-  if (map.sourceKnots) { const i = parameterInterval(map.sourceKnots, clamp(t)); return (map.values[i + 1]! - map.values[i]!) / (map.sourceKnots[i + 1]! - map.sourceKnots[i]!) }
+  if (map.sourceKnots) { const i = parameterInterval(map.sourceKnots, clamp(t)); return fn((map.values[i + 1]! - map.values[i]!) / (map.sourceKnots[i + 1]! - map.sourceKnots[i]!)) }
   const i = Math.min(map.values.length - 2, Math.floor(clamp(t) * (map.values.length - 1)))
-  return (map.values[i + 1]! - map.values[i]!) * (map.values.length - 1)
+  return fn((map.values[i + 1]! - map.values[i]!) * (map.values.length - 1))
 }
 export function sourceParameterSlope(t: number, map?: CurveParameterMap): number {
+  fn(t)
   if (!map) return 1
-  return 1 / mappedParameterSlope(sourceParameter(t, map), map)
+  return fn(1 / mappedParameterSlope(sourceParameter(t, map), map))
 }
