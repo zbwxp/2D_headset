@@ -11,9 +11,9 @@ if (!Blob.prototype.text) Blob.prototype.text = function (this: Blob) { return n
 class Pt { constructor(public x = 0, public y = 0) {} matrixTransform() { return this } }
 ;(globalThis as { DOMPoint?: unknown }).DOMPoint ??= Pt
 
-type B = { core: Core; view(): string }
+type B = { core: Core; view(): string; chooseView(k: string): void }
 const bench = () => (window as unknown as { bench: B }).bench
-const FRONT = 'view:0,0', SIDE = 'view:90,0'
+const FRONT = 'view:0,0', SIDE = 'view:90,0', UP = 'view:0,45'
 const at = (k: string, p: string) => bench().core.in(k).snapshot().points.find(x => x.id === p)!.position
 
 /** A drawing: layers A (line a1) and B (line b1); in the side view both moved away from the front. */
@@ -66,6 +66,18 @@ describe('从视角应用 (bowen 1791878160)', () => {
     expect(bench().view()).toBe(FRONT)
     expect(JSON.stringify(bench().core.views().map(k => bench().core.in(k).snapshot()))).toBe(before)
     expect(t.button().style.fontWeight).toBe('400')
+  })
+
+  it('started, then another view and back: the picking stays ended; a view button only shows that view (dot 1791879765)', async () => {
+    const t = await setup()
+    await t.click(t.button())
+    await act(async () => { bench().chooseView(UP) })
+    await act(async () => { bench().chooseView(SIDE) })
+    expect(t.view(SIDE).disabled).toBe(false)
+    const before = JSON.stringify(bench().core.views().map(k => bench().core.in(k).snapshot()))
+    await t.click(t.view(FRONT))
+    expect(bench().view()).toBe(FRONT)
+    expect(JSON.stringify(bench().core.views().map(k => bench().core.in(k).snapshot()))).toBe(before)
   })
 
   it('Esc or the button again cancels: a view button then just shows that view', async () => {

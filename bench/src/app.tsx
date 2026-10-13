@@ -247,6 +247,8 @@ export function App() {
   const applyFrom = applyFromAt !== null && applyFromAt.core === core && applyFromAt.view === shown
   const setApplyFrom = (on: boolean) => setApplyFromAt(on ? { core, view: shown } : null)
   applyFromOn.current = applyFrom
+  // ended, not paused: coming back to that drawing or view does not bring it back (dot 1791879765)
+  useEffect(() => { if (applyFromAt && !applyFrom) setApplyFromAt(null) })
   // lines whose front differs from the angle baseline (stage 2): marked on the canvas
   const pending = core.pendingLines()
   // while posing, the drawing is the pose (Core.atPose: read only, drawn through the same reads as a view)
