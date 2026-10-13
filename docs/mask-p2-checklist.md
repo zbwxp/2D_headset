@@ -20,6 +20,8 @@ Package 1 (geometry and drawing, accepted by dot 1791903553 at 29baaf3) drew mas
 ## 3. The archive
 - `VERSION` 9 → 10: the drawing holds `masks`; `legacy.upgrade` turns a v9 file into v10 with no masks, the existing 5 → … → 9 chain feeding into it (src/legacy, deletable for a release, bowen 1791820592). Opening checks every reference (fill ids exist and are filled, the target exists, modes valid, ids unique) when the masks are read, before any settle — a bad file is refused, not repaired or quietly cleaned (dot 1791903786).
 
+- **The autosave record is never rewritten without its original (dot 1791906394):** the 9 → 10 conversion is not yet approved by bowen, and the bench saves the drawing to its own record. When a stored record opens but not as stored (an older format, converted on opening), autosave first keeps the original as `before-upgrade-<time>` (as it keeps an unreadable one), then writes; if that backup fails, autosave stays off. Files on disk are never written by opening them.
+
 ## 4. The bench (replaces package 1's temporary store)
 - The drawing's own masks are drawn, behind the same 「蒙版（实验）」 switch (still needs 墨迹轮廓).
 - **Making one (minimal; bowen 1791903762 "按成熟的蒙版构建逻辑来", dot 1791905577):** the mature order (Illustrator's opacity mask, Photoshop's layer mask): the target first, then the mask area, then the mode. In the properties panel a 「蒙版」 section for the subject:
