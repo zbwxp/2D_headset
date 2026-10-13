@@ -4488,3 +4488,13 @@ No graph rows yet (bowen 1791603861).
 1. **Where a mask relation is stored.** 甲 (Claude and dot recommend): as a relation in the drawing's data, like joins and links; the 显隐 module only computes. Storing it there does **not** make delete / copy / paste / rename right by itself: what happens to a relation when its source or target is deleted, copied or pasted must be designed and tested explicitly (dot 1791901344). 乙: kept by the 显隐 module itself, saved beside the drawing.
 2. **Views — only if the geometry does not already decide (dot 1791901344).** Each view masks with its own shapes. Extra view control is needed only for this kind of wish: *in the front view the nose still lies inside the face's fill but must show; in the side view it lies inside and must hide.* bowen: is that what you want for the nose and face? If so, the relation needs to be on in some views and off in others. A fade by angle is a different effect (transparency, not a geometric clip) and is not proposed from this example.
 3. **Smallest target.** Lines and fills first (Claude recommends), stroke intervals (the collar's back half) when display intervals arrive — or intervals now.
+
+### bowen's decisions (1791901391)
+
+> 1甲 2侧鼻线本身在脸的后面，被脸的填充遮挡。此时在脸上面还会有个鼻子。3 我这个例子是侧脸线和侧鼻线+填充互为反向蒙版
+
+1. **甲:** a mask relation is stored in the drawing's data, like joins and links; the 显隐 module computes. (Reference upkeep on delete / copy / paste / rename still to be designed explicitly — dot 1791901344.)
+2. **No view control:** each view masks with its own geometry. The side-nose line lies behind the face and is covered by the face's fill; in the front view a separate nose is drawn on top of the face. Nothing needs switching per view.
+3. **Targets: lines and fills, now.** bowen's case: the side-face line, and the side-nose line + its fill, are **mutual inverse masks** — the nose (line + fill) area hides the side-face line; the face area hides the side-nose line and its fill. Stroke intervals come later, with display intervals.
+
+Not yet written as graph rows — waiting for bowen's "写".
