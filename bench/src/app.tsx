@@ -196,7 +196,6 @@ export function App() {
   // 蒙版（实验）, masks package 1 (docs/mask-p1-checklist.md §3): the relations come from a temporary bench store until
   // package 2 stores them in the drawing; this switch turns their drawing on
   const [masksOn, setMasksOn] = useState(false)
-  const maskStore = useRef<{ sources: string[]; target: { kind: 'line' | 'fill'; id: string }; mode: 'inverse' | 'normal' }[]>([])
   const [canvasPicks, setCanvasPicks] = useState(0)
   const inkCache = useRef(createInkCache())
   const [activeRef, setActiveRef] = useState<null | RefBind>(null)
@@ -283,7 +282,8 @@ export function App() {
       }
       return areaOf.get(id)!
     }
-    for (const m of maskStore.current) {
+    // the drawing's own masks (package 2, docs/mask-p2-checklist.md §4)
+    for (const m of s.masks) {
       const target = `${m.target.kind}:${m.target.id}`
       // a rule is its mode and its set of sources: two lines with the same rule share it (dot 1791903159)
       const key = `${m.mode}|${[...new Set(m.sources)].sort().join(',')}`
@@ -351,7 +351,7 @@ export function App() {
   const opts = ix.options()
 
   useEffect(() => {
-    ;(window as unknown as { bench: unknown }).bench = { core, ix, refresh: bump, masks: maskStore.current, setMasks: (ms: typeof maskStore.current) => { maskStore.current = ms; bump() }, pose: () => pose, view: () => env.current.view, chooseView: (k: string) => chooseView(k), scope: () => ({ layer: env.current.layer, layers: [...env.current.layers] }), svg: () => svg.current?.outerHTML, log, edit: (fn: (e: Editor) => void) => logged(core).edit(fn), demo: () => { demo(); ix.historyChanged(); bump() }, v2Eye: () => { v2Eye(); ix.historyChanged(); bump() } }
+    ;(window as unknown as { bench: unknown }).bench = { core, ix, refresh: bump, pose: () => pose, view: () => env.current.view, chooseView: (k: string) => chooseView(k), scope: () => ({ layer: env.current.layer, layers: [...env.current.layers] }), svg: () => svg.current?.outerHTML, log, edit: (fn: (e: Editor) => void) => logged(core).edit(fn), demo: () => { demo(); ix.historyChanged(); bump() }, v2Eye: () => { v2Eye(); ix.historyChanged(); bump() } }
   })
 
   /** A one-shot panel command: straight to core, then interaction checks its unfinished operations (doc 22 §3.5). */
@@ -1005,7 +1005,7 @@ export function App() {
             })
           }} /></label>
           <label title="实验：用墨迹轮廓画线（单线，与今天的圆头描边同形）"><input type="checkbox" data-testid="ink-outline" checked={inkOn} onChange={e => setInkOn(e.target.checked)} /> 墨迹轮廓（实验）{ink && <span data-testid="ink-diagnostics"> · 已验证 {ink.diagnostics.filter(d => d.status === 'verified').length} · 未完全证明 {ink.diagnostics.filter(d => d.status === 'unproven').length} · 瑕疵 {ink.diagnostics.filter(d => d.status === 'defect').length} · 回退 {ink.diagnostics.filter(d => d.status === 'fallback').length}</span>}</label>
-          <label title="实验：蒙版（第一包：关系暂存在 window.bench.masks，不保存；需要墨迹轮廓开着）" style={{ color: inkOn ? undefined : '#999' }}><input type="checkbox" data-testid="masks" disabled={!inkOn} checked={masksOn && inkOn} onChange={e => setMasksOn(e.target.checked)} /> 蒙版（实验）{!inkOn && ' · 需要墨迹轮廓'}</label>
+          <label title="实验：画出画稿里的蒙版（需要墨迹轮廓开着）" style={{ color: inkOn ? undefined : '#999' }}><input type="checkbox" data-testid="masks" disabled={!inkOn} checked={masksOn && inkOn} onChange={e => setMasksOn(e.target.checked)} /> 蒙版（实验）{!inkOn && ' · 需要墨迹轮廓'}</label>
           <label><input type="checkbox" data-testid="move-picture" checked={moveRef} onChange={e => { if (!e.target.checked) { gesture.current?.cancel('Move picture turned off'); setActiveRef(null) } cancelPreview(); setMoveRef(e.target.checked) }} /> Move picture (drag it, or arrow keys; Shift ×10)</label>
           {core.in(shown).references().map(r => {
             const live = refPreview && refPreview.id === r.id && refNow(refPreview) ? { ...r, ...refPreview.props } : r

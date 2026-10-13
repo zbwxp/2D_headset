@@ -1,5 +1,5 @@
-// Masks package 1 in the bench (docs/mask-p1-checklist.md §3): the 蒙版（实验） switch draws the temporary relations;
-// a source fill turned off turns its mask off (bowen 1791901604).
+// Masks in the bench (docs/mask-p1-checklist.md §3, mask-p2-checklist.md §4): the 蒙版（实验） switch draws the drawing's
+// own masks; a source fill turned off turns its mask off (bowen 1791901604).
 import { describe, it, expect, afterEach } from 'vitest'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -12,8 +12,7 @@ class Pt { constructor(public x = 0, public y = 0) {} matrixTransform() { return
 ;(globalThis as { DOMPoint?: unknown }).DOMPoint ??= Pt
 const roots: { unmount(): void }[] = []
 afterEach(async () => { await act(async () => { for (const r of roots.splice(0)) r.unmount() }) })
-type Mask = { sources: string[]; target: { kind: 'line' | 'fill'; id: string }; mode: 'inverse' | 'normal' }
-const bench = () => (window as unknown as { bench: { core: Core; refresh(): void; setMasks(ms: Mask[]): void } }).bench
+const bench = () => (window as unknown as { bench: { core: Core; refresh(): void } }).bench
 
 /** Layer B: a filled square (0..100); layer A: a line x across it, from -50 to 150. */
 async function setup() {
@@ -33,7 +32,7 @@ async function setup() {
   Object.defineProperty(input, 'files', { value: [new File([save(d)], 'd.json')], configurable: true })
   await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); await new Promise(r => setTimeout(r, 50)) })
   const fillId = bench().core.snapshot().loops[0]!.id
-  await act(async () => { bench().setMasks([{ sources: [fillId], target: { kind: 'line', id: 'x' }, mode: 'inverse' }]) })
+  await act(async () => { bench().core.edit(e => e.mask('mx', [fillId], { kind: 'line', id: 'x' }, 'inverse')); bench().refresh() })
   const ink = () => host.querySelector('[data-ink="x"]')?.getAttribute('d') ?? ''
   const xs = () => [...ink().matchAll(/(-?\d+(?:\.\d+)?) (-?\d+(?:\.\d+)?)/g)].map(m => Number(m[1]))
   /** The outline's loops: one for the whole line; two once the square's inside is cut out. */
@@ -42,6 +41,15 @@ async function setup() {
 }
 
 describe('蒙版（实验） in the bench (masks package 1)', () => {
+  it('the masks are the drawing\'s: saved with it, undone with it; the temporary store is gone', async () => {
+    const t = await setup()
+    await act(async () => { (t.host.querySelector('[data-testid="masks"]') as HTMLInputElement).click() })
+    expect(t.loops()).toBe(2)
+    expect(JSON.parse(save(bench().core)).document.masks.masks.map((m: { id: string }) => m.id)).toEqual(['mx'])
+    await act(async () => { bench().core.undo(); bench().refresh() })
+    expect(t.loops()).toBe(1)
+    expect('setMasks' in bench()).toBe(false)
+  })
   it('off: the line drawn whole; on: none of it inside the filled square', async () => {
     const t = await setup()
     expect(t.loops()).toBe(1)
@@ -90,14 +98,12 @@ describe('蒙版（实验） in the bench (masks package 1)', () => {
         e.line('z', 'm', { id: 'n', layer: 'A', position: { x: 50, y: 70 } })
         e.join('m', 'y', 'z', { mode: 'arc', radius: 10 })
       })
-      bench().setMasks(['y', 'z'].map(id => ({ sources: [t.fillId], target: { kind: 'line', id }, mode: 'inverse' })))
+      bench().core.edit(e => { for (const id of ['y', 'z']) e.mask(`m${id}`, [t.fillId], { kind: 'line', id }, 'inverse') })
+      bench().refresh()
     })
     await act(async () => { (t.host.querySelector('[data-testid="masks"]') as HTMLInputElement).click() })
     const arcInk = [...t.host.querySelectorAll('[data-ink^="arc:"]')]
     expect(arcInk.length).toBeGreaterThan(0)
     expect(arcInk.every(e => (e.getAttribute('d') ?? '') === '')).toBe(true)
-    // the same rule written with its sources in another order is still the same rule
-    await act(async () => { bench().setMasks([{ sources: [t.fillId, t.fillId], target: { kind: 'line', id: 'y' }, mode: 'inverse' }, { sources: [t.fillId], target: { kind: 'line', id: 'z' }, mode: 'inverse' }]) })
-    expect([...t.host.querySelectorAll('[data-ink^="arc:"]')].every(e => (e.getAttribute('d') ?? '') === '')).toBe(true)
   })
 })
