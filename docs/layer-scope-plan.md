@@ -28,7 +28,7 @@ What a tool shows as operable, and what it can hit, is the same set (bowen 17915
 |---|---|---|
 | V, A | selected layers | **bowen** |
 | bind, split, unbind, join, fill | selected layers | **bowen** ("同理"). With two layers selected, a join across them is still possible (dot 1791556023); bind stays within one layer, as core already rules |
-| merge position, link | all visible layers | **bowen** (merge = all points); link joins two layers by definition (graph, Linkage) |
+| merge position, link | ~~all visible layers~~ → **the selected layers** (bowen 1791899593: select the layers to edit, then act; with 1791899291 / 1791553331, nothing shown on a layer that is not selected) | before: **bowen** 1791555800 (merge = all points); link joins two layers by definition (graph, Linkage) — select both layers |
 | pen | current layer | **note**: a new line goes into the current layer, and both ends of a line are in one layer, so only the current layer's points can be connected to |
 
 - The scope covers points, handles and lines alike. For fill, it covers the loops whose lines are in scope. **note**
@@ -61,7 +61,7 @@ Only the selection units on the selected layers are shown selected and acted on:
 1. Panel: click, Shift range (both directions), Cmd add, Cmd remove, Cmd on the last one does nothing, and current moves when it is removed.
 2. Every tool, both scopes: a press on a point, handle or line in scope hits it, and one out of scope does not. `preview().points` and `preview().handles` equal what can be hit (pressed one by one, as in #12's test).
 3. V across two selected layers, then mirror source → apply and mirror link: the upper/lower-eyelid flow across layers (dot 1791555418).
-4. bind shows and hits only selected layers' points; merge and link reach every visible layer's points.
+4. bind, merge and link show and hit only the selected layers' points (merge and link: since bowen 1791899593).
 5. Pen connects only to current-layer points; a press on another layer's point starts a new point there instead.
 6. Fill picks only loops in scope.
 7. Narrowing the focus leaves the other selection inert and makes no edit. In the A+B → A → undo case, drag, Delete, flip, rotate and copy act on A only, and redo stays.

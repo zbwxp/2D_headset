@@ -35,7 +35,8 @@ export interface Env {
  */
 export const SCOPE: Record<Tool, 'selected' | 'current' | 'all'> = {
   V: 'selected', A: 'selected', bind: 'selected', split: 'selected', unbind: 'selected', join: 'selected', fill: 'selected', deform: 'selected',
-  merge: 'all', link: 'all',
+  // across layers too, but only the selected ones: select the layers to edit, then act (bowen 1791899593; they were 'all')
+  merge: 'selected', link: 'selected',
   pen: 'current', // a new line goes into the current layer, and both ends of a line are in one layer
 }
 /** The tools that pick points, and so show them (bowen 1791555800: bind shows its points). */

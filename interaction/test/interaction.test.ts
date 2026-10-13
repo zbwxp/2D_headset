@@ -583,28 +583,29 @@ describe('layer scope: each tool reaches its layers, and shows exactly what it c
     })
   }
 
-  it('bind shows and hits only the selected layers’ points; merge and link reach every layer', () => {
+  it('bind, merge and link show and hit only the selected layers’ points (bowen 1791899593: merge and link reached every layer before)', () => {
     const { ix, setLayers } = setup()
     setLayers(['L'])
-    ix.setTool('bind')
-    expect(ix.preview().points.sort()).toEqual(['a', 'b', 'c'])
-    ix.pointerDown(P(0, 200)) // x, in K
-    expect(ix.preview().pick).toBeUndefined()
-    for (const tool of ['merge', 'link'] as const) {
+    for (const tool of ['bind', 'merge', 'link'] as const) {
       ix.setTool(tool)
-      expect(ix.preview().points.sort()).toEqual(['a', 'b', 'c', 'x', 'y'])
-      ix.pointerDown(P(0, 200))
-      expect(ix.preview().pick).toEqual({ kind: 'point', id: 'x' })
+      expect(ix.preview().points.sort()).toEqual(['a', 'b', 'c'])
+      ix.pointerDown(P(0, 200)) // x, in K: not selected
+      expect(ix.preview().pick).toBeUndefined()
       ix.cancel()
     }
   })
 
-  it('link across layers still works with one layer selected (its scope is every layer)', () => {
+  it('link across layers: both layers selected, it links; with one selected, the other layer\'s point is not there to hit', () => {
     const { ix, core, setLayers } = setup()
     setLayers(['L'])
     ix.setTool('link')
     ix.pointerDown(P(0, 0)); ix.pointerDown(P(0, 200))
-    expect(core().snapshot().points.find(p => p.id === 'a')!.links).toEqual(['x'])
+    expect(core().snapshot().points.find(p => p.id === 'a')!.links).toEqual([])
+    const both = setup()
+    both.setLayers(['L', 'K'])
+    both.ix.setTool('link')
+    both.ix.pointerDown(P(0, 0)); both.ix.pointerDown(P(0, 200))
+    expect(both.core().snapshot().points.find(p => p.id === 'a')!.links).toEqual(['x'])
   })
 
   it('pen connects only to points of the current layer; on another layer’s point it starts a new point there', () => {
