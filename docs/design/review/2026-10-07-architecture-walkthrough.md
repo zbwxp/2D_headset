@@ -4448,3 +4448,40 @@ Waiting for bowen and dot on the glossary; still open: the three kinds of storag
 - nine views, missing curves, expressions over angle.
 
 No graph rows yet (bowen 1791603861).
+
+## Q33: Masks (蒙版) — bringing v2's mutual masks into v3
+
+### bowen's requirement (1791900861, 1791901097)
+
+> 好像没有但是在二版的时候非常详细的讨论过蒙版，然后得出一个需求需要互为蒙版
+
+> 嗯往三版里面带。这又是一个完全独立的模块，但是可能大分类属于visual 的显隐分类（未来线条的显隐区间应该也会在这个分类）
+
+### Facts
+
+**v2 (headset-design `docs/design/architecture/18-render-select-chain.md` §1.7b, a draft marked "待 dot 审"; requirement from doc 19 E-1):**
+- **The case:** a side face whose outline runs on from the cheek into the nose and mouth (bowen 1791279245, 1791279538). Answer: **mutual inverse masks** — the face's fill hides the side-nose line; the nose's fill hides the side-face line. The small notch at the meeting point is an accepted display limit (bowen 1791280233).
+- **Source:** a fill's area, or "a fill's area + chosen lines' stroke area" at the real stroke width (dot).
+- **Which geometry:** the source as evaluated (shape, view, expression, placement) **before any mask applies** — so mutual and chained masks cannot loop.
+- **Coverage only:** colour and opacity are not read; a hidden source still masks (dot 1791281457, Compositor `LiveMaskTests` evidence); the relation's own on/off switch turns it off.
+- **Target:** an element, or narrower: its fill, its stroke, or one parameter interval of its stroke (the collar's back half).
+- **Two modes:** inverse = not drawn inside the area (side nose / side face, collar); normal = drawn only inside the area (shadow, highlight within a base colour; pupil within the eye white).
+- **No draw-order change, no distance** — separate from ordering tools.
+- **Combining (draft):** sources of one relation united; relations on one target all apply ("and"); a mask never shows again what the author's display interval hid; picking follows what remains visible.
+- **Rendering issue found:** "draw, then erase" leaves anti-aliased residue (collar test: 174 px); "cut the stroke into segments, then clip one segment" passed the residue test but split joints.
+- **Mature references:** Live2D Clipping ID (several) + Reverse mask; PS / CSP clipping to the layer below; Spine clipping attachment.
+
+**v3 today:** no masks anywhere (headset-core; the reference-image plan lists masks as later, bowen 1791701099). The graph's rows: in a layer, cover is list order only (bowen 1791390897, Q18); a fill is a closed curve's attribute. Line display intervals are not in v3 yet (bowen: same 显隐 category, later).
+
+**What v3 gives that v2 lacked:** the ink is drawn as outline polygons (headset-core `ink/`, clipper2 union). A mask can then be **exact polygon geometry** — the target's ink outline minus (inverse) or intersected with (normal) the source's area — computed before drawing, with no anti-aliased residue, and the same polygons serve picking.
+
+### Mapping to v3 (Claude; candidates, nothing written to the graph)
+
+- **A module of the visual 显隐 category (bowen):** it reads the evaluated geometry and the ink outlines, applies the mask relations, and hands the visible result to drawing and picking. Line display intervals later join the same module.
+- **A relation** = sources (closed curves' fill areas, optionally plus lines' stroke areas), a target (a line, or a closed curve's fill; stroke intervals later with display intervals), a mode (inverse / normal), on/off.
+
+### To decide (bowen)
+
+1. **Where a mask relation is stored.** 甲 (Claude recommends): as a relation in the drawing's data, like joins and links, so delete / copy / paste / rename keep it right; the 显隐 module only computes. 乙: kept by the 显隐 module itself, saved beside the drawing.
+2. **Views.** In the front view the nose lines lie inside the face's fill: an always-on "face hides the side-nose line" would hide the nose there. So the relation probably needs to be **on in some views and off in others** (like a join's radius, a per-view value), or its strength must come from the angle. Which?
+3. **Smallest target.** Lines and fills first (Claude recommends), stroke intervals (the collar's back half) when display intervals arrive — or intervals now.
