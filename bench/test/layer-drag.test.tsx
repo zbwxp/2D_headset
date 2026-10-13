@@ -105,4 +105,34 @@ describe('layers panel drag (bowen 1791865224)', () => {
     expect(layers()).toEqual(['A', 'B', 'C', 'D'])
     expect(groups('A')).toEqual(['a1', 'a2', 'a3'])
   })
+
+  it('over a place to drop, then back over no place: the mark goes and the release moves nothing (dot 1791865974)', async () => {
+    const host = await setup()
+    const undoable = bench().core.canUndo
+    const back = async (from: HTMLElement, via: () => HTMLElement, home: () => HTMLElement, y: number) => {
+      await fire(from, 'dragstart')
+      await fire(via(), 'dragover', y)
+      expect(via().dataset.drop).toBeDefined()
+      await fire(home(), 'dragover', y)
+      expect(host.querySelector('[data-drop]')).toBeNull()
+      await fire(home(), 'drop')
+      await fire(from, 'dragend')
+    }
+    await back(layerRow(host, 'A'), () => layerRow(host, 'D'), () => layerRow(host, 'A'), -1)
+    await back(groupRow(host, 'a1'), () => layerRow(host, 'C'), () => layerRow(host, 'A'), 1)
+    await back(groupRow(host, 'a1'), () => groupRow(host, 'a3'), () => groupRow(host, 'a1'), -1)
+    expect(layers()).toEqual(['A', 'B', 'C', 'D'])
+    expect(groups('A')).toEqual(['a1', 'a2', 'a3'])
+    expect(groups('C')).toEqual(['c1'])
+    expect(bench().core.canUndo).toBe(undoable)
+  })
+
+  it('a drop on a row other than the marked one moves nothing', async () => {
+    const host = await setup()
+    await fire(layerRow(host, 'A'), 'dragstart')
+    await fire(layerRow(host, 'D'), 'dragover', -1)
+    await fire(layerRow(host, 'B'), 'drop') // no dragover reached B first
+    await fire(layerRow(host, 'A'), 'dragend')
+    expect(layers()).toEqual(['A', 'B', 'C', 'D'])
+  })
 })
