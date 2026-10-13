@@ -1267,8 +1267,8 @@ export function App() {
           {/* the pending mark (stage 2): an orange dot on each line whose front differs from the baseline — on the selected
               layers only: nothing is drawn on a layer that is not selected (bowen 1791899291, 1791553331) */}
           {!pose && g.lines.filter(G => pending.includes(G.id) && selLayers.includes(s.points.find(p => p.id === line(G.id).a)?.layer ?? '')).map(G => { const m = mid(G.curve); return <circle key={'pending' + G.id} data-pending={G.id} cx={m.x} cy={m.y} r={4 * px} fill="#f80" stroke="#fff" strokeWidth={px} /> })}
-          {/* playback on a line: the pickable points, and the drag's ghost at start + displacement (stage 3b package 5) */}
-          {pose && onLine && (() => s.points.filter(p => shownEnds.has(p.id)).map(p => <circle key={'pp' + p.id} data-pickable={p.id} cx={p.position.x} cy={p.position.y} r={3 * px} fill="#fff" stroke="#333" strokeWidth={px} />))()}
+          {/* playback on a line: the drag's ghost at start + displacement (stage 3b package 5); the points are not marked
+              (bowen 1791908866) — a press near one still picks it */}
           {pose && corrGhost && shownLines.filter(l => l.a === corrGhost.id || l.b === corrGhost.id).map(l => {
             const mv = (id: Id) => (id === corrGhost.id ? corrGhost.to : pos(id)), a = mv(l.a), b = mv(l.b)
             return <path key={'cg' + l.id} data-ghost={l.id} d={path([a, add(a, l.ha), add(b, l.hb), b])} fill="none" stroke="#06f" strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />

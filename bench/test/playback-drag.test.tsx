@@ -160,6 +160,17 @@ describe('the ghost follows the visibility rule (dot 1791697776)', () => {
   })
 })
 
+describe('no point marks in playback (bowen 1791908866)', () => {
+  it('on a line of the pad the points are not marked, and a press near one still corrects it', async () => {
+    const t = await setup(), k = t.k
+    await t.play(45, 0)
+    expect(t.svg.querySelectorAll('[data-pickable]').length).toBe(0)
+    const before = save(bench().core)
+    await t.drag(t.posed(`q${k}`), { x: 20, y: 10 })
+    expect(save(bench().core)).not.toBe(before)
+  })
+})
+
 describe('refusals', () => {
   it('a locked line\'s point: locked in red in the status, a cross on the line, nothing published; the next press clears it', async () => {
     const t = await setup()
