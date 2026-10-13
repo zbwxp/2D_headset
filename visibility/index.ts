@@ -36,7 +36,7 @@ export function area(parts: readonly Cubic[], tolerance = 0.02): Area {
 
 /**
  * What of `target` stays visible under its relations (Q33; dot 1791901708): per relation, the union of its sources that
- * are on — with none on, the relation is skipped, never read as an empty area; inverse = the target minus that union,
+ * are on (each source a region of its own first) — with none on, the relation is skipped, never read as an empty area; inverse = the target minus that union,
  * normal = the target within it. Each relation only removes, so their order does not matter. Sources are areas read
  * before any mask (the caller's duty: a source fill's own boundary), so mutual masks cannot loop.
  */
@@ -45,7 +45,9 @@ export function apply(target: Area, relations: readonly Relation[]): Area {
   for (const r of relations) {
     const on = r.sources.filter((s): s is Area => s !== null)
     if (!on.length) continue
-    const sources = unionD(on.flatMap(toD), [], FillRule.NonZero, PRECISION)
+    // each source made a region by its own non-zero rule first, then the regions united — raw paths of different
+    // sources winding opposite ways must not cancel (dot 1791903159)
+    const sources = unionD(on.flatMap(a => unionD(toD(a), [], FillRule.NonZero, PRECISION)), [], FillRule.NonZero, PRECISION)
     visible = r.mode === 'inverse' ? differenceD(visible, sources, FillRule.NonZero, PRECISION) : intersectD(visible, sources, FillRule.NonZero, PRECISION)
   }
   return fromD(visible)

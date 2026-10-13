@@ -272,7 +272,7 @@ export function App() {
   // masks: each relation's sources as their fills' own areas in this view, read before any mask (Q33); a source counts
   // while its fill is filled and shown (bowen 1791901604) — `null` otherwise
   const masksOf = (() => {
-    const out = new Map<string, (MaskRelation & { index: number })[]>()
+    const out = new Map<string, (MaskRelation & { key: string })[]>()
     // only with the ink: never "masks on" while uncut strokes are drawn (dot 1791902445)
     if (!masksOn || !inkOn) return out
     const areaOf = new Map<string, Area | null>()
@@ -283,16 +283,18 @@ export function App() {
       }
       return areaOf.get(id)!
     }
-    maskStore.current.forEach((m, index) => {
-      const key = `${m.target.kind}:${m.target.id}`
-      out.set(key, [...(out.get(key) ?? []), { index, mode: m.mode, sources: m.sources.map(source) }])
-    })
+    for (const m of maskStore.current) {
+      const target = `${m.target.kind}:${m.target.id}`
+      // a rule is its mode and its set of sources: two lines with the same rule share it (dot 1791903159)
+      const key = `${m.mode}|${[...new Set(m.sources)].sort().join(',')}`
+      out.set(target, [...(out.get(target) ?? []), { key, mode: m.mode, sources: m.sources.map(source) }])
+    }
     return out
   })()
   // a line's piece: its own relations; a join's piece (an arc, a tip): the relations both its lines have (docs/mask-p1-checklist.md §2)
   const maskCut = (src: { kind: string; id: string; lines?: readonly [string, string] }, loops: readonly (readonly Vec[])[]) => {
     const own = (id: string) => masksOf.get(`line:${id}`) ?? []
-    const rs = src.lines ? own(src.lines[0]).filter(r => own(src.lines![1]).some(q => q.index === r.index)) : own(src.id)
+    const rs = src.lines ? own(src.lines[0]).filter(r => own(src.lines![1]).some(q => q.key === r.key)) : own(src.id)
     return rs.length ? maskApply(loops, rs) : undefined
   }
   const ink = inkOn ? inkCache.current.build(g, { ...s, zones }, masksOf.size ? maskCut : undefined) : null, inkOf = new Map((ink?.pieces ?? []).map(p => [p.source.id, p] as const))

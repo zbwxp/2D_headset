@@ -16,6 +16,13 @@ describe('masks on areas', () => {
     expect(size(apply(target, [{ mode: 'inverse', sources: [a, b] }]))).toBeCloseTo(40, 9)
     expect(size(apply(target, [{ mode: 'normal', sources: [a, b] }]))).toBeCloseTo(60, 9)
   })
+  it('sources winding opposite ways do not cancel: each is a region first, then they are united (dot 1791903159)', () => {
+    const cw: Area = [[P(0, 0), P(0, 10), P(10, 10), P(10, 0)]], ccw = target
+    expect(apply(target, [{ mode: 'inverse', sources: [ccw, cw] }])).toEqual([]) // coincident, opposite: the whole square
+    const shifted: Area = [[P(5, 0), P(5, 10), P(15, 10), P(15, 0)]] // overlapping half, winding the other way
+    expect(size(apply(target, [{ mode: 'inverse', sources: [rect(0, 0, 6, 10), shifted] }]))).toBeCloseTo(0, 9)
+    expect(size(apply(target, [{ mode: 'normal', sources: [ccw, cw] }]))).toBeCloseTo(100, 9)
+  })
   it('a relation whose sources are all off changes nothing — a normal-mode target does not vanish (dot 1791901708)', () => {
     expect(size(apply(target, [{ mode: 'normal', sources: [null, null] }]))).toBeCloseTo(100, 9)
     expect(size(apply(target, [{ mode: 'inverse', sources: [null] }]))).toBeCloseTo(100, 9)

@@ -81,4 +81,23 @@ describe('蒙版（实验） in the bench (masks package 1)', () => {
     const box = t.host.querySelector('[data-testid="masks"]') as HTMLInputElement
     expect([box.disabled, box.checked, box.parentElement!.textContent!.includes('需要墨迹轮廓')]).toEqual([true, false, true])
   })
+
+  it('two lines with the same rule (sources and mode), joined by an arc, inside the square: the arc is cut too (dot 1791903159)', async () => {
+    const t = await setup()
+    await act(async () => {
+      bench().core.edit(e => {
+        e.line('y', { id: 'c', layer: 'A', position: { x: 20, y: 20 } }, { id: 'm', layer: 'A', position: { x: 50, y: 20 } })
+        e.line('z', 'm', { id: 'n', layer: 'A', position: { x: 50, y: 70 } })
+        e.join('m', 'y', 'z', { mode: 'arc', radius: 10 })
+      })
+      bench().setMasks(['y', 'z'].map(id => ({ sources: [t.fillId], target: { kind: 'line', id }, mode: 'inverse' })))
+    })
+    await act(async () => { (t.host.querySelector('[data-testid="masks"]') as HTMLInputElement).click() })
+    const arcInk = [...t.host.querySelectorAll('[data-ink^="arc:"]')]
+    expect(arcInk.length).toBeGreaterThan(0)
+    expect(arcInk.every(e => (e.getAttribute('d') ?? '') === '')).toBe(true)
+    // the same rule written with its sources in another order is still the same rule
+    await act(async () => { bench().setMasks([{ sources: [t.fillId, t.fillId], target: { kind: 'line', id: 'y' }, mode: 'inverse' }, { sources: [t.fillId], target: { kind: 'line', id: 'z' }, mode: 'inverse' }]) })
+    expect([...t.host.querySelectorAll('[data-ink^="arc:"]')].every(e => (e.getAttribute('d') ?? '') === '')).toBe(true)
+  })
 })
