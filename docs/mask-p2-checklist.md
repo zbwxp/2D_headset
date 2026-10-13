@@ -22,10 +22,14 @@ Package 1 (geometry and drawing, accepted by dot 1791903553 at 29baaf3) drew mas
 
 ## 4. The bench (replaces package 1's temporary store)
 - The drawing's own masks are drawn, behind the same 「蒙版（实验）」 switch (still needs 墨迹轮廓).
-- **Making one (minimal):** in the properties panel, when the subject is one line or one fill, a 「蒙版」 section: its masks listed (sources by their curve's name, the mode), each with ×; 「新建蒙版」 = a list of the drawing's filled loops (by their curve's name and layer) to tick as sources, 反向 / 正常, 添加. One edit each; undoable.
+- **Making one (minimal; bowen 1791903762 "按成熟的蒙版构建逻辑来", dot 1791905577):** the mature order (Illustrator's opacity mask, Photoshop's layer mask): the target first, then the mask area, then the mode. In the properties panel a 「蒙版」 section for the subject:
+  - **The targets:** a line → that line; a continuous curve → its lines and its filled loops; a layer → all its lines and filled loops (as Illustrator masks a whole group: one relation per target, all made in one edit — 126.json is then two adds, not ten).
+  - **The list:** the masks on those targets, each as 目标 ← 来源（图层 · 曲线）· 反向/正常, with × (one edit each).
+  - **新建:** the drawing's filled loops to tick as sources, each labelled by its layer and curve with its colour; the targets' own fills are not offered (a fill never masks itself); 反向 / 正常; 添加 (disabled with no source ticked). One edit, one undo step.
+  - Shown only where it can be used (the panel edits: `run` given).
 - `window.bench.setMasks` goes.
 - **The panel's draft** (ticked sources, mode) belongs to one drawing and one target: another subject, another drawing, or the target gone drops it — never added to an old target (dot 1791903786).
-- **How a mask is made** waits for bowen (1791904065: mature tools' order — Photoshop's layer mask, Illustrator's opacity mask — target first, then the mask area, then the mode; the panel above is that order).
+- No 停用 switch for now (dot 1791905577).
 
 ## 5. Evidence
 - Core tests: make / remove / refusals; split of a target → both pieces masked; deleting a target, a source fill, clearing a fill, breaking a loop; copy-paste with and without the sources; copy layer; archive v10 round trip, v9 opens with no masks, bad references refused.
