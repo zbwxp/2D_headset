@@ -13,8 +13,10 @@ export type Subject = { kind: 'layer' | 'group' | 'line' | 'point'; id: Id }
 const C = { bg: '#2b2b2b', line: '#262626', text: '#ddd', dim: '#8a8a8a', key: '#9a9a9a' }
 const JOIN: Record<string, string> = { smooth: '平滑', cusp: '尖角', arc: '圆弧' }
 
-export function PropertiesPanel({ s, subject, zones = [], run, slider, toolRadius, scope }: {
+export function PropertiesPanel({ s, subject, selectedLayers, zones = [], run, slider, toolRadius, scope }: {
   s: Snapshot; subject: Subject | null
+  /** The selected layers: edits that act on a whole subject (masks) are offered only when all its layers are selected (bowen 1791899593). */
+  selectedLayers?: readonly Id[]
   /** The joins' zones in this view (J1b): the join lists show them. */
   zones?: Zones
   /** Edits through the app (the current view); without it the join lists are read-only. */
@@ -138,7 +140,10 @@ export function PropertiesPanel({ s, subject, zones = [], run, slider, toolRadiu
           <JoinList s={s} zones={zones} point={x.point} line={x.line} run={run} slider={slider} toolRadius={toolRadius} scope={scope} />
         </div>)}
         {/* shown only where it can be used (shown = operable): with the panel's edits */}
-        {run && subject && <MaskSection key={`${scope ?? ''}|${subject.kind}:${subject.id}`} s={s} targets={maskTargets} run={run} />}
+        {/* mounted only while its targets exist and their layers are selected (bowen 1791899593: select the layers, then
+            edit): a target gone unmounts it, so its draft never comes back (dot 1791906426) */}
+        {run && subject && maskTargets.length > 0 && maskTargets.every(t => !selectedLayers || selectedLayers.includes((t.kind === 'line' ? lineLayer(t.id) : s.loops.find(l => l.id === t.id)?.layer) ?? '')) &&
+          <MaskSection key={`${scope ?? ''}|${subject.kind}:${subject.id}`} s={s} targets={maskTargets} run={run} />}
         {/* more properties go here as they are settled (bowen 1791599608: a placeholder for now) */}
         <div style={{ color: C.dim, padding: '6px 0 0', fontStyle: 'italic' }}>更多属性（待定）</div>
       </div>}

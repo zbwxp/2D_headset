@@ -25,8 +25,9 @@ export function MaskSection({ s, targets: all, run }: { s: Snapshot; targets: re
   const has = (t: Target) => targets.some(x => x.kind === t.kind && x.id === t.id)
   const isAny = (t: Target) => all.some(x => x.kind === t.kind && x.id === t.id)
   const own = s.masks.filter(m => isAny(m.target))
-  // a fill never masks itself: the subject's own fills are not offered
-  const offered = filled.filter(l => !isAny({ kind: 'fill', id: l.id }))
+  // a fill never masks itself: only fills that are targets of this add are left out (with lines only, the subject's own
+  // fills may be sources; dot 1791906426)
+  const offered = filled.filter(l => !has({ kind: 'fill', id: l.id }))
   // ticked sources still offered (a source gone since it was ticked drops out; core checks again on add)
   const sources = ticked.filter(id => offered.some(l => l.id === id))
   const add = () => {
@@ -35,7 +36,6 @@ export function MaskSection({ s, targets: all, run }: { s: Snapshot; targets: re
     const ids = targets.map(() => { while (used.has(`m${n}`)) n++; used.add(`m${n}`); return `m${n}` })
     if (run(e => targets.forEach((t, i) => e.mask(ids[i]!, sources, t, mode)))) setTicked([])
   }
-  if (!all.length) return null
   return (
     <div data-testid="mask-section" style={{ padding: '4px 0 0' }}>
       <div style={{ color: C.key }}>蒙版 <span style={{ color: C.dim, fontSize: 11 }}>{targets.length > 1 ? `目标：${targets.length} 项（每项一条）` : `目标：${targetLabel(targets[0]!)}`}</span></div>

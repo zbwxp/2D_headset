@@ -288,7 +288,7 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId, o
           </div>
         })}
       </div>
-      <PropertiesPanel s={s} subject={subject ?? (active ? { kind: 'layer', id: active } : null)} zones={zones} run={run} slider={slider} toolRadius={toolRadius} scope={joinScope} />
+      <PropertiesPanel s={s} subject={subject ?? (active ? { kind: 'layer', id: active } : null)} selectedLayers={selected} zones={zones} run={run} slider={slider} toolRadius={toolRadius} scope={joinScope} />
     </div>
   )
 }

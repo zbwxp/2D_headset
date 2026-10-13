@@ -41,11 +41,14 @@ async function setup() {
 }
 
 describe('the 蒙版 section', () => {
-  it('a layer as subject: its lines are the targets, its fills too when 填充也遮 is ticked; its own fill is not offered; one add = one undo step', async () => {
+  it('a layer as subject: its lines are the targets, its fills too when 填充也遮 is ticked (then its own fill is no longer offered); one add = one undo step', async () => {
     const t = await setup(), sq = t.fillOf('s1'), tri = t.fillOf('t1')
     await t.click('[data-layer-row="A"]')
     expect(t.q('[data-testid="mask-section"]')).not.toBeNull()
+    expect(t.at('data-mask-source', tri)).not.toBeNull() // lines only: the layer's own fill may mask them (dot 1791906426)
+    await t.click('[data-mask-with-fills]')
     expect(t.at('data-mask-source', tri)).toBeNull() // a fill never masks itself
+    await t.click('[data-mask-with-fills]')
     expect((t.q('[data-testid="mask-add"]') as HTMLButtonElement).disabled).toBe(true) // nothing ticked
     await t.click(t.at('data-mask-source', sq))
     await t.click('[data-testid="mask-add"]')
@@ -77,6 +80,28 @@ describe('the 蒙版 section', () => {
     expect([m.sources, m.mode]).toEqual([[sq], 'normal'])
     await t.click(t.at('data-mask-remove', m.id))
     expect(t.s().masks.map(x => x.id)).toEqual(['keep'])
+  })
+
+  it('only on selected layers: a layer deselected with Cmd takes the section away (bowen 1791899593, dot 1791906426)', async () => {
+    const t = await setup()
+    await t.click('[data-layer-row="A"]')
+    expect(t.q('[data-testid="mask-section"]')).not.toBeNull()
+    const cmd = async (id: string) => { await act(async () => { t.q(`[data-layer-row="${id}"]`)!.dispatchEvent(new MouseEvent('click', { bubbles: true, metaKey: true })) }) }
+    await cmd('B'); await cmd('A')
+    expect(t.q('[data-testid="mask-section"]')).toBeNull()
+  })
+
+  it('a target gone takes the section and its draft away: after undo it comes back empty (dot 1791906426)', async () => {
+    const t = await setup(), sq = t.fillOf('s1')
+    await act(async () => { bench().core.edit(e => e.select([{ kind: 'line', id: 'x' }])); bench().refresh() })
+    await t.click(t.at('data-mask-source', sq))
+    await t.click('[data-mask-mode="normal"]')
+    await act(async () => { bench().core.edit(e => e.deleteLine('x')); bench().refresh() })
+    expect(t.q('[data-testid="mask-section"]')).toBeNull()
+    await act(async () => { bench().core.undo(); bench().refresh() })
+    await act(async () => { bench().core.edit(e => e.select([{ kind: 'line', id: 'x' }])); bench().refresh() })
+    expect((t.at('data-mask-source', sq) as HTMLInputElement).checked).toBe(false)
+    expect((t.q('[data-mask-mode="inverse"]') as HTMLInputElement).checked).toBe(true)
   })
 
   it('the draft belongs to its subject: ticks are dropped when another subject is chosen', async () => {
