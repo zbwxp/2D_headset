@@ -13,6 +13,7 @@ import { widthsOnLines } from '../../test/old-files'
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 class Pt { constructor(public x = 0, public y = 0) {} matrixTransform() { return this } }
 ;(globalThis as { DOMPoint?: unknown }).DOMPoint ??= Pt
+if (!Blob.prototype.text) Blob.prototype.text = function (this: Blob) { return new Promise<string>(res => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.readAsText(this) }) }
 const wait = (ms = 0) => new Promise(r => setTimeout(r, ms))
 const roots: { unmount(): void }[] = []
 afterEach(async () => { await act(async () => { for (const r of roots.splice(0)) r.unmount() }); delete (window as { benchStore?: Store }).benchStore; resetPage() })
@@ -81,6 +82,23 @@ describe('autosave in the bench', () => {
     expect(bench().core.snapshot().lines.map(l => l.id)).toContain(st.line)
     expect(m.writes).toEqual([])
     expect(m.data[CURRENT]).toBe(JSON.stringify(f))
+  })
+
+  it('Open of a version-9 file from a version-10 record: viewed, autosave off before anything is written, the record kept (dot 1791907011)', async () => {
+    const st = storedDrawing(), m = memoryStore(st.text)
+    const t = await mount(m.store)
+    await m.release()
+    expect(t.status()).toBe('autosave: saved')
+    const other = storedDrawing(), f = JSON.parse(other.text) as { version: number; document: Record<string, unknown> }
+    f.version = 9; delete f.document.masks
+    const input = t.host.querySelector('[data-testid="open"]') as HTMLInputElement
+    Object.defineProperty(input, 'files', { value: [new File([JSON.stringify(f)], '126.json')], configurable: true })
+    const before = m.writes.length
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); await wait(50) })
+    expect(bench().core.snapshot().lines.map(l => l.id)).toContain(other.line) // opened, in memory
+    expect(t.status()).toMatch(/^✗ autosave off: 旧格式画稿（第 9 版）/)
+    expect(m.writes.length).toBe(before)
+    expect(m.data[CURRENT]).toBe(st.text)
   })
 
   it('a version-5 record is restored converted (not backed up as unreadable, not empty), its original kept, then saved again in the current version, 10 (bowen 1791726456, 1791808493; dot 1791906394)', async () => {

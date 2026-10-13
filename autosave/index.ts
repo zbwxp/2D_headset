@@ -75,6 +75,8 @@ export interface Autosave {
   unsaved(): boolean
   /** Take no new saves. Text already asked for is still written (the page's next instance waits for it). */
   dispose(): void
+  /** Turn autosave off with a reason (an opened file whose conversion is not approved): nothing more is written. */
+  hold(why: string): void
 }
 
 export const CURRENT = 'current'
@@ -211,6 +213,7 @@ export function createAutosave(store: Store, o: Options): Autosave {
       void pump()
     },
     retry() { if (accepting() && state === 'failed') void pump() },
+    hold(why) { off(why) },
     status: () => ({ state, ...(error !== undefined ? { error } : {}), ...(notice !== undefined ? { notice } : {}) }),
     unsaved() {
       if (state === 'restoring') return false

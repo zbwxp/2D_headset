@@ -141,6 +141,11 @@ const TOOLS: [Tool, string][] = [['pen', 'Pen P'], ['V', 'V group'], ['A', 'A di
 /** The autosave store (docs/autosave-plan.md): IndexedDB in a browser; a test may give its own; none without either. */
 const autosaveStore = (): Store | undefined => (window as unknown as { benchStore?: Store }).benchStore ?? (typeof indexedDB !== 'undefined' ? indexedDbStore() : undefined)
 
+// the 9 → 10 conversion (masks) waits for bowen (asked 1791906737): until then a version-9 drawing, restored or opened, is
+// never autosaved in the new format (dot 1791906782, 1791907011); remove this once approved
+const conversionApproved = (text: string) => { try { return (JSON.parse(text) as { version?: unknown }).version !== 9 } catch { return true } }
+const CONVERSION_HELD = '旧格式画稿（第 9 版）：升级到第 10 版还没确认，自动保存暂停，原记录没动；要留住改动请用 Save 下载'
+
 export function App() {
   const [, bump] = useReducer((x: number) => x + 1, 0)
   const [layer, setLayer] = useState<Id>('layer-1')
@@ -325,10 +330,7 @@ export function App() {
       },
       current: () => save(core),
       changed: () => bump(),
-      // the 9 → 10 conversion (masks) waits for bowen (asked 1791906737): until then a version-9 record is not replaced
-      // (dot 1791906782); remove this once approved
-      conversionApproved: text => { try { return (JSON.parse(text) as { version?: unknown }).version !== 9 } catch { return true } },
-      conversionHeld: '旧格式画稿（第 9 版）：升级到第 10 版还没确认，自动保存暂停，原记录没动；要留住改动请用 Save 下载',
+      conversionApproved, conversionHeld: CONVERSION_HELD,
     })
     saver.current = a
     let live = true
@@ -1118,6 +1120,9 @@ export function App() {
                   bump(); return
                 }
                 const next = open(text)
+                // an opened file whose conversion is not approved: viewed, never autosaved (dot 1791907011) — held before
+                // the drawing changes, so no save of it is ever asked for
+                if (!conversionApproved(text) && save(next) !== text) saver.current?.hold(CONVERSION_HELD)
                 gesture.current?.cancel('opening another drawing') // only once the file opened (dot 1791554909)
                 core = next
                 refGen.current++
