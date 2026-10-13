@@ -1,0 +1,28 @@
+# 四角 / 曲边 deform — package 3: the frame and its gesture (checklist before any code, for dot's review)
+
+Packages 1 (maths, accepted 4443291) and 2 (the edit, accepted b86f4f7, dot 1791893262) are in. Package 3 makes it usable on the canvas, as v103's tool '四角 / 曲边' (7205381 src/ui/drawing/{cageEditorController.ts, DeformCageOverlay.tsx}). No core change.
+
+## 1. The tool and its session (interaction/flows/deform.ts, plus the bench)
+- A tool **`deform`**, labelled 「四角/曲边」 in the bench's tool row; no shortcut key (v103 had none).
+- **Start:** choosing the tool with lines selected (the selection's line units; V's whole curves give their lines) starts a **session**; no line selected → the status line says 「先用 V 或 A 选中要变形的线」 and nothing starts.
+- **The session holds, frozen at its start:** the drawing (`core`), the view, the lines' stored curves (`PlanLine`s, as package 2 reads them), the **rest frame** `rect` = the bounds of those lines (core's `selectionBounds`; a side thinner than `pad = max(0.01, 5 % of the larger side)` is widened by `pad` each way — v103 `resolveDrawingCage`), and the current `quad` (start: the rect's corners) and `bend` (start: neutral). Package 2's `deformOp` is split so the session builds its op from these frozen curves (`deformOpFrom`), never from the drawing as it is after an earlier release — **every release is computed from the same original curves, so no fit error accumulates** (v103 drawing-curved-deform.test.ts:52–54).
+- **It ends — and never comes back** (dot 1791893262): leaving the tool, 完成, Esc while not dragging, another drawing (`drawingChanged`), another view (`viewChanged`), playback, and **any history change it did not make itself** (an undo, a redo, an edit from a panel, a selection change — all reach interaction's `historyChanged`; its own commits are told apart). As a second guard, at every press and every preview the session checks that its lines are still exactly what its last own write left (or the start state): otherwise it ends. An ended session is dropped, not paused; choosing the tool again starts a new one from the drawing as it then is.
+
+## 2. The frame (drawn by the bench from the flow's preview data; v103 DeformCageOverlay)
+- The four **bent edges** (the bend's edges under the homography), a dashed interior grid at ¼, ½, ¾, **4 corner squares**, **8 edge handles** (circles) each with its tangent line to its corner, **4 midpoint diamonds** — sizes in screen pixels as v103 (corner 12, handle r 4.5, diamond 10), hit reach as the selection box's (`BOX.reach`).
+- **Drag a corner:** that corner moves with the pointer. **Drag an edge handle:** the pointer's motion is taken back through the inverse homography into the rest frame, divided by the rect's size, and added to that handle (v103 `moveDeformBoundary`). **Drag a midpoint:** both handles of that edge move by 4/3 of it (so the edge's midpoint follows the pointer).
+- An invalid frame (crossed or flattened corners, a fold, past the horizon — package 1's refusals) keeps **the last valid frame**: the preview stays as it was and the status line shows the refusal's message (v103 「…已保留最后有效位置」).
+
+## 3. Preview, release, cancel, reset
+- **While dragging:** each move previews `core.preview(view, op)` with the session's op for the frame as dragged — the commit's pipeline (package 2); the lines are drawn as the preview shows them; a refusal there (a lock, a link to a lock) is shown and the release writes nothing.
+- **Release:** one commit of that op — **one undo step per release**; the frame stays, ready for the next drag.
+- **Esc while dragging:** the frame goes back to where the drag began; nothing written. **Esc while not dragging:** the session ends (§1).
+- **重置变形框 (reset):** the frame back to the rect and a neutral bend; if the drawing differs from the original curves, one commit restores them (an affine identity: the original control points exactly). **完成 (done):** ends the session; nothing written.
+- **The readout:** 「约束前采样拟合误差 0.012」 — package 2's `maxError` for the frame as shown (dot 1791892720: before mirror, links, springs or a bind).
+
+## 4. Tests
+- interaction (a real Core): start with / without lines; corner, handle and midpoint drags give the expected quad / bend (the midpoint ×4/3, the handle through the inverse homography); an invalid drag keeps the last valid frame; preview = commit; one undo step per release; two releases in a row are computed from the original curves (the second equals one release straight to the final frame); Esc mid-drag; reset restores the original curves exactly; the session ends on an undo, a panel edit (`historyChanged` not its own), another drawing, another view, leaving the tool — and does not come back when the view or tool returns.
+- bench: the tool button, the frame's elements (4 corners, 8 handles, 4 diamonds), a corner drag on the canvas commits once, the readout; a screenshot on 5199 with bowen's drawing.
+
+## 5. Not in package 3
+Hidden-line and display-interval transport (`sourceParameter`), a live (non-destructive) cage, keys for the tool.
