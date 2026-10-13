@@ -253,6 +253,8 @@ function disc(c: Vec, h: number, tol: number): Vec[] {
 }
 
 const smoothstep = (u: number) => u * u * (3 - 2 * u)
+/** A free end's tip: the half-width at distance s from the end is at most TIP · s (a tip of at most 2 asin TIP ≈ 106°). */
+const TIP = 0.8
 const hullOf = (ps: Vec[]): Vec[] => {
   const q = [...ps].sort((a, b) => a.x - b.x || a.y - b.y), cross = (o: Vec, a: Vec, b: Vec) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
   const lower: Vec[] = [], upper: Vec[] = []
@@ -272,13 +274,17 @@ function radiiAlong(points: readonly Vec[], pr: Profile, tol: number): { pts: Ve
   const h0 = pr.h, h1 = pr.hEnd ?? pr.h
   if (pr.start && ls > 0) spans.push({ s0: 0, s1: ls, d: Math.abs(h0 - pr.start.joint) })
   if (pr.end && le > 0) spans.push({ s0: L - le, s1: L, d: Math.abs(h1 - pr.end.joint) })
+  // a tip's limit (below): sampled out to where it can bite, the widest half-width from that end
+  const hMax = Math.max(h0, h1)
+  if (pr.start?.tip) spans.push({ s0: 0, s1: Math.min(L, hMax / TIP), d: hMax })
+  if (pr.end?.tip) spans.push({ s0: Math.max(0, L - hMax / TIP), s1: L, d: hMax })
   const hAt = (at: number) => {
     let h = L > 0 ? h0 + (h1 - h0) * Math.min(1, at / L) : h0 // linear between the two end widths (exact between points)
     // a free end's tip (bowen 1791853511): h · (2u − u²) — slope 0 into the body, a pointed tip with a finite angle
     const ease = (e: EndEase, base: number, u: number) => e.tip ? -base * (1 - u) * (1 - u) : e.centred ? 2 * (e.joint - base) * smoothstep((1 - u) / 2) : (e.joint - base) * (1 - smoothstep(u))
     if (pr.start && ls > 0 && at < ls) h += ease(pr.start, h0, at / ls)
     if (pr.end && le > 0 && at > L - le) h += ease(pr.end, h1, (L - at) / le)
-    return h
+    return Math.max(0, h)
   }
   const pts: Vec[] = [points[0]!], radii = [hAt(0)]
   let at = 0
@@ -296,6 +302,17 @@ function radiiAlong(points: readonly Vec[], pr: Profile, tol: number): { pts: Ve
     for (const sp of spans) for (const x of [sp.s0, sp.s1]) if (l > 0 && x > at && x < at + l) cuts.add((x - at) / l)
     for (const f of [...cuts].sort((x, y) => x - y)) { pts.push(lerp(a, b, f)); radii.push(hAt(Math.min(L, at + l * f))) }
     at += l
+  }
+  // a tip lands on its end point and is a point (dot 1791853983 / 1791854038): the ink is swept by discs, and discs
+  // whose half-width is at most c · (straight distance to the end point) never reach it and have an envelope meeting
+  // there with a half-angle of at most asin c — the straight distance, not the arc length (on a curve the arc is longer).
+  // So near a tipped end the half-width is at most TIP times that distance (a tip of at most ≈ 106°). The brush shape
+  // stays inside this whenever its taper is at least 2.5 × the half-width (the default, and short lines down to that);
+  // a very short manual taper or a very short thick line is cut to straight flanks.
+  const first = points[0]!, last = points[points.length - 1]!
+  for (let i = 0; i < pts.length; i++) {
+    if (pr.start?.tip) radii[i] = Math.min(radii[i]!, TIP * len(sub(pts[i]!, first)))
+    if (pr.end?.tip) radii[i] = Math.min(radii[i]!, TIP * len(sub(pts[i]!, last)))
   }
   return { pts, radii }
 }

@@ -363,12 +363,26 @@ describe('free ends taper to a point (bowen 1791853511): length = taper × the e
   it('a short line (10 long, width 4): each tip at most half the line — they meet in the middle, never overlap', () => {
     const d = one(10, 4), l = build(d.geometry(), d.snapshot()).pieces.find(p => p.source.id === 'l')!
     expect(across(l.loops, 5)).toBeCloseTo(4, 1)
-    // at u = ½ the formula gives 3; the swept outline is the envelope of the discs, a little wider where the width
-    // changes this fast (a tip 5 long on a width of 4)
+    // at u = ½ the brush shape gives 3 (inside the limit 0.8 × 2.5 = 2 half-width); the swept outline, the envelope of
+    // the discs, is a little wider where the width changes this fast (a tip 5 long on a width of 4)
     const w = across(l.loops, 2.5)
     expect(w).toBeGreaterThan(2.9)
     expect(w).toBeLessThan(3.4)
     expect(Math.min(...l.loops.flat().map(v => v.x))).toBeCloseTo(0, 1)
+  })
+  it('the tip is a point on the end point, judged on the final ink (dot 1791853983): a short thick line, a very short manual taper', () => {
+    const reach = (d: Core) => { const xs = build(d.geometry(), d.snapshot()).pieces.find(p => p.source.id === 'l')!.loops.flat().map(v => v.x); return [Math.min(...xs), Math.max(...xs)] }
+    // 2 long, 4 wide: the half-width is at most 0.8 × the distance to the nearer end — a spindle 1.6 wide, pointed at
+    // both end points (a short line cannot be both 4 wide and pointed)
+    const short = build(one(2, 4).geometry(), one(2, 4).snapshot()).pieces[0]!.loops, [lo, hi] = reach(one(2, 4))
+    expect(lo).toBeGreaterThanOrEqual(-1e-3); expect(lo).toBeLessThan(0.05)
+    expect(hi).toBeLessThanOrEqual(2 + 1e-3); expect(hi).toBeGreaterThan(2 - 0.05)
+    expect(across(short, 1)).toBeCloseTo(1.6, 1)
+    expect(across(short, 0.2)).toBeCloseTo(2 * 0.2 * Math.tan(Math.asin(0.8)), 1) // pointed: the envelope's flanks, half-angle asin 0.8
+    // a taper of 0.05 × 4 = 0.2 on a long line: widened to the limit, a point on the end point
+    const long = build(one(60, 4, [0.05, 3]).geometry(), one(60, 4, [0.05, 3]).snapshot()).pieces[0]!.loops, [lo2] = reach(one(60, 4, [0.05, 3]))
+    expect(lo2).toBeGreaterThanOrEqual(-1e-3); expect(lo2).toBeLessThan(0.05)
+    expect(across(long, 0.5)).toBeCloseTo(2 * 0.5 * Math.tan(Math.asin(0.8)), 1)
   })
   it('a joined end is not a free end, nor when its neighbour is hidden; the other end stays pointed', () => {
     const d = one(60, 4)
