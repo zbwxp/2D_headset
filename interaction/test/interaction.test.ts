@@ -608,16 +608,34 @@ describe('layer scope: each tool reaches its layers, and shows exactly what it c
     expect(both.core().snapshot().points.find(p => p.id === 'a')!.links).toEqual(['x'])
   })
 
-  it('a first pick whose layer is deselected is dropped: not shown, and the next click starts a new pick (dot 1791899800)', () => {
-    const { ix, core, setLayers } = setup()
-    setLayers(['L', 'K'])
-    ix.setTool('link')
-    ix.pointerDown(P(0, 200)) // x, in K
-    expect(ix.preview().pick).toEqual({ kind: 'point', id: 'x' })
-    setLayers(['L'])
-    expect(ix.preview().pick).toBeUndefined()
-    ix.pointerDown(P(0, 0)) // a: a new first pick, not a link to x
-    expect([ix.preview().pick, core().snapshot().points.find(p => p.id === 'a')!.links]).toEqual([{ kind: 'point', id: 'a' }, []])
+  it('a first pick whose layer is deselected is dropped: not shown, and the next click starts a new pick — link and merge (dot 1791899800, 1791899910)', () => {
+    for (const tool of ['link', 'merge'] as const) {
+      const { ix, core, setLayers } = setup()
+      setLayers(['L', 'K'])
+      ix.setTool(tool)
+      const xAt = () => core().snapshot().points.find(p => p.id === 'x')!.position, before = xAt()
+      ix.pointerDown(P(0, 200)) // x, in K
+      expect(ix.preview().pick).toEqual({ kind: 'point', id: 'x' })
+      setLayers(['L'])
+      expect(ix.preview().pick).toBeUndefined()
+      ix.pointerDown(P(0, 0)) // a: a new first pick, neither a link to x nor a merge onto it
+      expect([ix.preview().pick, core().snapshot().points.find(p => p.id === 'a')!.links, xAt()]).toEqual([{ kind: 'point', id: 'a' }, [], before])
+    }
+  })
+
+  it('a first pick no longer shown — its line hidden — is dropped too, for link and merge alike (dot 1791899910)', () => {
+    for (const tool of ['link', 'merge'] as const) {
+      const { ix, core, setLayers } = setup()
+      setLayers(['L', 'K'])
+      ix.setTool(tool)
+      const xAt = () => core().snapshot().points.find(p => p.id === 'x')!.position, before = xAt()
+      ix.pointerDown(P(0, 200)) // x, in K
+      core().edit(e => e.lineState('m', { visible: false })); ix.historyChanged()
+      expect(ix.preview().pick).toBeUndefined()
+      ix.pointerDown(P(0, 0)) // a: a new first pick
+      expect(ix.preview().pick).toEqual({ kind: 'point', id: 'a' })
+      expect([core().snapshot().points.find(p => p.id === 'a')!.links, xAt()]).toEqual([[], before])
+    }
   })
 
   it('pen connects only to points of the current layer; on another layer’s point it starts a new point there', () => {

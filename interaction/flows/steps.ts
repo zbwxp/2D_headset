@@ -11,14 +11,17 @@ export interface Steps extends Flow { click(at: Vec, mods: Mods): boolean }
 export function steps(ctx: Ctx): Steps {
   let pick: { core: Core; view: string; kind: 'point' | 'line'; id: Id } | null = null
   /**
-   * A first pick counts only while it belongs to this drawing and view and its layer is still in the tool's scope: a
-   * pick whose layer was deselected is dropped — not shown, not used (bowen 1791899593: select the layers, then act).
+   * A first pick counts only while it belongs to this drawing and view and is still shown: its layer in the tool's
+   * scope and the pick visible (a point: on a visible line) — otherwise it is dropped, not shown and not used, and the
+   * next click starts anew (bowen 1791899593: select the layers, then act; dot 1791899910).
    */
   function live(): boolean {
     if (!pick || !ctx.mine(pick)) return false
     const s = ctx.snap(), of = ctx.layerOf(s), layer = pick.kind === 'point' ? of.point(pick.id) : of.line(pick.id)
-    // a pick that is gone stays, for the step's own 'pick-gone' note; one whose layer left the scope is dropped
-    if (layer !== undefined && !ctx.inScope(layer)) { pick = null; return false }
+    // a pick that is gone stays, for the step's own 'pick-gone' note; one no longer shown is dropped
+    if (layer === undefined) return true
+    const id = pick.id, visible = pick.kind === 'point' ? s.lines.some(l => l.state.visible && (l.a === id || l.b === id)) : !!s.lines.find(l => l.id === id)?.state.visible
+    if (!ctx.inScope(layer) || !visible) { pick = null; return false }
     return true
   }
 
