@@ -4510,7 +4510,8 @@ Not yet written as graph rows — waiting for bowen's "写".
 | Subject | Relation | Object | Status | Source |
 |---|---|---|---|---|
 | Mask | is | A relation in the drawing's data: one or more source fills, one target (a line or a closed curve's fill), a mode | proposed | bowen 1791901391 (1 甲) |
-| Mask source | is | A closed curve's fill only (for now). The mask acts only while that fill is on (filled and shown); a fill turned off turns its masks off | proposed | bowen 1791901604 |
+| Mask source | is | A closed curve's fill only (for now). The mask acts only while that fill is on (filled and shown); a fill turned off turns its masks off. "On" is the fill's own switch and visibility **before any mask** — a source fill that another mask clips still masks with its whole area (otherwise mutual masks would loop back) | proposed | bowen 1791901604; dot 1791901708 |
+| Mask sources, several | combine as | The union of the relation's sources that are on. With every source off, the relation is **off** — not "an empty area": a normal-mode target does not vanish. Several relations on one target all apply together | proposed | dot 1791901708 |
 | Mask, inverse | hides | The part of its target inside the sources' area | proposed | bowen 1791901391 (3) |
 | Mask, normal | shows | Only the part of its target inside the sources' area (shadow in base colour, pupil in eye white) | proposed | v2 doc 18 §1.7b |
 | Mask geometry | is | Each view's own geometry, every source read before any mask applies — so mutual masks do not loop; no per-view switch | proposed | bowen 1791901391 (2); dot 1791901344 |
