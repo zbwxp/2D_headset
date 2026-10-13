@@ -608,6 +608,18 @@ describe('layer scope: each tool reaches its layers, and shows exactly what it c
     expect(both.core().snapshot().points.find(p => p.id === 'a')!.links).toEqual(['x'])
   })
 
+  it('a first pick whose layer is deselected is dropped: not shown, and the next click starts a new pick (dot 1791899800)', () => {
+    const { ix, core, setLayers } = setup()
+    setLayers(['L', 'K'])
+    ix.setTool('link')
+    ix.pointerDown(P(0, 200)) // x, in K
+    expect(ix.preview().pick).toEqual({ kind: 'point', id: 'x' })
+    setLayers(['L'])
+    expect(ix.preview().pick).toBeUndefined()
+    ix.pointerDown(P(0, 0)) // a: a new first pick, not a link to x
+    expect([ix.preview().pick, core().snapshot().points.find(p => p.id === 'a')!.links]).toEqual([{ kind: 'point', id: 'a' }, []])
+  })
+
   it('pen connects only to points of the current layer; on another layer’s point it starts a new point there', () => {
     const { ix, core, setLayers } = setup()
     setLayers(['L', 'K']) // pen's scope is the current layer, whatever is selected

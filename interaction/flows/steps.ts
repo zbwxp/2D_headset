@@ -10,12 +10,23 @@ export interface Steps extends Flow { click(at: Vec, mods: Mods): boolean }
 
 export function steps(ctx: Ctx): Steps {
   let pick: { core: Core; view: string; kind: 'point' | 'line'; id: Id } | null = null
+  /**
+   * A first pick counts only while it belongs to this drawing and view and its layer is still in the tool's scope: a
+   * pick whose layer was deselected is dropped — not shown, not used (bowen 1791899593: select the layers, then act).
+   */
+  function live(): boolean {
+    if (!pick || !ctx.mine(pick)) return false
+    const s = ctx.snap(), of = ctx.layerOf(s), layer = pick.kind === 'point' ? of.point(pick.id) : of.line(pick.id)
+    // a pick that is gone stays, for the step's own 'pick-gone' note; one whose layer left the scope is dropped
+    if (layer !== undefined && !ctx.inScope(layer)) { pick = null; return false }
+    return true
+  }
 
   function twoPoints(at: Vec): boolean {
     const id = ctx.hitPoint(at)
     if (!id) return false
-    if (!pick || !ctx.mine(pick) || pick.kind !== 'point') { pick = { ...ctx.owned(), kind: 'point', id }; return true }
-    const first = pick.id
+    if (!live() || pick!.kind !== 'point') { pick = { ...ctx.owned(), kind: 'point', id }; return true }
+    const first = pick!.id
     pick = null
     // the first pick must still be there; nothing else stands in for it (plan item 17)
     if (!ctx.snap().points.some(p => p.id === first)) { ctx.feedback = note('pick-gone', `the first point ${first} is gone`, [{ kind: 'point', id: first }]); return true }
@@ -29,8 +40,8 @@ export function steps(ctx: Ctx): Steps {
   function twoLines(at: Vec, mods: Mods): boolean {
     const id = ctx.hitLine(at)
     if (!id) return false
-    if (!pick || !ctx.mine(pick) || pick.kind !== 'line') { pick = { ...ctx.owned(), kind: 'line', id }; return true }
-    const first = pick.id
+    if (!live() || pick!.kind !== 'line') { pick = { ...ctx.owned(), kind: 'line', id }; return true }
+    const first = pick!.id
     pick = null
     const s = ctx.snap(), l1 = s.lines.find(l => l.id === first), l2 = s.lines.find(l => l.id === id)
     if (!l1) { ctx.feedback = note('pick-gone', `the first line ${first} is gone`, [{ kind: 'line', id: first }]); return true }
@@ -91,6 +102,6 @@ export function steps(ctx: Ctx): Steps {
       const s = ctx.snap(), there = pick.kind === 'point' ? s.points.some(p => p.id === pick!.id) : s.lines.some(l => l.id === pick!.id)
       if (!there) pick = null
     },
-    preview(p: Preview) { if (pick && ctx.mine(pick)) p.pick = { kind: pick.kind, id: pick.id } },
+    preview(p: Preview) { if (live()) p.pick = { kind: pick!.kind, id: pick!.id } },
   }
 }
