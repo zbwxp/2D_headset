@@ -144,7 +144,7 @@ async function panel() {
   const icons = (t: string) => [...host.querySelectorAll('svg > title')].filter(x => x.textContent === t).map(x => x.parentElement!)
   if (!icons('展开到每条线').length) await act(async () => { fire(icons('展开')[0]!, 'click') }) // an opened drawing may show its layers unfolded already
   const g1 = s().groups.find(g => g.lines.includes('l1'))!
-  await act(async () => { fire(icons('展开到每条线')[s().groups.findIndex(g => g.id === g1.id)]!, 'click') })
+  await act(async () => { fire([...host.querySelectorAll(`[data-group-row="${g1.id}"] svg > title`)].find(x => x.textContent === '展开到每条线')!.parentElement!, 'click') })
   const names = () => [...host.querySelectorAll('[data-name]')]
   const named = (text: string) => names().find(x => x.textContent === text)!
   const rename = async (from: string, to: string) => {

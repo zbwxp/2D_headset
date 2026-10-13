@@ -114,7 +114,51 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId, o
     }
     select([id], id)
   }
-  const [dragging, setDragging] = useState<Id | null>(null)
+  // dragging rows (bowen 1791865224, "common sense" as in Adobe's panel): a layer drops above or below another
+  // layer, by the half of the row under the cursor, shown by a line; a continuous curve drops above or below
+  // another curve (in any layer), or onto a layer's row: into that layer, on top
+  type Drag = { kind: 'layer' | 'group'; id: Id }
+  type Target = { id: Id; at: 'above' | 'below' | 'into' }
+  const [drag, setDrag] = useState<Drag | null>(null)
+  const [target, setTarget] = useState<Target | null>(null)
+  const half = (e: React.DragEvent) => { const r = e.currentTarget.getBoundingClientRect(); return e.clientY < r.top + r.height / 2 ? 'above' as const : 'below' as const }
+  const over = (e: React.DragEvent, t: Target | null) => {
+    if (!t) return
+    e.preventDefault()
+    if (target?.id !== t.id || target.at !== t.at) setTarget(t)
+  }
+  const start = (e: React.DragEvent, d: Drag) => {
+    e.stopPropagation()
+    e.dataTransfer?.setData('text/plain', d.id)
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
+    setDrag(d)
+  }
+  const end = () => { setDrag(null); setTarget(null) }
+  /** The new index in a bottom → top list without the dragged item; null when nothing moves. */
+  const slot = (order: Id[], id: Id, t: Target) => {
+    const rest = order.filter(x => x !== id), i = rest.indexOf(t.id) + (t.at === 'above' ? 1 : 0)
+    return i === order.indexOf(id) ? null : i
+  }
+  const drop = (e: React.DragEvent) => {
+    e.preventDefault()
+    const d = drag, t = target
+    end()
+    if (!d || !t) return
+    if (d.kind === 'layer') {
+      const i = slot(s.layers.map(l => l.id), d.id, t)
+      if (i !== null) run(x => x.reorderLayer(d.id, i))
+      return
+    }
+    if (t.at === 'into') { run(x => x.moveGroup(d.id, t.id)); return }
+    const layer = s.groups.find(x => x.id === t.id)!.layer, from = s.groups.find(x => x.id === d.id)!.layer
+    const order = s.groups.filter(x => x.layer === layer).map(x => x.id)
+    if (from === layer) { const i = slot(order, d.id, t); if (i !== null) run(x => x.reorderGroup(d.id, i)); return }
+    // another layer: cut in (it lands on top), then placed; one edit
+    const i = slot(order, d.id, t)!
+    run(x => { x.moveGroup(d.id, layer); x.reorderGroup(d.id, i) })
+  }
+  const mark = (id: Id) => target?.id !== id ? undefined
+    : target.at === 'into' ? 'inset 0 0 0 2px #8fb4ff' : target.at === 'above' ? 'inset 0 2px 0 #8fb4ff' : 'inset 0 -2px 0 #8fb4ff'
   const layerOf = new Map(s.points.map(p => [p.id, p.layer]))
   const linesIn = (layer: Id) => s.lines.filter(l => layerOf.get(l.a) === layer)
   const paired = new Set(s.mirrorPairs.flatMap(p => [p.a, p.b]))
@@ -169,21 +213,22 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId, o
         <Icon d={COPY} title="复制当前图层" onClick={() => { if (activeLayer) run(x => x.copyLayer(activeLayer.id, newLayerId())) }} />
         <Icon d={TRASH} title="删除当前图层" onClick={() => { if (activeLayer) run(x => x.deleteLayer(activeLayer.id)) }} />
       </div>
-      <div style={{ flex: 1, overflow: 'auto' }}>
+      <div style={{ flex: 1, overflow: 'auto' }} onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setTarget(null) }}>
         {layers.map(L => {
           const lines = linesIn(L.id), ids = lines.map(l => l.id)
           const shown = !all(ids, id => !s.lines.find(l => l.id === id)!.state.visible)
           const locked = all(ids, id => s.lines.find(l => l.id === id)!.state.locked)
           const mirrored = ids.some(id => paired.has(id))
-          const isOpen = open.has(L.id), groups = s.groups.filter(gr => gr.layer === L.id)
+          const isOpen = open.has(L.id), groups = s.groups.filter(gr => gr.layer === L.id).reverse() // top first, as the layers
           return <div key={L.id}>
-            <div draggable onDragStart={() => setDragging(L.id)} onDragEnd={() => setDragging(null)}
-              onDragOver={e => e.preventDefault()}
-              onDrop={() => { if (dragging && dragging !== L.id) run(x => x.reorderLayer(dragging, s.layers.findIndex(l => l.id === L.id))); setDragging(null) }}
+            <div data-layer-row={L.id} data-drop={target?.id === L.id ? target.at : undefined} draggable onDragStart={e => start(e, { kind: 'layer', id: L.id })} onDragEnd={end}
+              onDragOver={e => over(e, drag?.kind === 'layer' ? (drag.id === L.id ? null : { id: L.id, at: half(e) })
+                : drag && s.groups.find(x => x.id === drag.id)?.layer !== L.id ? { id: L.id, at: 'into' } : null)}
+              onDrop={drop}
               onClick={e => click(L.id, e)}
               // selected rows stay lit; the current one is drawn stronger, with a bar on its left
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px', background: L.id === active ? C.active : selected.includes(L.id) ? C.selected : C.row,
-                boxShadow: L.id === active ? 'inset 3px 0 0 #8fb4ff' : undefined, borderBottom: `1px solid ${C.line}`, opacity: dragging === L.id ? 0.5 : 1 }}>
+                boxShadow: [L.id === active ? 'inset 3px 0 0 #8fb4ff' : '', mark(L.id) ?? ''].filter(Boolean).join(', ') || undefined, borderBottom: `1px solid ${C.line}`, opacity: drag?.id === L.id ? 0.5 : 1 }}>
               {/* Option (Alt) + click: this layer alone shown, every other hidden (Photoshop / Illustrator; bowen 1791865192) */}
               <Icon d={EYE} on={shown} title={shown ? '隐藏图层（Option 点：只显示这个图层）' : '显示图层（Option 点：只显示这个图层）'} onClick={e => { e.stopPropagation(); run(x => e.altKey ? s.layers.forEach(K => x.layerState(K.id, { visible: K.id === L.id })) : x.layerState(L.id, { visible: !shown })) }} />
               <Icon d={LOCK} on={locked} title={locked ? '解锁图层' : '锁定图层'} onClick={e => { e.stopPropagation(); run(x => x.layerState(L.id, { locked: !locked })) }} />
@@ -197,7 +242,9 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId, o
               const gShown = !all(gr.lines, id => !s.lines.find(l => l.id === id)!.state.visible)
               const gLocked = all(gr.lines, id => s.lines.find(l => l.id === id)!.state.locked)
               const gOpen = open.has(gr.id)
-              return <div key={gr.id}><div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 6px 3px 22px', background: '#353535', borderBottom: `1px solid ${C.line}` }}>
+              return <div key={gr.id}><div data-group-row={gr.id} data-drop={target?.id === gr.id ? target.at : undefined} draggable onDragStart={e => start(e, { kind: 'group', id: gr.id })} onDragEnd={end}
+                onDragOver={e => over(e, drag?.kind === 'group' && drag.id !== gr.id ? { id: gr.id, at: half(e) } : null)} onDrop={drop}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 6px 3px 22px', background: '#353535', borderBottom: `1px solid ${C.line}`, boxShadow: mark(gr.id), opacity: drag?.id === gr.id ? 0.5 : 1 }}>
                 <Icon d={gOpen ? TWIRL_OPEN : TWIRL_SHUT} title={gOpen ? '收起' : '展开到每条线'} onClick={() => toggle(gr.id)} />
                 <Icon d={EYE} on={gShown} title={gShown ? '隐藏曲线' : '显示曲线'} onClick={() => run(x => x.groupState(gr.id, { visible: !gShown }))} />
                 <Icon d={LOCK} on={gLocked} title={gLocked ? '解锁曲线' : '锁定曲线'} onClick={() => run(x => x.groupState(gr.id, { locked: !gLocked }))} />
