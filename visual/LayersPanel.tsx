@@ -73,18 +73,25 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId, o
   const selLines = new Set(s.selection.flatMap(u => (u.kind === 'line' ? [u.id] : [])))
   /**
    * A click on a continuous curve or a line row picks it as V / A would (bowen 1791558186): plain =
-   * only this; Shift = the run from the last row clicked to this one, among its siblings; Cmd / Ctrl =
-   * add or remove this one. Picking in a layer that is not selected adds that layer to the
-   * selected layers (bowen 1791558438: picking in the list is the surest way; an element pick
-   * adds its layer), and never takes one away.
+   * only this; Shift = the run from the last row clicked to this one, among the rows of its kind shown
+   * in the list, across layers (bowen 1791897991); Cmd / Ctrl = add or remove this one. Picking in a
+   * layer that is not selected adds that layer to the selected layers (bowen 1791558438: picking in the
+   * list is the surest way; an element pick adds its layer) — every layer a Shift run reaches — and
+   * never takes one away.
    */
-  const pickRows = (rows: { id: Id; lines: Id[] }[], id: Id, e: React.MouseEvent, layer: Id, kind: 'group' | 'line') => {
+  const pickRows = (rows: { id: Id; lines: Id[]; layer: Id }[], id: Id, e: React.MouseEvent, layer: Id, kind: 'group' | 'line') => {
     setSubject({ kind, id })
     onPick?.(kind === 'group' ? 'curve' : 'line')
-    if (!selected.includes(layer)) select([...selected, layer], active)
     const at = rows.findIndex(r => r.id === id), from = rows.findIndex(r => r.id === rowAnchor)
     const units = (rs: typeof rows) => rs.flatMap(r => r.lines.map(l => ({ kind: 'line' as const, id: l })))
-    if (e.shiftKey && from >= 0) { run(x => x.select(units(rows.slice(Math.min(from, at), Math.max(from, at) + 1)), 'replace')); return }
+    const reach = (ls: Id[]) => { const add = [...new Set(ls)].filter(l => !selected.includes(l)); if (add.length) select([...selected, ...add], active) }
+    if (e.shiftKey && from >= 0) {
+      const run_ = rows.slice(Math.min(from, at), Math.max(from, at) + 1)
+      reach(run_.map(r => r.layer))
+      run(x => x.select(units(run_), 'replace'))
+      return
+    }
+    reach([layer])
     setRowAnchor(id)
     const row = rows[at]!
     if (e.metaKey || e.ctrlKey) { run(x => x.select(units([row]), row.lines.every(l => selLines.has(l)) ? 'remove' : 'add')); return }
@@ -189,6 +196,9 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId, o
   // core and shown in the status line
   const field = { background: '#1e1e1e', color: C.text, border: '1px solid #666' }
   const layers = [...s.layers].reverse() // top first, as Adobe lists them
+  // the rows the list shows, top to bottom, across layers: the run a Shift click takes (bowen 1791897991)
+  const groupRows = layers.filter(L => open.has(L.id)).flatMap(L => s.groups.filter(gr => gr.layer === L.id).reverse().map(gr => ({ id: gr.id, lines: gr.lines, layer: L.id })))
+  const lineRows = groupRows.filter(gr => open.has(gr.id)).flatMap(gr => gr.lines.map(l => ({ id: l, lines: [l], layer: gr.layer })))
   const activeLayer = s.layers.find(l => l.id === active)
   const fillsShown = s.loops.some(l => l.filled && l.visible)
   // every layer at once (bowen 1791865192): any line shown → hide all; all hidden → show all
@@ -256,7 +266,7 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId, o
                 <Thumb lines={gr.lines} />
                 <Rename name={gr.name} fieldStyle={field} onRename={n => run(x => x.renameGroup(gr.id, n))} title="点击选中这条连续曲线（Shift 连选 · Cmd 增减）· 双击改名"
                   style={{ cursor: 'pointer', color: gr.lines.every(l => selLines.has(l)) ? '#8fb4ff' : undefined }}
-                  onClick={e => pickRows(groups.map(x => ({ id: x.id, lines: x.lines })), gr.id, e, L.id, 'group')} />
+                  onClick={e => pickRows(groupRows, gr.id, e, L.id, 'group')} />
                 {gr.lines.some(id => paired.has(id)) && <Icon d={MIRROR} title="镜像联动" />}
                 <span style={{ color: C.dim, flex: 'none' }}>{gr.lines.length}</span>
               </div>
@@ -268,7 +278,7 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId, o
                   <Icon d={LOCK} on={l.state.locked} title={l.state.locked ? '解锁线' : '锁定线'} onClick={() => run(x => x.lineState(id, { locked: !l.state.locked }))} />
                   <Rename name={l.name} fieldStyle={field} onRename={n => run(x => x.renameLine(id, n))} title="点击选中这条线（Shift 连选 · Cmd 增减）· 双击改名"
                     style={{ cursor: 'pointer', color: selLines.has(id) ? '#8fb4ff' : undefined }}
-                    onClick={e => pickRows(gr.lines.map(x => ({ id: x, lines: [x] })), id, e, L.id, 'line')} />
+                    onClick={e => pickRows(lineRows, id, e, L.id, 'line')} />
                   <span style={{ color: C.dim, flex: 'none', fontSize: 11 }} title="线宽（起点→终点）· 两端（相接方式或开放端点的笔触）">w{l.stroke.width}{l.stroke.widthB === undefined ? '' : `→${l.stroke.widthB}`} {ends(l).join(' ')}</span>
                   {paired.has(id) && <Icon d={MIRROR} title="镜像联动" />}
                 </div>

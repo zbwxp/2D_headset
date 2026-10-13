@@ -772,13 +772,13 @@ describe('the selection box: a drag from nothing, in any tool but the pen (bowen
     expect(sel(core())).toEqual([])
   })
 
-  it('its focus is the current layer only, whatever else is selected', () => {
+  it('it takes lines of every selected layer (bowen 1791897991; before, the current layer only)', () => {
     const { ix, core, setLayers, setLayer } = setup()
     setLayers(['L', 'K'])
     ix.setTool('A')
     drag(ix, P(-10, -10), P(110, 210))
-    expect(sel(core()).sort()).toEqual(['line:h', 'line:v'])
-    setLayer('K')
+    expect(sel(core()).sort()).toEqual(['line:h', 'line:m', 'line:v'])
+    setLayer('K'); setLayers(['K'])
     drag(ix, P(-10, -10), P(110, 210))
     expect(sel(core())).toEqual(['line:m'])
   })

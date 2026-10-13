@@ -3,7 +3,7 @@
 // the drag started with (explicit targets), Esc or a cancelled pointer drops it. A press on
 // nothing, in any tool but the pen, starts a selection box (bowen 1791558733, 1791559014):
 // dragged right, it takes the lines wholly inside; dragged left, every line it touches; only in
-// its focus, the current layer.
+// the selected layers (bowen 1791897991: with two layers lit, the box takes lines of both).
 import { createMover, type Target } from '../../move'
 import type { Core, Snapshot, Vec } from '../../src'
 import type { Ctx, Flow, Id, Mods, Preview, Unit } from '../base'
@@ -57,9 +57,9 @@ export function selectTransform(ctx: Ctx): SelectTransform {
       if (b.clear && !b.mods.shift && !b.mods.alt && ctx.snap().selection.length) ctx.commit(e => e.select([], 'replace'))
       return
     }
-    // the box's focus is the current layer, whatever the tool (bowen 1791558733)
-    const s = ctx.snap(), of = ctx.layerOf(s), visible = new Set(s.lines.filter(l => l.state.visible).map(l => l.id))
-    const lines = ctx.reader().linesInRect(b.from, at, at.x >= b.from.x).filter(id => visible.has(id) && of.line(id) === ctx.env.layer())
+    // the box takes lines of every selected layer (bowen 1791897991; it was the current layer only, bowen 1791558733)
+    const s = ctx.snap(), of = ctx.layerOf(s), visible = new Set(s.lines.filter(l => l.state.visible).map(l => l.id)), lit = new Set(ctx.env.layers?.() ?? [ctx.env.layer()])
+    const lines = ctx.reader().linesInRect(b.from, at, at.x >= b.from.x).filter(id => visible.has(id) && lit.has(of.line(id)))
     if (!lines.length && (b.mods.shift || b.mods.alt)) return
     ctx.commit(e => e.select(lines.map(id => ({ kind: 'line' as const, id })), mode(b.mods)))
   }

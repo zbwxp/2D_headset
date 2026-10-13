@@ -12,7 +12,7 @@ if (!Blob.prototype.text) Blob.prototype.text = function (this: Blob) { return n
 class Pt { constructor(public x = 0, public y = 0) {} matrixTransform() { return this } }
 ;(globalThis as { DOMPoint?: unknown }).DOMPoint ??= Pt
 
-type B = { core: Core; refresh(): void }
+type B = { core: Core; refresh(): void; scope(): { layer: string; layers: string[] } }
 const bench = () => (window as unknown as { bench: B }).bench
 const snap = () => bench().core.snapshot()
 
@@ -191,5 +191,15 @@ describe('layers panel drag (bowen 1791865224)', () => {
     await fire(layerRow(host, 'B'), 'drop') // no dragover reached B first
     await fire(layerRow(host, 'A'), 'dragend')
     expect(layers()).toEqual(['A', 'B', 'C', 'D'])
+  })
+
+  it('Shift in the list runs across layers: the rows shown between the two clicks, their layers added to the selected ones (bowen 1791897991)', async () => {
+    const host = await setup()
+    const name = (line: string) => host.querySelector(`[data-group-row="${groupOf(line)}"] [title^="点击选中这条连续曲线"]`) as HTMLElement
+    await act(async () => { name('a1').dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    await act(async () => { name('c1').dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true })) })
+    const lines = snap().selection.flatMap(u => (u.kind === 'line' ? [u.id] : [])).sort()
+    expect(lines).toEqual(['a1', 'a2', 'a3', 'b1', 'c1']) // shown top first: D d1, C c1, B b1, A a3 a2 a1
+    expect(bench().scope().layers).toEqual(expect.arrayContaining(['A', 'B', 'C'])) // (D, the current layer at opening, stays selected)
   })
 })
