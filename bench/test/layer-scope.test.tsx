@@ -224,3 +224,27 @@ describe('the properties panel shows the unit last clicked in the list (bowen 17
     expect(host.querySelector('[data-testid="properties"]')).toBeNull()
   })
 })
+
+describe('hide every layer, show one alone (bowen 1791865192; Photoshop / Illustrator: Option-click an eye)', () => {
+  /** The eye icon whose title starts with `title`, in the header (index 0) or a layer row. */
+  const icon = (host: HTMLElement, title: string, i = 0) => [...host.querySelectorAll('svg')].filter(x => x.querySelector('title')?.textContent?.startsWith(title))[i]!
+  const visible = () => Object.fromEntries(bench().core.snapshot().lines.map(l => [l.id, l.state.visible]))
+  it('the header eye hides every layer; clicked again it shows every layer; one undo step each', async () => {
+    const host = await setup()
+    await act(async () => { icon(host, '隐藏全部图层').dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    expect(Object.values(visible()).every(v => !v)).toBe(true)
+    await act(async () => { icon(host, '显示全部图层').dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    expect(Object.values(visible()).every(v => v)).toBe(true)
+    await act(async () => { bench().core.undo(); bench().refresh() })
+    expect(Object.values(visible()).every(v => !v)).toBe(true)
+  })
+  it('Option-click on a layer\'s eye shows that layer alone, the others hidden', async () => {
+    const host = await setup()
+    // rows are listed top first: D, C, B, A — B's eye is the third row's
+    await act(async () => { icon(host, '隐藏图层（Option', 2).dispatchEvent(new MouseEvent('click', { bubbles: true, altKey: true })) })
+    expect(visible()).toEqual({ lA: false, lB: true, lC: false, lD: false })
+    // a plain click still toggles that one layer only
+    await act(async () => { icon(host, '显示图层（Option', 0).dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    expect(visible()).toEqual({ lA: false, lB: true, lC: false, lD: true })
+  })
+})

@@ -142,6 +142,8 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId, o
   const layers = [...s.layers].reverse() // top first, as Adobe lists them
   const activeLayer = s.layers.find(l => l.id === active)
   const fillsShown = s.loops.some(l => l.filled && l.visible)
+  // every layer at once (bowen 1791865192): any line shown → hide all; all hidden → show all
+  const anyShown = s.lines.some(l => l.state.visible)
   const allOpen = s.layers.length > 0 && s.layers.every(l => open.has(l.id))
   const toggle = (id: Id) => setOpen(o => { const n = new Set(o); if (n.has(id)) n.delete(id); else n.add(id); return n })
   // what is attached to each line, shown on its row (bowen 1791557998): its width, and at each end either the
@@ -160,6 +162,7 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId, o
       {/* the buttons sit beside the title (bowen 1791551539, 1791557559); fills and fold act on every layer */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 10px', borderBottom: `1px solid ${C.line}` }}>
         <span style={{ fontWeight: 600, letterSpacing: 0.3, flex: 1 }}>图层 <span style={{ color: C.dim, fontWeight: 400 }}>{s.layers.length}</span></span>
+        <Icon d={EYE} on={anyShown} title={anyShown ? '隐藏全部图层（Option 点某个图层的眼睛：只显示它）' : '显示全部图层'} onClick={() => run(x => s.layers.forEach(L => x.layerState(L.id, { visible: !anyShown })))} />
         <Icon d={FILL} on={fillsShown} title={fillsShown ? '隐藏全部图层的填充' : '显示全部图层的填充'} onClick={() => run(x => s.layers.forEach(L => x.layerFills(L.id, { visible: !fillsShown })))} />
         <Icon d={allOpen ? FOLD_ALL : UNFOLD_ALL} title={allOpen ? '收起全部图层' : '展开全部图层'} onClick={() => setOpen(allOpen ? new Set() : new Set(s.layers.map(l => l.id)))} />
         <Icon d={PLUS} title="新建图层" onClick={() => { const id = newLayerId(); if (run(x => x.layer(id, id, active || undefined))) select([id], id) }} />
@@ -181,7 +184,8 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId, o
               // selected rows stay lit; the current one is drawn stronger, with a bar on its left
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px', background: L.id === active ? C.active : selected.includes(L.id) ? C.selected : C.row,
                 boxShadow: L.id === active ? 'inset 3px 0 0 #8fb4ff' : undefined, borderBottom: `1px solid ${C.line}`, opacity: dragging === L.id ? 0.5 : 1 }}>
-              <Icon d={EYE} on={shown} title={shown ? '隐藏图层' : '显示图层'} onClick={e => { e.stopPropagation(); run(x => x.layerState(L.id, { visible: !shown })) }} />
+              {/* Option (Alt) + click: this layer alone shown, every other hidden (Photoshop / Illustrator; bowen 1791865192) */}
+              <Icon d={EYE} on={shown} title={shown ? '隐藏图层（Option 点：只显示这个图层）' : '显示图层（Option 点：只显示这个图层）'} onClick={e => { e.stopPropagation(); run(x => e.altKey ? s.layers.forEach(K => x.layerState(K.id, { visible: K.id === L.id })) : x.layerState(L.id, { visible: !shown })) }} />
               <Icon d={LOCK} on={locked} title={locked ? '解锁图层' : '锁定图层'} onClick={e => { e.stopPropagation(); run(x => x.layerState(L.id, { locked: !locked })) }} />
               <Icon d={isOpen ? TWIRL_OPEN : TWIRL_SHUT} title="展开" onClick={e => { e.stopPropagation(); toggle(L.id) }} />
               <Thumb lines={ids} />
