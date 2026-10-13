@@ -7,14 +7,17 @@ import type { Core, Editor } from '../../src'
 export interface DeformOp {
   /** The edit: every end point moved, then every handle set. */
   readonly run: (e: Editor) => void
-  /** The plan's fit diagnostic (input units; sampled, not a bound). */
+  /** The sampled fit error before any constraint (input units): mirror, links, springs or a bind at commit may move the result away from the fit (dot 1791892720). */
   readonly maxError: number
 }
 
 /**
- * The deform of `lines` in `view`: each line's stored curve (its end points and handles in that view), refitted
+ * The deform of `lines` in `view`: each line's stored curve (its end points and handles in that view, from the snapshot —
+ * never geometry(), whose lines arc joins trim), refitted
  * under the field of the rest frame `rect` taken to `quad` and bent by `bend`. Refused before anything is written
  * for no line or an unknown one; the field's own refusals (a crossed quad, a fold, the horizon) pass through.
+ * The curves, ids and plan are frozen here: previewing and committing the op run the same writes, never on an
+ * earlier preview's result; preview = commit holds for the same document state.
  */
 export function deformOp(core: Core, view: string, lines: readonly string[], rect: Rect, quad: Quad, bend?: Bend): DeformOp {
   if (!lines.length) throw Error('deform-no-lines: select lines to deform')

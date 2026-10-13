@@ -110,10 +110,86 @@ describe('the deform edit (package 2)', () => {
     expect(save(d)).toBe(save(d))
   })
 
+  it('an arc join between two given lines: the real points go to map(position), not to the trimmed ends of geometry()', () => {
+    const d = doc()
+    d.edit(e => e.join('b', 'ab', 'bc', { mode: 'arc', radius: 6 }))
+    const trimmed = d.geometry().lines.find(l => l.id === 'ab')!.curve[3]
+    expect(near(trimmed, P(50, 30), 1e-6)).toBe(false) // geometry's end is trimmed by the arc
+    const field = deformField(rect, quad, bend)
+    d.edit(deformOp(d, FRONT, ['ab', 'bc'], rect, quad, bend).run)
+    expect(d.snapshot().points.find(p => p.id === 'b')!.position).toEqual(field.map(P(50, 30)))
+  })
+
+  it('building the op freezes its plan: previewing it twice, then committing, gives one result', () => {
+    const d = doc(), op = deformOp(d, FRONT, ['ab', 'bc'], rect, quad, bend)
+    const one = d.preview(FRONT, op.run)!.snapshot(), two = d.preview(FRONT, op.run)!.snapshot()
+    d.edit(op.run)
+    expect([two, d.snapshot()]).toEqual([one, one])
+  })
+
   it('in another view: only that view changes', () => {
     const d = doc(), front = JSON.stringify(d.snapshot())
     d.editIn(SIDE, deformOp(d, SIDE, ['ab'], rect, quad, bend).run)
     expect(JSON.stringify(d.snapshot())).toBe(front)
     expect(curve(d, SIDE, 'ab')[0]).toEqual(deformField(rect, quad, bend).map(P(10, 10)))
+  })
+})
+
+/** Preview and commit of the same op on the same document: the same snapshot, or the same refusal. */
+function sameOutcome(d: Core, view: string, run: (e: import('../../src').Editor) => void) {
+  let shown: unknown, refused: string | undefined
+  try { shown = d.preview(view, run)!.snapshot() } catch (err) { refused = String(err) }
+  const before = JSON.stringify(d.views().map(k => d.in(k).snapshot()))
+  try { d.editIn(view, run) } catch (err) {
+    expect(String(err)).toBe(refused)
+    expect(JSON.stringify(d.views().map(k => d.in(k).snapshot()))).toBe(before)
+    return 'refused'
+  }
+  expect(refused).toBeUndefined()
+  expect(d.in(view).snapshot()).toEqual(shown)
+  return 'applied'
+}
+
+describe('preview against commit under the commit\'s own rules (dot 1791892720)', () => {
+  /** Layers L and R, mirror-linked in the front: l (p1→p2) and its reflection r (q1→q2). */
+  function mirrored() {
+    const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })
+    d.edit(e => {
+      e.layer('R', 'R')
+      e.line('l', { id: 'p1', layer: 'L', position: P(-40, 10) }, { id: 'p2', layer: 'L', position: P(-10, 30) }, { ha: P(5, 10), hb: P(-8, 2) })
+      e.line('r', { id: 'q1', layer: 'R', position: P(40, 10) }, { id: 'q2', layer: 'R', position: P(10, 30) }, { ha: P(-5, 10), hb: P(8, 2) })
+    })
+    const g = (line: string) => d.snapshot().groups.find(x => x.lines.includes(line))!.id
+    d.edit(e => e.mirrorLink([g('l')], [g('r')]))
+    return d
+  }
+  const box = { min: P(-50, 0), max: P(50, 40) }, skew: Quad = [P(-52, 3), P(55, -4), P(48, 44), P(-46, 39)]
+
+  it('front, one mirror side given: preview = commit (the partner mirrored by the link)', () => {
+    const d = mirrored()
+    expect(sameOutcome(d, FRONT, deformOp(d, FRONT, ['l'], box, skew).run)).toBe('applied')
+    const s = d.snapshot(), at = (p: string) => s.points.find(x => x.id === p)!.position
+    expect(near(at('q2'), P(-at('p2').x, at('p2').y), 1e-9)).toBe(true)
+  })
+
+  it('front, both mirror sides given: preview = commit', () => {
+    const d = mirrored()
+    sameOutcome(d, FRONT, deformOp(d, FRONT, ['l', 'r'], box, skew).run)
+  })
+
+  it('an end landing on another point of its layer: the commit binds, and the preview shows the same bind', () => {
+    const d = doc()
+    // a loose line ending at w (60, 45); a translation by (50, 35) takes a (10, 10) exactly onto w
+    d.edit(e => e.line('loose', { id: 'u', layer: 'L', position: P(10, 70) }, { id: 'w', layer: 'L', position: P(60, 45) }))
+    const moved = rectQuad({ min: P(50, 35), max: P(150, 95) })
+    const points = d.snapshot().points.length
+    expect(sameOutcome(d, FRONT, deformOp(d, FRONT, ['ab'], rect, moved).run)).toBe('applied')
+    expect(d.snapshot().points.length).toBeLessThan(points)
+  })
+
+  it('a lock reached through a link: refused by both, nothing changes', () => {
+    const d = doc()
+    d.edit(e => e.link('a', 'm')); d.edit(e => e.lineState('mn', { locked: true }))
+    expect(sameOutcome(d, FRONT, deformOp(d, FRONT, ['ab'], rect, quad, bend).run)).toBe('refused')
   })
 })

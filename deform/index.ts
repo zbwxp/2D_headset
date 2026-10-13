@@ -321,7 +321,7 @@ export interface Plan {
   readonly points: { id: string; target: Vec }[]
   /** Each line's fitted handles, as offsets from their end points. */
   readonly handles: { line: string; end: 'a' | 'b'; offset: Vec }[]
-  /** The largest of the lines' fit diagnostics (input units; sampled, not a bound). */
+  /** The largest of the lines' sampled fit errors, before any constraint (input units; not a bound). */
   readonly maxError: number
 }
 /** Every line refitted under the field (package 1's `fitDeformedCubic`); each end point mapped once, and every fitted end on it. */
