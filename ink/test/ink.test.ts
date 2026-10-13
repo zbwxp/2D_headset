@@ -384,6 +384,47 @@ describe('free ends taper to a point (bowen 1791853511): length = taper × the e
     expect(lo2).toBeGreaterThanOrEqual(-1e-3); expect(lo2).toBeLessThan(0.05)
     expect(across(long, 0.5)).toBeCloseTo(2 * 0.5 * Math.tan(Math.asin(0.8)), 1)
   })
+  it('the limit stays within the taper: a short line joined to a long one keeps the shared width at the joint; its tip may be covered (a recorded limit, dot 1791854575)', () => {
+    const d = new Core()
+    d.edit(e => { e.layer('L'); sk(e).point('a', 'L', P(0)); sk(e).point('p', 'L', P(1)); sk(e).point('c', 'L', P(60)); sk(e).line('s', 'a', 'p'); sk(e).line('l', 'p', 'c'); e.pointWidth('a', 4); e.pointWidth('p', 4); e.pointWidth('c', 4) })
+    const s = build(d.geometry(), d.snapshot()).pieces.find(p => p.source.id === 's')!
+    expect(across(s.loops, 0.99)).toBeCloseTo(4, 1) // not narrowed at the joint
+    // a line long enough for the minimum taper keeps its body: 10 long, 4 wide, one free end, the other joined
+    const d2 = new Core()
+    d2.edit(e => { e.layer('L'); sk(e).point('a', 'L', P(0)); sk(e).point('p', 'L', P(10)); sk(e).point('c', 'L', P(60)); sk(e).line('s', 'a', 'p'); sk(e).line('l', 'p', 'c'); e.pointWidth('a', 4); e.pointWidth('p', 4); e.pointWidth('c', 4) })
+    const s2 = build(d2.geometry(), d2.snapshot()).pieces.find(p => p.source.id === 's')!
+    expect(across(s2.loops, 9.9)).toBeCloseTo(4, 1)
+    expect(Math.min(...s2.loops.flat().map(v => v.x))).toBeGreaterThanOrEqual(-1e-3) // its tip on its end point
+  })
+  it('the taper joins the body at its actual exit, on a line whose width changes and on a curved one: no jump in width (dot 1791854667)', () => {
+    const smooth = (loops: readonly (readonly Vec[])[], x0: number, x1: number) => {
+      let prev = across(loops, x0), worst = 0
+      for (let x = x0 + 0.01; x <= x1; x += 0.01) { const w = across(loops, x); worst = Math.max(worst, Math.abs(w - prev)); prev = w }
+      return worst
+    }
+    // 30 long, from width 1 at the free a end to 8 at b (b joined), a short manual taper at a
+    const d = new Core()
+    d.edit(e => {
+      e.layer('L'); sk(e).point('a', 'L', P(0)); sk(e).point('b', 'L', P(30)); sk(e).point('c', 'L', P(60)); sk(e).line('l', 'a', 'b'); sk(e).line('m', 'b', 'c')
+      e.pointWidth('a', 1); e.pointWidth('b', 8); e.pointWidth('c', 8); e.endStroke('a', { taper: 0.2 })
+    })
+    const l = build(d.geometry(), d.snapshot()).pieces.find(p => p.source.id === 'l')!.loops
+    expect(Math.min(...l.flat().map(v => v.x))).toBeGreaterThanOrEqual(-1e-3)
+    expect(smooth(l, 0.3, 3)).toBeLessThan(0.05) // width steps between samples 0.01 apart
+    // a gently curved line, 4 wide, both ends free, a short manual taper at each end
+    const c = new Core()
+    c.edit(e => { e.layer('L'); sk(e).point('a', 'L', P(0)); sk(e).point('b', 'L', P(40)); sk(e).line('l', 'a', 'b', { ha: P(12, 10), hb: P(-12, 10) }); e.pointWidth('a', 4); e.pointWidth('b', 4); e.endStroke('a', { taper: 0.1 }); e.endStroke('b', { taper: 0.1 }) })
+    const cl = build(c.geometry(), c.snapshot()).pieces[0]!.loops
+    // nothing past either end point along its outward direction (the handles: out of a along −(12, 10), out of b along (12, −10))
+    const past = (end: Vec, dir: Vec) => { const n = Math.hypot(dir.x, dir.y); return Math.max(...cl.flat().map(v => ((v.x - end.x) * dir.x + (v.y - end.y) * dir.y) / n)) }
+    expect(past(P(0), P(-12, -10))).toBeLessThanOrEqual(1e-3)
+    expect(past(P(40), P(12, -10))).toBeLessThanOrEqual(1e-3)
+  })
+  it('a manual taper shorter than 0.625 × the width is drawn at that minimum: still a point on the end point', () => {
+    const l = build(one(60, 4, [0.01, 3]).geometry(), one(60, 4, [0.01, 3]).snapshot()).pieces[0]!.loops
+    expect(Math.min(...l.flat().map(v => v.x))).toBeGreaterThanOrEqual(-1e-3)
+    expect(across(l, 2.6)).toBeCloseTo(4, 1) // the body from 2.5 on
+  })
   it('a joined end is not a free end, nor when its neighbour is hidden; the other end stays pointed', () => {
     const d = one(60, 4)
     d.edit(e => { sk(e).point('c', 'L', P(120)); sk(e).line('m', 'b', 'c') })

@@ -37,7 +37,10 @@ export interface InkLines {
  * so the joint is the S-curve's middle (steepest, the same slope from both lines) and the far end meets h flat.
  * `tip`: a free end tapering to a point (bowen 1791853511; joint 0): h − h_end · (1 − s / length)², reaching 0 at the end.
  */
-export interface EndEase { readonly joint: number; readonly centred?: boolean; readonly tip?: boolean }
+/** `tip`: a free end tapering to a point; `clamp`, where its limit (half-width ≤ TIP × the straight distance to the end
+ *  point) applies: 'span' — within the taper (the default), 'line' — the whole line (a free line too short for its
+ *  tips), 'none' — nowhere (a short line joined at its other end: its tip may be covered, a recorded limit). */
+export interface EndEase { readonly joint: number; readonly centred?: boolean; readonly tip?: boolean; readonly clamp?: 'span' | 'line' | 'none' }
 export interface Profile {
   /** The half-width at the start; `hEnd` the half-width at the end, linear in between along the arc length (two end
    *  widths, bowen 1791818995); absent = `h`. The ends' easing is added on top, relative to that end's own width. */
@@ -276,8 +279,8 @@ function radiiAlong(points: readonly Vec[], pr: Profile, tol: number): { pts: Ve
   if (pr.end && le > 0) spans.push({ s0: L - le, s1: L, d: Math.abs(h1 - pr.end.joint) })
   // a tip's limit (below): sampled out to where it can bite, the widest half-width from that end
   const hMax = Math.max(h0, h1)
-  if (pr.start?.tip) spans.push({ s0: 0, s1: Math.min(L, hMax / TIP), d: hMax })
-  if (pr.end?.tip) spans.push({ s0: Math.max(0, L - hMax / TIP), s1: L, d: hMax })
+  if (pr.start?.tip && pr.start.clamp !== 'none') spans.push({ s0: 0, s1: pr.start.clamp === 'line' ? L : ls, d: hMax })
+  if (pr.end?.tip && pr.end.clamp !== 'none') spans.push({ s0: pr.end.clamp === 'line' ? 0 : L - le, s1: L, d: hMax })
   const hAt = (at: number) => {
     let h = L > 0 ? h0 + (h1 - h0) * Math.min(1, at / L) : h0 // linear between the two end widths (exact between points)
     // a free end's tip (bowen 1791853511): h · (2u − u²) — slope 0 into the body, a pointed tip with a finite angle
@@ -286,7 +289,7 @@ function radiiAlong(points: readonly Vec[], pr: Profile, tol: number): { pts: Ve
     if (pr.end && le > 0 && at > L - le) h += ease(pr.end, h1, (L - at) / le)
     return Math.max(0, h)
   }
-  const pts: Vec[] = [points[0]!], radii = [hAt(0)]
+  const pts: Vec[] = [points[0]!], radii = [hAt(0)], ats = [0]
   let at = 0
   for (let i = 0; i + 1 < points.length; i++) {
     const a = points[i]!, b = points[i + 1]!, l = len(sub(b, a))
@@ -300,19 +303,21 @@ function radiiAlong(points: readonly Vec[], pr: Profile, tol: number): { pts: Ve
       for (let j = 1; j < n; j++) cuts.add((lo - at + (hi - lo) * j / n) / l)
     }
     for (const sp of spans) for (const x of [sp.s0, sp.s1]) if (l > 0 && x > at && x < at + l) cuts.add((x - at) / l)
-    for (const f of [...cuts].sort((x, y) => x - y)) { pts.push(lerp(a, b, f)); radii.push(hAt(Math.min(L, at + l * f))) }
+    for (const f of [...cuts].sort((x, y) => x - y)) { pts.push(lerp(a, b, f)); radii.push(hAt(Math.min(L, at + l * f))); ats.push(Math.min(L, at + l * f)) }
     at += l
   }
   // a tip lands on its end point and is a point (dot 1791853983 / 1791854038): the ink is swept by discs, and discs
   // whose half-width is at most c · (straight distance to the end point) never reach it and have an envelope meeting
   // there with a half-angle of at most asin c — the straight distance, not the arc length (on a curve the arc is longer).
-  // So near a tipped end the half-width is at most TIP times that distance (a tip of at most ≈ 106°). The brush shape
-  // stays inside this whenever its taper is at least 2.5 × the half-width (the default, and short lines down to that);
-  // a very short manual taper or a very short thick line is cut to straight flanks.
+  // So within a tip's taper the half-width is at most TIP times that distance (a tip of at most ≈ 106°). Only within the
+  // taper (dot 1791854575: the body and the joints keep their widths): with a taper of at least 1.25 × the half-width
+  // the limit is no tighter than the body width at the taper's end, so it meets the body without a step and the body's
+  // discs do not reach the end either. 'line' / 'none': see EndEase.
   const first = points[0]!, last = points[points.length - 1]!
   for (let i = 0; i < pts.length; i++) {
-    if (pr.start?.tip) radii[i] = Math.min(radii[i]!, TIP * len(sub(pts[i]!, first)))
-    if (pr.end?.tip) radii[i] = Math.min(radii[i]!, TIP * len(sub(pts[i]!, last)))
+    const a = ats[i]!
+    if (pr.start?.tip && pr.start.clamp !== 'none' && (pr.start.clamp === 'line' || a <= ls)) radii[i] = Math.min(radii[i]!, TIP * len(sub(pts[i]!, first)))
+    if (pr.end?.tip && pr.end.clamp !== 'none' && (pr.end.clamp === 'line' || a >= L - le)) radii[i] = Math.min(radii[i]!, TIP * len(sub(pts[i]!, last)))
   }
   return { pts, radii }
 }
@@ -566,6 +571,14 @@ export function createInkCache(opts: InkOptions = {}) {
       // a line's width at one of its points (two end widths, bowen 1791818995: a at the start, b at the end)
       const wAt = (l: InkLines['lines'][number], point: string) => (l.b === point && l.a !== point ? l.stroke.widthB ?? l.stroke.width : l.stroke.width)
       const curveOf = new Map(geometry.lines.map(g => [g.id, g.curve] as const)), lengthOf = new Map<string, number>()
+      const flatOf = new Map<string, Vec[]>(), flatPts = (id: string) => flatOf.get(id) ?? flatOf.set(id, flatten(curveOf.get(id)!, 0.01).points).get(id)!
+      /** The point at arc length s from a line's a end, on its flattened curve. */
+      const pointAlong = (id: string, s: number): Vec => {
+        const ps = flatPts(id)
+        let acc = 0
+        for (let i = 0; i + 1 < ps.length; i++) { const d = len(sub(ps[i + 1]!, ps[i]!)); if (acc + d >= s) return lerp(ps[i]!, ps[i + 1]!, d > 0 ? (s - acc) / d : 0); acc += d }
+        return ps[ps.length - 1]!
+      }
       const length = (id: string) => lengthOf.get(id) ?? lengthOf.set(id, ((ps: Vec[]) => ps.slice(1).reduce((t, p, i) => t + len(sub(p, ps[i]!)), 0))(flatten(curveOf.get(id)!, 0.01).points)).get(id)!
       const smooth = (snapshot.joins ?? []).filter(j => (j.mode === 'smooth' || j.mode === 'bound') && visible(j.lines[0]) && visible(j.lines[1]) && curveOf.has(j.lines[0]) && curveOf.has(j.lines[1]))
       const ends = new Map<string, { start?: EndEase & { length: number }; end?: EndEase & { length: number } }>()
@@ -612,16 +625,31 @@ export function createInkCache(opts: InkOptions = {}) {
       const endCount = new Map<string, number>()
       for (const l of snapshot.lines) for (const p of [l.a, l.b]) endCount.set(p, (endCount.get(p) ?? 0) + 1)
       const taperOf = new Map((snapshot.points ?? []).map(p => [p.id, p.endStroke?.taper] as const))
+      // a taper is at least 1.25 × the half-width (dot 1791854575), so its tip limit stays within the taper; a line too
+      // short for that is narrowed whole when both its ends are free, and left as it is (its tip may be covered — a
+      // recorded limit) when its other end is joined: the joint keeps the point's shared width
       for (const g of geometry.lines) {
         const l = byId.get(g.id)
         if (!l || !l.state.visible) continue
+        const free = { start: endCount.get(l.a) === 1, end: endCount.get(l.b) === 1 }
         for (const at of ['start', 'end'] as const) {
           const point = at === 'start' ? l.a : l.b
-          if (endCount.get(point) !== 1) continue
-          const t = taperOf.get(point), k = typeof t === 'number' && Number.isFinite(t) && t >= 0 ? t : 3
-          const w = at === 'start' ? l.stroke.width : l.stroke.widthB ?? l.stroke.width, len = Math.min(k * w, length(g.id) / 2)
+          if (!free[at]) continue
+          const tp = taperOf.get(point), k = typeof tp === 'number' && Number.isFinite(tp) && tp >= 0 ? tp : 3
+          if (k === 0) continue
+          const w = at === 'start' ? l.stroke.width : l.stroke.widthB ?? l.stroke.width, L = length(g.id), half = L / 2
+          // the taper's exit joins the body when the body's own half-width there is within the limit (dot 1791854667):
+          // judged at the actual exit — the line's width changes along it and the arc is longer than the straight
+          // distance; from 0.625 × the width (the straight, equal-width answer), lengthened by 1.25 × up to half the line
+          const wa = l.stroke.width, wb = l.stroke.widthB ?? l.stroke.width
+          const joins = (t: number) => {
+            const sFromA = at === 'start' ? t : L - t, body = (wa + (wb - wa) * sFromA / L) / 2
+            return body <= TIP * len(sub(pointAlong(g.id, sFromA), at === 'start' ? curveOf.get(g.id)![0] : curveOf.get(g.id)![3])) + 1e-9
+          }
+          let t = Math.min(Math.max(k * w, 0.625 * w), half)
+          while (!joins(t) && t < half) t = Math.min(half, t * 1.25)
           const e = ends.get(g.id) ?? {}
-          if (len > 0 && !e[at]) { e[at] = { joint: 0, length: len, tip: true }; ends.set(g.id, e) }
+          if (t > 0 && !e[at]) { e[at] = { joint: 0, length: t, tip: true, clamp: joins(t) ? 'span' : free.start && free.end ? 'line' : 'none' }; ends.set(g.id, e) }
         }
       }
       const pieceOf = new Map<string, InkPiece>()
