@@ -5,6 +5,7 @@
 import { useState } from 'react'
 import type { Snapshot, Zones, Editor } from '../src'
 import { JoinList, type SliderHooks } from './JoinList'
+import { MaskSection } from './MaskSection'
 import { Slider } from '../slider'
 
 type Id = string
@@ -41,6 +42,9 @@ export function PropertiesPanel({ s, subject, zones = [], run, slider, toolRadiu
   // widths belong to points (bowen 1791820396): each field edits one point's width in this view
   let widthRows: { label: string; point: Id; value: number; attr: string }[] = []
   let taperOf: { point: Id; value: number; end?: Snapshot["points"][number]["endStroke"] } | null = null
+  // the 蒙版 section's targets (docs/mask-p2-checklist.md §4): the subject's lines and filled loops
+  let maskTargets: { kind: 'line' | 'fill'; id: Id }[] = []
+  const targetsOf = (ids: Id[]) => [...ids.map(id => ({ kind: 'line' as const, id })), ...fillsOf(ids).map(f => ({ kind: 'fill' as const, id: f.id }))]
   if (subject?.kind === 'layer' && s.layers.some(l => l.id === subject.id)) {
     const ids = s.lines.filter(l => layerOf.get(l.a) === subject.id).map(l => l.id)
     title = `图层 · ${layerName(subject.id)}`
@@ -51,6 +55,7 @@ export function PropertiesPanel({ s, subject, zones = [], run, slider, toolRadiu
       ['填充', String(fillsOf(ids).length)],
       ['镜像联动', ids.some(id => paired.has(id)) ? '有' : '无'],
     ]
+    maskTargets = targetsOf(ids)
   } else if (subject?.kind === 'group' && s.groups.some(g => g.id === subject.id)) {
     const g = s.groups.find(x => x.id === subject.id)!
     title = `连续曲线 · ${g.name}`
@@ -61,6 +66,7 @@ export function PropertiesPanel({ s, subject, zones = [], run, slider, toolRadiu
       ['填充', fillsOf(g.lines).map(f => f.color).join(' · ') || '无'],
       ['镜像联动', g.lines.some(id => paired.has(id)) ? '有' : '无'],
     ]
+    maskTargets = targetsOf(g.lines)
   } else if (subject?.kind === 'line' && s.lines.some(l => l.id === subject.id)) {
     const l = s.lines.find(x => x.id === subject.id)!
     // each end: the join with the next line, or at an open end its end stroke (an open end belongs to one line; bowen 1791557998)
@@ -73,6 +79,7 @@ export function PropertiesPanel({ s, subject, zones = [], run, slider, toolRadiu
       return `${how}${p?.links.length ? ` · 联动 ${p.links.join('、')}` : ''}`
     }
     title = `线 · ${l.name}`
+    maskTargets = [{ kind: 'line', id: l.id }]
     // the width is edited here, in this view (bowen 1791814093: the line's own properties); typed values commit with Enter
     if (run) widthRows = [{ label: '起点宽', point: l.a, value: l.stroke.width, attr: 'data-line-width' }, { label: '终点宽', point: l.b, value: l.stroke.widthB ?? l.stroke.width, attr: 'data-line-width-b' }]
     rows = [
@@ -130,6 +137,8 @@ export function PropertiesPanel({ s, subject, zones = [], run, slider, toolRadiu
           <div style={{ color: C.key, padding: '4px 0 0' }}>{x.label}</div>
           <JoinList s={s} zones={zones} point={x.point} line={x.line} run={run} slider={slider} toolRadius={toolRadius} scope={scope} />
         </div>)}
+        {/* shown only where it can be used (shown = operable): with the panel's edits */}
+        {run && subject && <MaskSection key={`${scope ?? ''}|${subject.kind}:${subject.id}`} s={s} targets={maskTargets} run={run} />}
         {/* more properties go here as they are settled (bowen 1791599608: a placeholder for now) */}
         <div style={{ color: C.dim, padding: '6px 0 0', fontStyle: 'italic' }}>更多属性（待定）</div>
       </div>}
