@@ -38,6 +38,11 @@ export function add(s: MasksState, n: net.NetworkState, filled: ReadonlySet<Id>,
   } else throw new Error(`Mask ${id}: the target must be a line or a fill`)
   S(s).masks.push({ id, sources, target: { kind, id: tid }, mode: m.mode })
 }
+/** The same rule (mode and source set) already on the same target, if any (bowen 1791908041: one rule is added once). */
+export function same(s: MasksState, m: Omit<Mask, 'id'>): Id | undefined {
+  const key = (x: Omit<Mask, 'id'>) => `${x.target.kind}:${x.target.id}|${x.mode}|${[...new Set(x.sources)].sort().join(',')}`
+  return S(s).masks.find(x => key(x) === key(m))?.id
+}
 export function remove(s: MasksState, id: Id) {
   if (!S(s).masks.some(m => m.id === id)) throw new Error(`No mask ${id}`)
   S(s).masks = S(s).masks.filter(m => m.id !== id)

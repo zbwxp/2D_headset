@@ -59,6 +59,16 @@ describe('masks in the drawing', () => {
     for (const [f, why] of bad) { expect(f).toThrow(why); expect(save(d)).toBe(before) }
   })
 
+  it('the same rule twice on one target is refused, in any source order; another mode or another target is a new mask (bowen 1791908041)', () => {
+    const d = scene(), sq = loopOf(d, 'ab'), tri = loopOf(d, 'ef')
+    d.edit(e => e.mask('m1', [sq, tri], line('xy'), 'inverse'))
+    const before = save(d)
+    expect(() => d.edit(e => e.mask('m2', [tri, sq], line('xy'), 'inverse'))).toThrow(/mask-exists/)
+    expect(save(d)).toBe(before)
+    d.edit(e => { e.mask('m3', [sq, tri], line('xy'), 'normal'); e.mask('m4', [sq, tri], line('qr'), 'inverse'); e.mask('m5', [sq], line('xy'), 'inverse') })
+    expect(masks(d).map(m => m.id)).toEqual(['m1', 'm3', 'm4', 'm5'])
+  })
+
   it('locks are not consulted: a locked target or source takes masks and loses them (bowen 1791903940)', () => {
     const d = scene(), sq = loopOf(d, 'ab'), tri = loopOf(d, 'ef')
     d.edit(e => e.mask('m1', [sq], line('xy'), 'inverse'))

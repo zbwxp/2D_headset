@@ -82,6 +82,21 @@ describe('the 蒙版 section', () => {
     expect(t.s().masks.map(x => x.id)).toEqual(['keep'])
   })
 
+  it('a rule added once cannot be added again: those targets are left out, with all of them done 添加 is off (bowen 1791908041)', async () => {
+    const t = await setup(), sq = t.fillOf('s1')
+    await act(async () => { bench().core.edit(e => e.mask('old', [sq], { kind: 'line', id: 't2' }, 'inverse')); bench().refresh() })
+    await t.click('[data-layer-row="A"]')
+    await t.click(t.at('data-mask-source', sq))
+    await t.click('[data-testid="mask-add"]')
+    expect(t.s().masks.filter(m => m.target.id === 't2').length).toBe(1) // t2 already had it
+    expect(t.s().masks.map(m => m.target.id).sort()).toEqual(['t1', 't2', 't3', 'x'])
+    await t.click(t.at('data-mask-source', sq))
+    expect((t.q('[data-testid="mask-add"]') as HTMLButtonElement).disabled).toBe(true)
+    expect(t.q('[data-testid="mask-section"]')!.textContent).toContain('已经加过')
+    await t.click('[data-mask-mode="normal"]')
+    expect((t.q('[data-testid="mask-add"]') as HTMLButtonElement).disabled).toBe(false) // another mode is another rule
+  })
+
   it('only on selected layers: a layer deselected with Cmd takes the section away (bowen 1791899593, dot 1791906426)', async () => {
     const t = await setup()
     await t.click('[data-layer-row="A"]')

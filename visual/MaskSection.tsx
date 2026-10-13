@@ -30,11 +30,15 @@ export function MaskSection({ s, targets: all, run }: { s: Snapshot; targets: re
   const offered = filled.filter(l => !has({ kind: 'fill', id: l.id }))
   // ticked sources still offered (a source gone since it was ticked drops out; core checks again on add)
   const sources = ticked.filter(id => offered.some(l => l.id === id))
+  // a target that already has this rule (same mode, same sources) is left out; with none left there is nothing to add
+  // (bowen 1791908041: a mask added once cannot be added again)
+  const rule = (m: { sources: readonly Id[]; mode: string }) => `${m.mode}|${[...new Set(m.sources)].sort().join(',')}`
+  const fresh = targets.filter(t => !s.masks.some(m => m.target.kind === t.kind && m.target.id === t.id && rule(m) === rule({ sources, mode })))
   const add = () => {
     const used = new Set(s.masks.map(m => m.id))
     let n = 1
-    const ids = targets.map(() => { while (used.has(`m${n}`)) n++; used.add(`m${n}`); return `m${n}` })
-    if (run(e => targets.forEach((t, i) => e.mask(ids[i]!, sources, t, mode)))) setTicked([])
+    const ids = fresh.map(() => { while (used.has(`m${n}`)) n++; used.add(`m${n}`); return `m${n}` })
+    if (run(e => fresh.forEach((t, i) => e.mask(ids[i]!, sources, t, mode)))) setTicked([])
   }
   return (
     <div data-testid="mask-section" style={{ padding: '4px 0 0' }}>
@@ -55,7 +59,8 @@ export function MaskSection({ s, targets: all, run }: { s: Snapshot; targets: re
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '2px 0 0 8px' }}>
         <label title="来源区域里的部分不画"><input type="radio" name="mask-mode" data-mask-mode="inverse" checked={mode === 'inverse'} onChange={() => setMode('inverse')} /> 反向</label>
         <label title="只画来源区域里的部分"><input type="radio" name="mask-mode" data-mask-mode="normal" checked={mode === 'normal'} onChange={() => setMode('normal')} /> 正常</label>
-        <button data-testid="mask-add" disabled={!sources.length} onClick={add}>添加</button>
+        <button data-testid="mask-add" disabled={!sources.length || !fresh.length} onClick={add}>添加</button>
+        {sources.length > 0 && !fresh.length && <span style={{ color: C.dim, fontSize: 11 }}>已经加过</span>}
       </div>
     </div>
   )

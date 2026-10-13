@@ -381,7 +381,12 @@ export class Editor {
   // masks (显隐; graph "显隐 — masks", preliminary; docs/mask-p2-checklist.md)
   /** A mask: `sources` (filled closed curves) hide part of `target` (a line or a filled closed curve) — inverse: inside them; normal: all but inside them. Shared by every view. */
   // locks are not consulted (bowen 1791903940: editing is limited to the selected layers; locks to be removed later)
-  mask(id: Id, sources: Id[], target: masks.Target, mode: masks.Mode) { masks.add(this.s.masks, this.s.network, fills.filledIds(this.s.fills), { id, sources, target, mode }) }
+  mask(id: Id, sources: Id[], target: masks.Target, mode: masks.Mode) {
+    // the same rule twice on one target is refused (bowen 1791908041); a file is read as stored (restore does not ask)
+    const twin = masks.same(this.s.masks, { sources, target, mode })
+    if (twin !== undefined) throw new net.Refusal('mask-exists', `mask-exists: ${target.kind} ${target.id} already has this mask (${twin})`, [{ kind: target.kind, id: target.id }])
+    masks.add(this.s.masks, this.s.network, fills.filledIds(this.s.fills), { id, sources, target, mode })
+  }
   removeMask(id: Id) { masks.remove(this.s.masks, id) }
 
   // fills (closed loops)
