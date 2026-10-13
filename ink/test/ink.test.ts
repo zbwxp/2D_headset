@@ -153,6 +153,26 @@ describe('arc joins — the arc inked at its lines\' width, the lines and the ar
     })
     return d
   }
+  it('a cut (the visibility module\'s mask) acts on one line\'s own piece before the group\'s union: its neighbours are untouched (dot 1791901344)', () => {
+    const d = doc(), plain = build(d.geometry(), d.snapshot())
+    const cut = build(d.geometry(), d.snapshot(), {}, src => (src.id === 'ab' ? [] : undefined))
+    const piece = (ink: typeof plain, id: string) => ink.pieces.find(p => p.source.id === id)!
+    expect(piece(cut, 'ab').loops).toEqual([])
+    expect(piece(cut, 'bc').loops).toEqual(piece(plain, 'bc').loops) // the neighbour, the same
+    const arc = (ink: typeof plain) => ink.pieces.find(p => p.source.kind === 'arc')!
+    expect(arc(cut).loops).toEqual(arc(plain).loops) // arcs are not cut (package 1)
+    const total = (ink: typeof plain) => ink.groups[0]!.loops.reduce((t, l) => t + Math.abs(area(l)), 0)
+    const rest = union([...piece(plain, 'bc').loops, ...arc(plain).loops].map(l => l.map(v => ({ x: Math.round(v.x * 1024), y: Math.round(v.y * 1024) }))), FillRule.NonZero)
+      .reduce((t, l) => t + Math.abs(area(l.map(v => ({ x: v.x / 1024, y: v.y / 1024 })))), 0)
+    expect(Math.abs(total(cut) - rest)).toBeLessThan(0.05) // the group = the uncut pieces united
+    expect(total(cut)).toBeLessThan(total(plain))
+    // a join's own piece is offered to the cut too, with its lines named: the caller decides (package 1, revised)
+    const seen: string[] = []
+    const arcCut = build(d.geometry(), d.snapshot(), {}, src => { seen.push(src.kind); return src.kind === 'arc' && 'lines' in src && src.lines.includes('ab') ? [] : undefined })
+    expect(arc(arcCut).loops).toEqual([])
+    expect(seen).toContain('arc')
+  })
+
   it('equal widths: an arc piece at that width, and one group whose union is one loop — the swept region of the whole turn', () => {
     const d = doc(), before = JSON.stringify([d.snapshot(), d.geometry()])
     const ink = build(d.geometry(), d.snapshot())

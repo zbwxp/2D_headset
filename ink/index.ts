@@ -529,9 +529,18 @@ export function merge(pieces: readonly InkPiece[]): Omit<InkGroup, 'pieces'> {
 
 /** The ink of a view: every visible line's piece (hidden lines have none — their decoration is drawn from the centre
  *  line), each arc's piece, and the groups the arcs join. */
-export function build(geometry: InkInput, snapshot: InkLines, opts: InkOptions = {}): Ink {
-  return createInkCache(opts).build(geometry, snapshot)
+export function build(geometry: InkInput, snapshot: InkLines, opts: InkOptions = {}, cut?: InkCut): Ink {
+  return createInkCache(opts).build(geometry, snapshot, cut)
 }
+
+/**
+ * What of a piece stays drawn (the visibility module's masks, docs/mask-p1-checklist.md §2): given a piece's source (a
+ * line, an arc or a tip — the latter two name their lines) and its outline, the outline to draw instead, or `undefined`
+ * to keep it. Applied to each piece **before** a join group's union, so cutting one line never cuts its neighbours in
+ * the group (dot 1791901344).
+ * Not cached: a cut piece is a new piece, and its group's union is redone.
+ */
+export type InkCut = (source: InkSource, loops: readonly (readonly Vec[])[]) => readonly (readonly Vec[])[] | undefined
 
 /**
  * A cache of ink, owned by its caller (one per canvas): a piece is rebuilt only when its curve or width changed, a
@@ -545,7 +554,7 @@ export function createInkCache(opts: InkOptions = {}) {
   const memo = new Map<string, { key: string; piece?: InkPiece; diagnostic: InkDiagnostic }>()
   const groupMemo = new Map<string, InkGroup>()
   return {
-    build(geometry: InkInput, snapshot: InkLines): Ink {
+    build(geometry: InkInput, snapshot: InkLines, cut?: InkCut): Ink {
       const byId = new Map(snapshot.lines.map(l => [l.id, l] as const)), seen = new Set<string>()
       const pieces: InkPiece[] = [], diagnostics: InkDiagnostic[] = []
       const one = (source: InkSource, curve: Cubic, width: number | readonly [number, number] | Profile, flat: Flat = {}) => {
@@ -557,9 +566,11 @@ export function createInkCache(opts: InkOptions = {}) {
           e = { key, ...sweep(source, curve, width, opts, flat) }
           memo.set(at, e)
         }
-        if (e.piece) pieces.push(e.piece)
+        let piece = e.piece
+        if (piece && cut) { const loops = cut(source, piece.loops); if (loops) piece = { ...piece, loops } }
+        if (piece) pieces.push(piece)
         diagnostics.push(e.diagnostic)
-        return e.piece
+        return piece
       }
       // smooth and bound joins between visible lines (Slack 1791804157, dot 1791804198; bound since bowen 1791817201):
       // unequal widths ease through one S-curve centred on the joint (the average there), on each line
@@ -691,9 +702,11 @@ export function createInkCache(opts: InkOptions = {}) {
         if (!e || e.key !== key) { e = { key, ...polygonPiece(source, t.polygon, t.width, t.i2b ? 'known, not handled yet (I2b): the wider line\'s end may show past the thinner one near the tip' : undefined, opts) }; memo.set(at, e) }
         diagnostics.push(e.diagnostic)
         if (!e.piece) continue
-        pieces.push(e.piece)
-        if (p) join(e.piece, p)
-        if (q) join(e.piece, q)
+        let tip = e.piece
+        if (cut) { const loops = cut(source, tip.loops); if (loops) tip = { ...tip, loops } }
+        pieces.push(tip)
+        if (p) join(tip, p)
+        if (q) join(tip, q)
       }
       const members = new Map<InkPiece, InkPiece[]>()
       for (const p of pieces) { const r = find(p); (members.get(r) ?? members.set(r, []).get(r)!).push(p) }

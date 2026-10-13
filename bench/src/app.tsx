@@ -15,6 +15,7 @@ import { labelsFor, middleOf, type Kind as LabelKind } from '../../name-labels'
 import { createMover, isArrow, type Target } from '../../move'
 import { Slider } from '../../slider'
 import { createInkCache } from '../../ink'
+import { apply as maskApply, area as maskArea, type Area, type Relation as MaskRelation } from '../../visibility'
 
 type Id = string
 type Unit = Snapshot['selection'][number]
@@ -192,6 +193,10 @@ export function App() {
   // ink outlines (docs/ink-p1-checklist.md): on by default since bowen 1791815311 (joins only show with it); off = the
   // old SVG strokes, kept for comparison; not saved, never in undo
   const [inkOn, setInkOn] = useState(true)
+  // 蒙版（实验）, masks package 1 (docs/mask-p1-checklist.md §3): the relations come from a temporary bench store until
+  // package 2 stores them in the drawing; this switch turns their drawing on
+  const [masksOn, setMasksOn] = useState(false)
+  const maskStore = useRef<{ sources: string[]; target: { kind: 'line' | 'fill'; id: string }; mode: 'inverse' | 'normal' }[]>([])
   const [canvasPicks, setCanvasPicks] = useState(0)
   const inkCache = useRef(createInkCache())
   const [activeRef, setActiveRef] = useState<null | RefBind>(null)
@@ -264,7 +269,33 @@ export function App() {
   // with the switch on, each visible line's ink (P1: single lines, today's round-capped look); a line whose ink a check
   // flags is still drawn and marked red (visible, reproducible — never hidden); only a line with nothing to draw is drawn
   // as today's stroke (bowen 1791801560 / 1791801629, dot 1791801801)
-  const ink = inkOn ? inkCache.current.build(g, { ...s, zones }) : null, inkOf = new Map((ink?.pieces ?? []).map(p => [p.source.id, p] as const))
+  // masks: each relation's sources as their fills' own areas in this view, read before any mask (Q33); a source counts
+  // while its fill is filled and shown (bowen 1791901604) — `null` otherwise
+  const masksOf = (() => {
+    const out = new Map<string, (MaskRelation & { index: number })[]>()
+    // only with the ink: never "masks on" while uncut strokes are drawn (dot 1791902445)
+    if (!masksOn || !inkOn) return out
+    const areaOf = new Map<string, Area | null>()
+    const source = (id: string) => {
+      if (!areaOf.has(id)) {
+        const lp = s.loops.find(l => l.id === id), f = g.fills.find(x => x.id === id)
+        areaOf.set(id, lp?.filled && lp.visible && f ? maskArea(f.parts.map(p => p.curve as unknown as [Vec, Vec, Vec, Vec])) : null)
+      }
+      return areaOf.get(id)!
+    }
+    maskStore.current.forEach((m, index) => {
+      const key = `${m.target.kind}:${m.target.id}`
+      out.set(key, [...(out.get(key) ?? []), { index, mode: m.mode, sources: m.sources.map(source) }])
+    })
+    return out
+  })()
+  // a line's piece: its own relations; a join's piece (an arc, a tip): the relations both its lines have (docs/mask-p1-checklist.md §2)
+  const maskCut = (src: { kind: string; id: string; lines?: readonly [string, string] }, loops: readonly (readonly Vec[])[]) => {
+    const own = (id: string) => masksOf.get(`line:${id}`) ?? []
+    const rs = src.lines ? own(src.lines[0]).filter(r => own(src.lines![1]).some(q => q.index === r.index)) : own(src.id)
+    return rs.length ? maskApply(loops, rs) : undefined
+  }
+  const ink = inkOn ? inkCache.current.build(g, { ...s, zones }, masksOf.size ? maskCut : undefined) : null, inkOf = new Map((ink?.pieces ?? []).map(p => [p.source.id, p] as const))
   const inkDefects = new Map((ink?.diagnostics ?? []).filter(d => d.status === 'defect').map(d => [d.source.id, d.reason ?? ''] as const))
   // one visibility rule for the playback drag's picking, its point marks and its ghost, computed once
   // per frame (dot 1791697776; docs/stage3b-pkg5-problems.md): the visible lines and the points they end at
@@ -318,7 +349,7 @@ export function App() {
   const opts = ix.options()
 
   useEffect(() => {
-    ;(window as unknown as { bench: unknown }).bench = { core, ix, refresh: bump, pose: () => pose, view: () => env.current.view, chooseView: (k: string) => chooseView(k), scope: () => ({ layer: env.current.layer, layers: [...env.current.layers] }), svg: () => svg.current?.outerHTML, log, edit: (fn: (e: Editor) => void) => logged(core).edit(fn), demo: () => { demo(); ix.historyChanged(); bump() }, v2Eye: () => { v2Eye(); ix.historyChanged(); bump() } }
+    ;(window as unknown as { bench: unknown }).bench = { core, ix, refresh: bump, masks: maskStore.current, setMasks: (ms: typeof maskStore.current) => { maskStore.current = ms; bump() }, pose: () => pose, view: () => env.current.view, chooseView: (k: string) => chooseView(k), scope: () => ({ layer: env.current.layer, layers: [...env.current.layers] }), svg: () => svg.current?.outerHTML, log, edit: (fn: (e: Editor) => void) => logged(core).edit(fn), demo: () => { demo(); ix.historyChanged(); bump() }, v2Eye: () => { v2Eye(); ix.historyChanged(); bump() } }
   })
 
   /** A one-shot panel command: straight to core, then interaction checks its unfinished operations (doc 22 §3.5). */
@@ -972,6 +1003,7 @@ export function App() {
             })
           }} /></label>
           <label title="实验：用墨迹轮廓画线（单线，与今天的圆头描边同形）"><input type="checkbox" data-testid="ink-outline" checked={inkOn} onChange={e => setInkOn(e.target.checked)} /> 墨迹轮廓（实验）{ink && <span data-testid="ink-diagnostics"> · 已验证 {ink.diagnostics.filter(d => d.status === 'verified').length} · 未完全证明 {ink.diagnostics.filter(d => d.status === 'unproven').length} · 瑕疵 {ink.diagnostics.filter(d => d.status === 'defect').length} · 回退 {ink.diagnostics.filter(d => d.status === 'fallback').length}</span>}</label>
+          <label title="实验：蒙版（第一包：关系暂存在 window.bench.masks，不保存；需要墨迹轮廓开着）" style={{ color: inkOn ? undefined : '#999' }}><input type="checkbox" data-testid="masks" disabled={!inkOn} checked={masksOn && inkOn} onChange={e => setMasksOn(e.target.checked)} /> 蒙版（实验）{!inkOn && ' · 需要墨迹轮廓'}</label>
           <label><input type="checkbox" data-testid="move-picture" checked={moveRef} onChange={e => { if (!e.target.checked) { gesture.current?.cancel('Move picture turned off'); setActiveRef(null) } cancelPreview(); setMoveRef(e.target.checked) }} /> Move picture (drag it, or arrow keys; Shift ×10)</label>
           {core.in(shown).references().map(r => {
             const live = refPreview && refPreview.id === r.id && refNow(refPreview) ? { ...r, ...refPreview.props } : r
@@ -1170,7 +1202,10 @@ export function App() {
               {g.lines.filter(G => !rank.has(G.id)).map(lineEl)}
               {arcLines(-1)}
               {s.groups.map((gr, i) => <g key={'paint' + gr.id} data-paint-group={gr.id}>
-                {g.fills.filter(f => f.visible && groupOfLoop(f.id) === i).map(f => <path key={f.id} data-fill={f.id} d={f.parts.map((p, i) => (i ? path(p.curve).replace(/^M[^C]*/, '') : path(p.curve))).join(' ') + ' Z'}
+                {g.fills.filter(f => f.visible && groupOfLoop(f.id) === i).map(f => <path key={f.id} data-fill={f.id}
+                  // a masked fill: its area as the masks leave it (docs/mask-p1-checklist.md §2)
+                  data-masked={masksOf.has(`fill:${f.id}`) ? '' : undefined} fillRule="nonzero"
+                  d={masksOf.has(`fill:${f.id}`) ? loopsD(maskApply(maskArea(f.parts.map(p => p.curve as unknown as [Vec, Vec, Vec, Vec])), masksOf.get(`fill:${f.id}`)!)) : f.parts.map((p, i) => (i ? path(p.curve).replace(/^M[^C]*/, '') : path(p.curve))).join(' ') + ' Z'}
                   fill={f.color} opacity={cutLines.size && s.loops.find(l => l.id === f.id)?.route.every(u => cutLines.has(u.line)) ? 0.35 : 1}
                   stroke={!pose && isSel({ kind: 'fill', id: f.id }) ? '#06f' : 'none'} strokeWidth={2 * px} />)}
                 {/* the selection reads at a glance (bowen 1791558186): a wide blue halo under each selected line */}
