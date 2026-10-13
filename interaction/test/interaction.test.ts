@@ -45,16 +45,18 @@ describe('state owners (graph row 1)', () => {
     expect(ix.preview().drag?.units).toEqual([{ kind: 'line', id: 'h' }, { kind: 'line', id: 'v' }])
   })
 
-  it('2. interaction imports only the core package root and the move package root (and its own files), and core never imports interaction', () => {
+  it('2. interaction imports only the core package root, the move package root and the deform package root (and its own files), and core never imports interaction', () => {
     const dir = join(__dirname, '..')
     const own = readdirSync(dir, { recursive: true }).map(String).filter(f => f.endsWith('.ts') && !f.startsWith('test'))
-    expect(own.sort()).toEqual(['base.ts', 'feedback.ts', 'flows/clipboard.ts', 'flows/mirror.ts', 'flows/pen.ts', 'flows/select-transform.ts', 'flows/selection-box.ts', 'flows/steps.ts', 'index.ts'])
+    expect(own.sort()).toEqual(['base.ts', 'feedback.ts', 'flows/clipboard.ts', 'flows/deform.ts', 'flows/mirror.ts', 'flows/pen.ts', 'flows/select-transform.ts', 'flows/selection-box.ts', 'flows/steps.ts', 'index.ts'])
     for (const f of own) {
       const specs = [...readFileSync(join(dir, f), 'utf8').matchAll(/from '([^']+)'/g)].map(m => m[1]!)
       const root = f.includes('/') ? '../../src' : '../src'
       // and the move package's root (docs/move-plan.md; dot 1791733489): it imports nothing and knows nothing of core
       const move = f.includes('/') ? '../../move' : '../move'
-      expect(specs.filter(x => x !== root && x !== move && !x.startsWith('./') && !(f.includes('/') && x.startsWith('../') && !x.startsWith('../../')))).toEqual([])
+      // and the deform package's root (docs/deform-p2-checklist.md): plain maths, no imports, nothing of core
+      const deform = f.includes('/') ? '../../deform' : '../deform'
+      expect(specs.filter(x => x !== root && x !== move && x !== deform && !x.startsWith('./') && !(f.includes('/') && x.startsWith('../') && !x.startsWith('../../')))).toEqual([])
     }
     const src = join(__dirname, '..', '..', 'src')
     const all = readdirSync(src, { recursive: true }).filter(f => String(f).endsWith('.ts')).map(f => readFileSync(join(src, String(f)), 'utf8'))

@@ -311,3 +311,33 @@ export function sourceParameterSlope(t: number, map?: CurveParameterMap): number
   if (!map) return 1
   return fn(1 / mappedParameterSlope(sourceParameter(t, map), map))
 }
+
+// ---- one edit's plan (package 2; docs/deform-p2-checklist.md) ----------------------------------
+
+/** A line as drawn in a view: its id, its end point ids and its cubic. */
+export interface PlanLine { readonly id: string; readonly a: string; readonly b: string; readonly curve: Cubic }
+export interface Plan {
+  /** One target per end point: a point shared by several lines is mapped once. */
+  readonly points: { id: string; target: Vec }[]
+  /** Each line's fitted handles, as offsets from their end points. */
+  readonly handles: { line: string; end: 'a' | 'b'; offset: Vec }[]
+  /** The largest of the lines' fit diagnostics (input units; sampled, not a bound). */
+  readonly maxError: number
+}
+/** Every line refitted under the field (package 1's `fitDeformedCubic`); each end point mapped once, and every fitted end on it. */
+export function deformPlan(lines: readonly PlanLine[], field: Field): Plan {
+  const points = new Map<string, Vec>(), handles: Plan['handles'] = []
+  let maxError = 0
+  const at = (id: string, p: Vec) => {
+    const was = points.get(id)
+    if (was && (was.x !== p.x || was.y !== p.y)) throw Error(`变形计划不一致：点 ${id} 被映射到两个位置。`)
+    points.set(id, p)
+  }
+  for (const l of lines) {
+    const fit = fitDeformedCubic(l.curve, field), s = fit.shape
+    at(l.a, s[0]); at(l.b, s[3])
+    handles.push({ line: l.id, end: 'a', offset: sub(s[1], s[0]) }, { line: l.id, end: 'b', offset: sub(s[2], s[3]) })
+    maxError = Math.max(maxError, fit.maxError)
+  }
+  return { points: [...points].map(([id, target]) => ({ id, target })), handles, maxError }
+}

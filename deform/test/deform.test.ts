@@ -209,3 +209,23 @@ describe('corner cases', () => {
     for (const t of [0, 0.25, 0.5, 0.75, 1]) { const p = at(a, t), q = at(b, 1 - t); expect(Math.hypot(p.x - q.x, p.y - q.y)).toBeLessThan(0.05) }
   })
 })
+
+describe('deformPlan (package 2)', () => {
+  const rect = { min: P(0, 0), max: P(100, 50) }, f = D.quadProjection(rect, [P(0, 0), P(110, 10), P(95, 60), P(5, 50)])
+  const ab: D.PlanLine = { id: 'ab', a: 'a', b: 'b', curve: [P(10, 10), P(20, 30), P(40, 30), P(50, 20)] }
+  const bc: D.PlanLine = { id: 'bc', a: 'b', b: 'c', curve: [P(50, 20), P(60, 10), P(80, 10), P(90, 40)] }
+  it('a shared end point is mapped once; each line\'s handles are its fit\'s, as offsets; maxError the largest', () => {
+    const plan = D.deformPlan([ab, bc], f)
+    expect(plan.points.map(p => p.id)).toEqual(['a', 'b', 'c'])
+    expect(plan.points[1]!.target).toEqual(f.map(P(50, 20)))
+    const fa = D.fitDeformedCubic(ab.curve, f), fb = D.fitDeformedCubic(bc.curve, f)
+    expect(plan.handles).toEqual([
+      { line: 'ab', end: 'a', offset: P(fa.shape[1].x - fa.shape[0].x, fa.shape[1].y - fa.shape[0].y) }, { line: 'ab', end: 'b', offset: P(fa.shape[2].x - fa.shape[3].x, fa.shape[2].y - fa.shape[3].y) },
+      { line: 'bc', end: 'a', offset: P(fb.shape[1].x - fb.shape[0].x, fb.shape[1].y - fb.shape[0].y) }, { line: 'bc', end: 'b', offset: P(fb.shape[2].x - fb.shape[3].x, fb.shape[2].y - fb.shape[3].y) },
+    ])
+    expect(plan.maxError).toBe(Math.max(fa.maxError, fb.maxError))
+  })
+  it('one point id given two different positions: the plan is refused', () => {
+    expect(() => D.deformPlan([ab, { ...bc, curve: [P(51, 20), P(60, 10), P(80, 10), P(90, 40)] }], f)).toThrow(/映射到两个位置/)
+  })
+})
