@@ -22,7 +22,7 @@ export const FORMAT = 'headset-v3-drawing'
  * - 8: a line's two end widths (`stroke.widthB`, docs/two-end-widths-checklist.md, bowen 1791818995); converted once
  *   to 9 when opened (with 7, 6 and 5 on their way) — the third conversion, asked of bowen (docs/point-widths-checklist.md).
  * - 9: widths belong to points (`widths` per shape layer; a line keeps only its profile; bowen 1791820396); converted
- *   to 10 when opened (no masks).
+ *   to 10 when opened (no masks) — the fourth conversion, approved by bowen 1791907933.
  * - 10: plus masks (`masks`, 显隐; docs/mask-p2-checklist.md).
  */
 export const VERSION = 10
