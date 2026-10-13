@@ -113,6 +113,9 @@ const CASES: Case[] = [
   { op: 'moveGroup', args: d => [groupOf(d, 'xy'), 'M'] },
   { op: 'fill', args: d => [loops(d)[0], '#f00'] },
   { op: 'clearFill', args: d => [loops(d)[0]] },
+  { op: 'clearFill', args: d => [loops(d)[0]], note: 'its mask goes', setup: d => d.edit(e => e.mask('m1', [loops(d)[0]!], { kind: 'line', id: 'xy' }, 'inverse')) },
+  { op: 'mask', args: d => ['m1', [loops(d)[0]], { kind: 'line', id: 'xy' }, 'inverse'] },
+  { op: 'removeMask', args: () => ['m1'], setup: d => d.edit(e => e.mask('m1', [loops(d)[0]!], { kind: 'line', id: 'xy' }, 'inverse')) },
   { op: 'fillVisible', args: d => [loops(d)[0], false] },
   { op: 'reorderFill', args: d => { const s = d.snapshot(), sq = s.fillOrder.filter(id => s.loops.find(l => l.id === id)!.route.some(u => u.line === 'ab')); return [sq[sq.length - 1], 0] },
     // fills reorder within one connected curve: a diagonal gives the square several filled loops
@@ -160,7 +163,7 @@ function written(x: BeforeSettle) {
   const shapes = ds.shapes.layers.filter(l => json(l) !== json(ps.shapes.layers.find(q => q.key === l.key))).map(l => l.key)
   const shared: Shared[] = []
   if ((['layers', 'points', 'lines', 'usedPoints', 'usedLines'] as const).some(k => json(ds[k]) !== json(ps[k]))) shared.push('structure')
-  for (const k of ['groups', 'joins', 'links', 'fills', 'selection', 'apply', 'names', 'meta', 'animation', 'reference'] as const) {
+  for (const k of ['groups', 'joins', 'links', 'fills', 'masks', 'selection', 'apply', 'names', 'meta', 'animation', 'reference'] as const) {
     if (json((x.draft as unknown as Record<string, unknown>)[k]) !== json((x.published as unknown as Record<string, unknown>)[k])) shared.push(k)
   }
   const intents = [...new Set([...x.changes.targets, ...x.changes.held, ...x.changes.handleTips].map(i => i.layer))]
@@ -275,7 +278,7 @@ describe('the merged commit is today\'s, operation by operation (no behaviour ch
     return m
   }
   it('select, selectGroup, broadcastStroke and fit skip settling; broadcastShape and draftCorners settle the non-front views; everything else, and an empty edit, settles fully', () => {
-    const today: Record<string, string> = { placeReference: 'keeps', setReference: 'keeps', removeReference: 'keeps', addAsset: 'keeps', renameAsset: 'keeps', removeAsset: 'keeps', select: 'keeps', selectGroup: 'keeps', broadcastStroke: 'keeps', fit: 'keeps', correct: 'views', broadcastShape: 'views', draftCorners: 'views' }
+    const today: Record<string, string> = { placeReference: 'keeps', setReference: 'keeps', removeReference: 'keeps', addAsset: 'keeps', renameAsset: 'keeps', removeAsset: 'keeps', mask: 'keeps', removeMask: 'keeps', select: 'keeps', selectGroup: 'keeps', broadcastStroke: 'keeps', fit: 'keeps', correct: 'views', broadcastShape: 'views', draftCorners: 'views' }
     for (const c of CASES) for (const layer of c.views ?? [FRONT]) {
       const d = fixture()
       c.setup?.(d)

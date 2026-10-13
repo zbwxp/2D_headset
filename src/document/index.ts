@@ -16,6 +16,7 @@ import * as views from '../views'
 import * as meta from '../meta'
 import * as animation from '../animation'
 import * as reference from '../reference'
+import * as masks from '../masks'
 import * as evaluate from '../evaluate'
 import { EFFECTS, merge, resolve } from './effects'
 import { bounds as curveBounds, type Vec } from '../geometry'
@@ -29,6 +30,8 @@ export interface State {
   joins: joins.JoinsState
   links: links.LinksState
   fills: fills.FillsState
+  /** Masks (显隐; graph, preliminary): source fills hiding part of a line or fill; computed in `visibility/`. */
+  masks: masks.MasksState
   /** A pre-edit, part of the state so it is undoable (bowen 1791465011). */
   selection: editing.SelectionState
   /** The symmetry axis and the mirror-link pairs. */
@@ -51,7 +54,7 @@ function viewedNetwork(): net.NetworkState {
   return n
 }
 const createState = (axis = 0): State => ({
-  network: viewedNetwork(), groups: groups.create(), joins: joins.create(), links: links.create(), fills: fills.create(), selection: editing.create(),
+  network: viewedNetwork(), groups: groups.create(), joins: joins.create(), links: links.create(), fills: fills.create(), masks: masks.create(), selection: editing.create(),
   apply: apply.create(axis), names: names.create(), meta: meta.create(), animation: animation.createResponses(), reference: reference.create(),
 })
 
@@ -68,6 +71,8 @@ export interface Snapshot {
   /** Every closed curve, each tagged with the continuous curve (group) it belongs to. */
   loops: (fills.LoopView & { group: Id })[]
   fillOrder: Id[]
+  /** The masks (显隐), shared by every view. */
+  masks: masks.Mask[]
   selection: editing.Unit[]
   /** The document's vertical symmetry axis, x = axis. */
   axis: number
@@ -371,6 +376,18 @@ export class Editor {
     const plan = names.planMove(s.names, s.network, s.groups, group, g.lines, layer)
     this.topology(ch => net.moveLinesToLayer(s.network, ch, g.lines, layer))
     names.applyPlan(s.names, plan)
+  }
+
+  // masks (显隐; graph "显隐 — masks", preliminary; docs/mask-p2-checklist.md)
+  /** A mask: `sources` (filled closed curves) hide part of `target` (a line or a filled closed curve) — inverse: inside them; normal: all but inside them. Shared by every view. */
+  mask(id: Id, sources: Id[], target: masks.Target, mode: masks.Mode) {
+    const filled = fills.filledIds(this.s.fills)
+    masks.add(this.s.masks, this.s.network, filled, { id, sources, target, mode })
+    maskTargetUnlocked(this.s, target)
+  }
+  removeMask(id: Id) {
+    maskTargetUnlocked(this.s, masks.get(this.s.masks, id).target)
+    masks.remove(this.s.masks, id)
   }
 
   // fills (closed loops)
@@ -812,6 +829,7 @@ export class LayerReader {
       linkJoins: links.joins(s.links),
       loops: fills.discover(s.fills, n).map(l => ({ ...l, group: groupOfLine.get(l.route[0]!.line)! })),
       fillOrder: fills.order(s.fills),
+      masks: masks.list(s.masks),
       selection: editing.units(s.selection),
       axis: apply.axis(s.apply),
       mirrorPairs: apply.pairs(s.apply),
@@ -877,7 +895,7 @@ export class LayerReader {
 
 // ---- for the archive module only (not exported from the package root) -----------
 
-const PARTS = ['network', 'groups', 'joins', 'links', 'fills', 'apply', 'names', 'meta', 'animation', 'reference'] as const
+const PARTS = ['network', 'groups', 'joins', 'links', 'fills', 'masks', 'apply', 'names', 'meta', 'animation', 'reference'] as const
 
 /** The document as plain data, without the selection (docs/archive-plan.md). */
 export function exportState(core: Core): Record<string, unknown> {
@@ -902,10 +920,10 @@ export function importState(data: unknown): Core {
     const network = net.restore(d.network, views.FRONT)
     views.checkViews(network)
     animation.checkRecords(network)
-    const g = groups.restore(d.groups, network), l = links.restore(d.links, network)
+    const g = groups.restore(d.groups, network), l = links.restore(d.links, network), f = fills.restore(d.fills, network)
     state = {
       network, groups: g, joins: joins.restore(d.joins, network), links: l,
-      fills: fills.restore(d.fills, network), apply: apply.restore(d.apply, network), names: names.restore(d.names, network, g),
+      fills: f, masks: masks.restore(d.masks, network, fills.filledIds(f)), apply: apply.restore(d.apply, network), names: names.restore(d.names, network, g),
       meta: meta.restore(d.meta, network),
       selection: editing.create(),
       animation: animation.restoreResponses(d.animation, network, l),
@@ -1015,6 +1033,7 @@ function applyTopology(state: State, changes: net.Changes, op: (ch: net.Changes)
   joins.update(state.joins, state.network, ch)
   links.update(state.links, state.network, ch)
   fills.update(state.fills, ch)
+  masks.update(state.masks, ch)
   groups.reconcile(state.groups, state.network, ch)
   apply.update(state.apply, ch)
   names.follow(state.names, ch)
@@ -1053,6 +1072,12 @@ const viewKeys = (s: State): string[] => net.shapeLayers(s.network).filter(l => 
  * then fills → groups → names → selection; then the mirror check off the front, names,
  * locks (every view).
  */
+/** A mask changes what its target shows: a locked target's masks are not changed (dot 1791903786: as every lock). */
+function maskTargetUnlocked(s: State, t: masks.Target) {
+  const locked = t.kind === 'line' ? net.line(s.network, t.id).state.locked : fills.isLocked(s.fills, t.id)
+  if (locked) throw new net.Refusal('locked', `${t.kind === 'line' ? 'Line' : 'Fill'} ${t.id} is locked`, [{ kind: t.kind, id: t.id }])
+}
+
 function commit(s: State, ch: net.Changes, published: State, appliedFrom: ReadonlyMap<Id, locks.View>, layer: string, mode: CommitMode = 'full') {
   if (mode === 'full') settle(s, ch, layer)
   else {
@@ -1108,6 +1133,7 @@ function settleLayerPositions(s: State, ch: net.Changes, layer: string) {
 function settleShared(s: State) {
   meta.follow(s.meta, s.network)
   fills.validate(s.fills, s.network)
+  masks.validate(s.masks, s.network, fills.filledIds(s.fills))
   groups.reconcile(s.groups, s.network, net.emptyChanges())
   names.update(s.names, s.network, s.groups)
   editing.clean(s.selection, s.network, s.fills)

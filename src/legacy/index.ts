@@ -1,15 +1,22 @@
 // legacy — opening drawings saved in older formats (bowen 1791820592, dot 1791820713): this one module turns a version
-// 5–8 document into version 9; the archive's normal reader then takes it. Nothing else in the program knows an old
+// 5–9 document into version 10; the archive's normal reader then takes it. Nothing else in the program knows an old
 // format. For a release that drops old files: delete this folder and its one call in src/archive/index.ts.
-// The conversions, each approved by bowen: 5 → 6 (1791726456), 6 → 7 (1791808493), 7 / 8 → 9 (1791820592).
+// The conversions, each approved by bowen: 5 → 6 (1791726456), 6 → 7 (1791808493), 7 / 8 → 9 (1791820592); 9 → 10 only adds an empty mask list (docs/mask-p2-checklist.md §3).
 import * as net from '../network'
 import * as reference from '../reference'
 
-/** An old document as version 9, or a refusal for a version that cannot be read. */
+/** A version 9 drawing as version 10: no masks (docs/mask-p2-checklist.md §3); everything else as stored. */
+export function fromV9(doc: unknown): unknown {
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) throw new Error('open-failed: the document must be an object')
+  return { ...(doc as object), masks: { masks: [] } }
+}
+
+/** An old document as version 10, or a refusal for a version that cannot be read. */
 export function upgrade(version: unknown, doc: unknown): unknown {
-  if (version === 5) return fromV8(fromV6(fromV5(doc)))
-  if (version === 6) return fromV8(fromV6(doc))
-  if (version === 7 || version === 8) return fromV8(doc)
+  if (version === 5) return fromV9(fromV8(fromV6(fromV5(doc))))
+  if (version === 6) return fromV9(fromV8(fromV6(doc)))
+  if (version === 7 || version === 8) return fromV9(fromV8(doc))
+  if (version === 9) return fromV9(doc)
   throw new Error(`open-failed: unsupported version ${String(version)}`)
 }
 

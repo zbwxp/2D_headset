@@ -17,8 +17,12 @@ interface Store { loops: FilledLoop[]; order: Id[] }
 const S = (f: FillsState) => f as unknown as Store
 export interface LoopView { id: Id; layer: Id; route: net.LoopUse[]; filled: boolean; color?: string; visible?: boolean; locked?: boolean }
 
+/** The ids of the filled loops (a fill's id stays through splits; the masks module refers to them). */
+export const filledIds = (f: FillsState): Set<Id> => new Set(S(f).loops.map(l => l.id))
 export const create = (): FillsState => ({ loops: [], order: [] }) as Store as unknown as FillsState
 export const order = (f: FillsState): Id[] => [...S(f).order]
+/** Whether a filled loop is locked. */
+export const isLocked = (f: FillsState, id: Id): boolean => find(f, id).locked
 
 function find(f: FillsState, id: Id): FilledLoop {
   const l = S(f).loops.find(x => x.id === id)
@@ -107,8 +111,9 @@ export function rangeData(f: FillsState, lines: ReadonlySet<Id>): FillData[] {
   return S(f).order.map(id => find(f, id)).filter(l => l.lines.every(x => lines.has(x))).map(l => ({ ...l, lines: [...l.lines] }))
 }
 
-/** Filled loops from plain data onto copied lines, on top of the fill order. */
-export function insert(f: FillsState, n: net.NetworkState, data: readonly FillData[], map: net.CopyMap, idOf: (old: Id) => Id) {
+/** Filled loops from plain data onto copied lines, on top of the fill order; returns the inserted fills' old → new ids. */
+export function insert(f: FillsState, n: net.NetworkState, data: readonly FillData[], map: net.CopyMap, idOf: (old: Id) => Id): Map<Id, Id> {
+  const out = new Map<Id, Id>()
   for (const l of data) {
     if (!l.lines.every(x => map.lines.has(x))) continue
     const id = idOf(l.id)
@@ -119,7 +124,9 @@ export function insert(f: FillsState, n: net.NetworkState, data: readonly FillDa
     if (!net.closedWalk(n, mapped)) throw new Error(`Fill ${l.id}: its lines are not a closed curve`) // the same test validate uses (dot 1791514536)
     S(f).loops.push({ id, lines: l.lines.map(x => map.lines.get(x)!), color: l.color, visible: !!l.visible, locked: !!l.locked })
     S(f).order.push(id)
+    out.set(l.id, id)
   }
+  return out
 }
 
 /**

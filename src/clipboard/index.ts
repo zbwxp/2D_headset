@@ -8,6 +8,7 @@ import * as net from '../network'
 import * as groups from '../groups'
 import * as joins from '../joins'
 import * as fills from '../fills'
+import * as masks from '../masks'
 import * as names from '../names'
 import * as views from '../views'
 import * as shapes from '../shapes'
@@ -21,11 +22,13 @@ export interface Clip {
   joins: joins.RangeData
   fills: fills.FillData[]
   names: { lines: [Id, string][]; groups: { name: string; lines: Id[] }[] }
+  /** The masks whose target and every source are in the clip; absent in a clip made before masks (inserts none). */
+  masks?: masks.Mask[]
   /** The responses of the clip's points and lines; absent in a clip made before stage 3b (inserts none). */
   animation?: animation.ResponsesData
 }
 
-export interface Parts { network: net.NetworkState; groups: groups.GroupsState; joins: joins.JoinsState; fills: fills.FillsState; names: names.NamesState; animation: animation.ResponsesState }
+export interface Parts { network: net.NetworkState; groups: groups.GroupsState; joins: joins.JoinsState; fills: fills.FillsState; masks: masks.MasksState; names: names.NamesState; animation: animation.ResponsesState }
 
 /** The range as a clip: these lines (read from `d`) and everything inside them. */
 export function extract(d: Parts, lines: readonly Id[]): Clip {
@@ -37,6 +40,7 @@ export function extract(d: Parts, lines: readonly Id[]): Clip {
     network,
     joins: joins.rangeData(d.joins, d.network, lineSet, pointSet),
     fills: fills.rangeData(d.fills, lineSet),
+    masks: masks.rangeData(d.masks, lineSet, new Set(fills.rangeData(d.fills, lineSet).map(f => f.id))),
     names: names.rangeData(d.names, d.groups, d.network, ids),
     animation: animation.extract(d.animation, pointSet, lineSet),
   })
@@ -140,7 +144,9 @@ export function check(v: unknown): Clip {
     try { responses = animation.checkResponses(o.animation, pointIds, lineIds, 'clip responses') }
     catch (err) { throw new net.Refusal('clip-invalid', `clip-invalid: ${(err as Error).message}`) }
   }
-  return { network: { points, lines, source, layers }, joins: { rows, layers: joinLayers }, fills: fillsData, names: { lines: lineNames, groups: groupNames }, ...(responses ? { animation: responses } : {}) }
+  // the masks, when present: every reference inside the clip, else the paste is refused
+  const maskData = o.masks === undefined ? undefined : masks.checkData(o.masks, lineIds, new Set(fillsData.map(f => f.id)), 'clip masks')
+  return { network: { points, lines, source, layers }, joins: { rows, layers: joinLayers }, fills: fillsData, names: { lines: lineNames, groups: groupNames }, ...(maskData ? { masks: maskData } : {}), ...(responses ? { animation: responses } : {}) }
 }
 
 /**
@@ -179,10 +185,12 @@ export function insert(d: Parts, ch: net.Changes, clip: Clip, layer: Id, offset:
   if (left.length) throw new net.Refusal('paste-layer-unmatched', `paste-layer-unmatched: the copy's shape layer(s) ${left.join(', ')} have no place in this drawing`)
   return { map: net.insertLines(d.network, ch, clip.network, layer, idOf, offset, layers), layers }
 }
-/** Joins, fills and names after `insert`, with the same layer correspondence (dot 1791654260). */
+/** Joins, fills, masks and names after `insert`, with the same layer correspondence (dot 1791654260). */
 export function attach(d: Parts, clip: Clip, map: net.CopyMap, idOf: (old: Id) => Id, layers: ReadonlyMap<string, string>) {
   joins.insert(d.joins, d.network, clip.joins, map, layers)
-  fills.insert(d.fills, d.network, clip.fills, map, idOf)
+  const fillMap = fills.insert(d.fills, d.network, clip.fills, map, idOf)
+  // after the fills, with their old → new ids (dot 1791903786)
+  if (clip.masks) masks.insert(d.masks, clip.masks, map.lines, fillMap, idOf)
   names.copyFrom(d.names, d.network, d.groups, map.lines, clip.names)
   if (clip.animation) animation.insert(d.animation, clip.animation, map)
 }

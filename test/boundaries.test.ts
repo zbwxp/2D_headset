@@ -13,6 +13,7 @@ const ALLOWED: Record<string, string[]> = {
   joins: ['geometry', 'network'],
   links: ['geometry', 'network'],
   fills: ['geometry', 'network'],
+  masks: ['network'],
   derived: ['geometry', 'network', 'joins', 'fills'],
   locks: ['network', 'joins', 'links'],
   editing: ['geometry', 'network', 'groups', 'fills'],
@@ -21,8 +22,8 @@ const ALLOWED: Record<string, string[]> = {
   meta: ['network', 'names'],
   animation: ['geometry', 'network', 'views', 'links', 'evaluate'],
   reference: ['network', 'views'],
-  clipboard: ['shapes', 'network', 'groups', 'joins', 'fills', 'names', 'views', 'animation'],
-  document: ['geometry', 'network', 'groups', 'joins', 'links', 'fills', 'derived', 'locks', 'editing', 'apply', 'names', 'clipboard', 'views', 'meta', 'animation', 'evaluate', 'reference'],
+  clipboard: ['shapes', 'network', 'groups', 'joins', 'fills', 'masks', 'names', 'views', 'animation'],
+  document: ['geometry', 'network', 'groups', 'joins', 'links', 'fills', 'derived', 'locks', 'editing', 'apply', 'names', 'clipboard', 'views', 'meta', 'animation', 'evaluate', 'reference', 'masks'],
   evaluate: ['geometry'],
   archive: ['document', 'legacy'],
   // old formats only, turned into the current one before the archive reads them (bowen 1791820592, dot 1791820713)
