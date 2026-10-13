@@ -7,7 +7,7 @@ import { fromError, type Feedback } from './feedback'
 
 export type Id = string
 export type Unit = Snapshot['selection'][number]
-export type Tool = 'pen' | 'V' | 'A' | 'split' | 'bind' | 'merge' | 'link' | 'unbind' | 'join' | 'fill'
+export type Tool = 'pen' | 'V' | 'A' | 'split' | 'bind' | 'merge' | 'link' | 'unbind' | 'join' | 'fill' | 'deform'
 export interface Options { joinMode: 'bound' | 'smooth' | 'cusp' | 'arc'; radius: number; color: string }
 /** `meta`: ⌘ or Ctrl, for the shortcuts; `ctrl` alone and `repeat` (a held key) are read by moving with arrow keys only. */
 export interface Mods { shift?: boolean; alt?: boolean; meta?: boolean; ctrl?: boolean; repeat?: boolean }
@@ -34,7 +34,7 @@ export interface Env {
  * every layer.
  */
 export const SCOPE: Record<Tool, 'selected' | 'current' | 'all'> = {
-  V: 'selected', A: 'selected', bind: 'selected', split: 'selected', unbind: 'selected', join: 'selected', fill: 'selected',
+  V: 'selected', A: 'selected', bind: 'selected', split: 'selected', unbind: 'selected', join: 'selected', fill: 'selected', deform: 'selected',
   merge: 'all', link: 'all',
   pen: 'current', // a new line goes into the current layer, and both ends of a line are in one layer
 }
@@ -77,6 +77,18 @@ export interface Preview {
   selectionBox?: { min: Vec; max: Vec; handles: { id: string; at: Vec }[]; hot: string | null }
   /** A handle drag in progress: the lines as they will be (core's preview of the same operation), the box around them, or why core refuses it. */
   transform?: { lines: { id: Id; curve: Vec[] }[]; arcs: { key: string; curve: Vec[] }[]; box: { min: Vec; max: Vec } | null; refused?: string }
+  /**
+   * The 四角 / 曲边 frame (docs/deform-p3-checklist.md): its corners, edge handles, midpoints, bent edges and grid (drawn and hit
+   * by the same data); while dragging, the lines as core's preview of the release shows them, or why core refuses; the fit
+   * error before constraints.
+   */
+  deform?: {
+    frame: { corners: Vec[]; handles: { edge: number; handle: 0 | 1; at: Vec; anchor: Vec }[]; midpoints: { edge: number; at: Vec }[]; edges: Vec[][]; grid: Vec[][] }
+    lines: { id: Id; curve: Vec[] }[] | null
+    maxError: number
+    dragging: boolean
+    refused?: string
+  }
 }
 
 /**

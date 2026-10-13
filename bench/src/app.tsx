@@ -135,7 +135,7 @@ function v2Eye() {
   })
 }
 
-const TOOLS: [Tool, string][] = [['pen', 'Pen P'], ['V', 'V group'], ['A', 'A direct'], ['split', 'Split S'], ['bind', 'Bind B'], ['merge', 'Merge pos M'], ['link', 'Link L'], ['unbind', 'Unbind U'], ['join', 'Join J'], ['fill', 'Fill F']]
+const TOOLS: [Tool, string][] = [['pen', 'Pen P'], ['V', 'V group'], ['A', 'A direct'], ['split', 'Split S'], ['bind', 'Bind B'], ['merge', 'Merge pos M'], ['link', 'Link L'], ['unbind', 'Unbind U'], ['join', 'Join J'], ['fill', 'Fill F'], ['deform', '四角/曲边']]
 
 /** The autosave store (docs/autosave-plan.md): IndexedDB in a browser; a test may give its own; none without either. */
 const autosaveStore = (): Store | undefined => (window as unknown as { benchStore?: Store }).benchStore ?? (typeof indexedDB !== 'undefined' ? indexedDbStore() : undefined)
@@ -909,6 +909,13 @@ export function App() {
           <div style={{ color: '#666' }}>click two lines; alt on the second: remove join</div>
         </div>}
         {ix.tool === 'fill' && <div><input type="color" value={opts.color} onChange={e => ix.setOptions({ color: e.target.value })} /> <span style={{ color: '#666' }}>shift-click: clear</span></div>}
+        {/* 四角 / 曲边 (docs/deform-p3-checklist.md §3): the readout is the fit error before constraints (dot 1791892720) */}
+        {ix.tool === 'deform' && <div data-testid="deform-panel">
+          {pv.deform ? <>
+            <div data-testid="deform-error" style={{ color: '#555' }}>约束前采样拟合误差 {pv.deform.maxError.toFixed(3)}</div>
+            <div style={{ display: 'flex', gap: 3 }}><button data-testid="deform-reset" onClick={() => ix.deformReset()}>重置变形框</button><button data-testid="deform-done" onClick={() => ix.deformDone()}>完成</button></div>
+          </> : <div style={{ color: '#666' }}>先用 V 或 A 选中要变形的线，再选这个工具</div>}
+        </div>}
         <b>View</b>
         {/* the nine views (step 7): columns yaw −90 / 0 / +90, rows pitch +45 / 0 / −45 */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2 }} data-testid="views">
@@ -1208,6 +1215,21 @@ export function App() {
               {!pv.transform && pv.selectionBox.handles.map(h => h.id === 'rotate'
                 ? <circle key={h.id} data-box-handle={h.id} cx={h.at.x} cy={h.at.y} r={4.5 * px} fill={pv.selectionBox!.hot === h.id ? '#2a7fff' : '#fff'} stroke="#2a7fff" strokeWidth={px} />
                 : <rect key={h.id} data-box-handle={h.id} x={h.at.x - 3.5 * px} y={h.at.y - 3.5 * px} width={7 * px} height={7 * px} fill={pv.selectionBox!.hot === h.id ? '#2a7fff' : '#fff'} stroke="#2a7fff" strokeWidth={px} />)}
+            </g>
+          })()}
+          {/* the 四角 / 曲边 frame, drawn from the same data interaction hits (v103 DeformCageOverlay, its sizes in screen pixels) */}
+          {!pose && !restoring && pv.deform && (() => {
+            const f = pv.deform.frame, c = '#a35ac0', poly = (ps: readonly Vec[]) => ps.map((p, i) => `${i ? 'L' : 'M'}${p.x} ${p.y}`).join(' ')
+            return <g data-testid="deform-frame" pointerEvents="none">
+              {pv.deform.lines?.map(l => <path key={'dg' + l.id} data-deform-ghost={l.id} d={path(l.curve)} fill="none" stroke={pv.deform!.refused ? '#c00' : c} strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />)}
+              {f.grid.map((g, i) => <path key={'gr' + i} d={poly(g)} fill="none" stroke={c} strokeDasharray={`${4 * px} ${4 * px}`} opacity={0.4} strokeWidth={px} />)}
+              {f.edges.map((e, i) => <path key={'ed' + i} data-deform-edge={i} d={poly(e)} fill="none" stroke={c} strokeWidth={1.5 * px} />)}
+              {f.handles.map(h => <g key={'h' + h.edge + h.handle}>
+                <line x1={h.anchor.x} y1={h.anchor.y} x2={h.at.x} y2={h.at.y} stroke={c} opacity={0.65} strokeWidth={px} />
+                <circle data-deform-handle={`${h.edge}:${h.handle}`} cx={h.at.x} cy={h.at.y} r={4.5 * px} fill="#fff" stroke={c} strokeWidth={1.5 * px} />
+              </g>)}
+              {f.midpoints.map(m => <path key={'m' + m.edge} data-deform-midpoint={m.edge} d={`M${m.at.x} ${m.at.y - 5 * px} l${5 * px} ${5 * px} ${-5 * px} ${5 * px} ${-5 * px} ${-5 * px} Z`} fill={c} stroke="#fff" strokeWidth={px} />)}
+              {f.corners.map((q, i) => <rect key={'c' + i} data-deform-corner={i} x={q.x - 6 * px} y={q.y - 6 * px} width={12 * px} height={12 * px} fill="#fff" stroke={c} strokeWidth={2 * px} />)}
             </g>
           })()}
           {!pose && pv.handles.map(({ line: id, end }) => {

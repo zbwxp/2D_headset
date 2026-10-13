@@ -15,6 +15,7 @@ import { pen } from './flows/pen'
 import { steps } from './flows/steps'
 import { mirror } from './flows/mirror'
 import { clipboard } from './flows/clipboard'
+import { deformFlow } from './flows/deform'
 
 export type { Env, Mods, Options, Preview, Tool } from './base'
 export { REACH, SCOPE, POINT_TOOLS } from './base'
@@ -72,6 +73,9 @@ export interface Interaction {
    * (dot 1791551067).
    */
   outcome(err?: unknown): void
+  /** The 四角 / 曲边 session: the frame back to the rest rect (restoring the original curves), or 完成 (ends it). */
+  deformReset(): void
+  deformDone(): void
   preview(): Preview
   /**
    * What the last press with V or A picked: 'line', 'point', 'handle', or null when it picked nothing
@@ -91,8 +95,8 @@ export function createInteraction(env: Env): Interaction {
   let tool: Tool = 'pen'
   let opts: Options = { joinMode: 'smooth', radius: 10, color: '#f2c94c' }
   const ctx = createCtx(env, { tool: () => tool, options: () => ({ ...opts }) })
-  const st = selectTransform(ctx), pn = pen(ctx), sp = steps(ctx), mr = mirror(ctx), cb = clipboard(ctx)
-  const flows: Flow[] = [st, pn, sp, mr, cb]
+  const st = selectTransform(ctx), pn = pen(ctx), sp = steps(ctx), mr = mirror(ctx), cb = clipboard(ctx), df = deformFlow(ctx)
+  const flows: Flow[] = [st, pn, sp, mr, cb, df]
   ctx.afterCommit = () => { for (const f of flows) f.historyChanged() }
   const listeners = new Set<() => void>()
   const changed = () => { for (const f of listeners) f() }
@@ -107,16 +111,19 @@ export function createInteraction(env: Env): Interaction {
     }
     ctx.feedback = undefined
   }
-  function setTool(t: Tool) { tool = t; for (const f of flows) f.toolChanged(); ctx.feedback = undefined }
+  // feedback cleared first, so a note a flow gives on starting (deform: nothing selected) is shown
+  function setTool(t: Tool) { tool = t; ctx.feedback = undefined; for (const f of flows) f.toolChanged() }
   function historyChanged() { for (const f of flows) f.historyChanged() }
   // during a key run, undo / redo end the run and write nothing — it was never committed, so nothing earlier is
   // undone with it (docs/move-plan.md; dot 1791733489); during a mouse drag they wait, as before
-  function undo() { if (st.moving === 'keys') { st.cancel(); return } if (!st.dragging) { env.core().undo(); historyChanged() } }
-  function redo() { if (st.moving === 'keys') { st.cancel(); return } if (!st.dragging) { env.core().redo(); historyChanged() } }
+  function undo() { if (st.moving === 'keys') { st.cancel(); return } if (!st.dragging && !df.dragging) { env.core().undo(); historyChanged() } }
+  function redo() { if (st.moving === 'keys') { st.cancel(); return } if (!st.dragging && !df.dragging) { env.core().redo(); historyChanged() } }
 
   function pointerDown(at: Vec, mods: Mods = {}): boolean {
     ctx.feedback = undefined
     if (tool === 'V' || tool === 'A') return st.pointerDown(at, mods)
+    // the 四角 / 曲边 frame takes a press on its controls only; anything else is the app's (a pan)
+    if (tool === 'deform') return df.pointerDown(at)
     if (tool === 'pen') pn.click(at) // the pen uses every press, blank ones too: no selection box
     // a step tool's press on nothing it takes starts a selection box (bowen 1791559014)
     else if (!sp.click(at, mods)) st.startBox(at, mods, false)
@@ -146,10 +153,10 @@ export function createInteraction(env: Env): Interaction {
     setOptions: o => act(() => { opts = { ...opts, ...o } }),
     options: () => ({ ...opts }),
     pointerDown: (at, mods) => act(() => pointerDown(at, mods)),
-    pointerMove: (at, mods) => { if (st.dragging) act(() => st.pointerMove(at, mods)) },
-    pointerUp: (at, mods) => act(() => st.pointerUp(at, mods)),
+    pointerMove: (at, mods) => { if (df.dragging) act(() => df.pointerMove(at)); else if (st.dragging) act(() => st.pointerMove(at, mods)) },
+    pointerUp: (at, mods) => act(() => { if (df.dragging) df.pointerUp(at); else st.pointerUp(at, mods) }),
     pointerHover: (at, mods) => { if (st.hover(at, mods)) act(() => {}) },
-    pointerCancel: () => act(() => st.pointerCancel()),
+    pointerCancel: () => act(() => { df.pointerCancel(); st.pointerCancel() }),
     key: (name, mods) => act(() => key(name, mods)),
     cancel: () => act(cancel),
     deleteSelection: () => act(() => { ctx.commit(e => e.deleteSelection(ctx.selection())) }),
@@ -166,11 +173,14 @@ export function createInteraction(env: Env): Interaction {
     broadcastShape: () => act(() => { ctx.commit(e => e.broadcastShape(ctx.selection())) }),
     fit: () => act(() => { ctx.commit(e => e.fit(ctx.selection())) }),
     draftCorners: () => act(() => { ctx.commit(e => e.draftCorners(ctx.selection())) }),
-    viewChanged: () => act(() => { for (const f of flows) if (f.cancelLevel < 3) f.cancel(); ctx.feedback = undefined }),
-    cancelAll: () => act(() => { for (const f of flows) f.cancel(); ctx.feedback = undefined }),
+    // the deform session belongs to its view and ends with it (dot 1791893262), as with playback
+    viewChanged: () => act(() => { for (const f of flows) if (f.cancelLevel < 3) f.cancel(); df.end(); ctx.feedback = undefined }),
+    cancelAll: () => act(() => { for (const f of flows) f.cancel(); df.end(); ctx.feedback = undefined }),
     drawingChanged: () => act(() => { for (const f of flows) f.drawingChanged(); ctx.feedback = undefined }),
     historyChanged: () => act(historyChanged),
     outcome: err => act(() => { ctx.feedback = err === undefined ? undefined : fromError(err); historyChanged() }),
+    deformReset: () => act(() => df.reset()),
+    deformDone: () => act(() => df.end()),
     lastPress: () => st.lastPress,
     keyUp: name => act(() => st.keyUp(name)),
     moving: () => st.moving,
