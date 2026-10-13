@@ -109,14 +109,20 @@ export interface Bend { readonly handles: BendHandles; readonly enabled: boolean
 const corners: Vec[] = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }]
 export const neutralHandles = (): BendHandles => corners.map((a, i) => { const b = corners[(i + 1) % 4]!; return [1 / 3, 2 / 3].map(t => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t })) }) as unknown as BendHandles
 export const neutralBend = (): Bend => ({ handles: neutralHandles(), enabled: true })
-export const bendEdges = (value: Bend): Cubic[] => { value.handles.flat().forEach(fv); return corners.map((p, i) => [p, ...value.handles[i]!, corners[(i + 1) % 4]!] as unknown as Cubic) }
+export const bendEdges = (value: Bend): Cubic[] => { checkBend(value); return corners.map((p, i) => [p, ...value.handles[i]!, corners[(i + 1) % 4]!] as unknown as Cubic) }
 const straight = neutralHandles()
+/** The container's own shape, checked at every function that takes a bend (dot 1791892166): `enabled` a boolean, four edges of two finite points. Not the ±8 range or the fold check — those are assertBend's. */
+function checkBend(value: Bend): Bend {
+  if (!value || typeof value.enabled !== 'boolean' || !Array.isArray(value.handles) || value.handles.length !== 4 || !value.handles.every(e => Array.isArray(e) && e.length === 2)) throw Error('曲边变形参数无效')
+  value.handles.forEach(e => e.forEach(fv))
+  return value
+}
 /** Only the exact neutral value bypasses the nonlinear fit, keeping the homography exact. */
-export const isNeutralBend = (value: Bend) => !value.enabled || value.handles.every((edge, i) => edge.every((p, j) => p.x === straight[i]![j]!.x && p.y === straight[i]![j]!.y))
+export const isNeutralBend = (value: Bend) => !checkBend(value).enabled || value.handles.every((edge, i) => edge.every((p, j) => p.x === straight[i]![j]!.x && p.y === straight[i]![j]!.y))
 /** The bilinearly blended Coons patch in the unit square, as boundary displacements (the identity term cancelled). */
 export function bendPoint(value: Bend, p: Vec): Vec {
   const u = fv(p).x, v = p.y
-  if (!value.enabled) return { x: u, y: v }
+  if (!checkBend(value).enabled) return { x: u, y: v }
   let x = u, y = v
   const ts = [u, v, 1 - u, 1 - v], weights = [1 - v, u, v, 1 - u]
   for (let i = 0; i < 4; i++) {
@@ -129,7 +135,7 @@ export function bendPoint(value: Bend, p: Vec): Vec {
 /** The analytic directional derivative of the same patch. */
 export function bendVector(value: Bend, p: Vec, d: Vec): Vec {
   const u = fv(p).x, v = p.y, du = fv(d).x, dv = d.y
-  if (!value.enabled) return { x: du, y: dv }
+  if (!checkBend(value).enabled) return { x: du, y: dv }
   let x = du, y = dv
   const ts = [u, v, 1 - u, 1 - v], weights = [1 - v, u, v, 1 - u], dt = [du, dv, -du, -dv], dw = [-dv, du, dv, -du]
   for (let i = 0; i < 4; i++) {
@@ -152,7 +158,7 @@ export function assertBend(value: Bend) {
   }
 }
 export function inverseBend(value: Bend, target: Vec): Vec {
-  if (!value.enabled) return fv(target)
+  if (!checkBend(value).enabled) return fv(target)
   fv(target)
   let p: Vec = { ...target }
   for (let k = 0; k < 18; k++) {
@@ -197,7 +203,16 @@ const point = (s: Cubic, t: number): Vec => { const u = 1 - t, a = u * u * u, b 
 /** Projective reparameterization equalizing the rational cubic's endpoint weights. */
 export const deformParameter = (t: number, scale: number) => fn(fn(scale) * fn(t) / (1 + (scale - 1) * t))
 export interface CurveParameterMap { values: number[]; sourceKnots?: number[] }
+/** The table's own shape, checked at every function that takes one (dot 1791892166): at least two finite values; source knots, when given, finite and as many. */
+function checkMap(map: CurveParameterMap | undefined): CurveParameterMap | undefined {
+  if (map === undefined) return map
+  if (!map || !Array.isArray(map.values) || map.values.length < 2) throw Error('曲线参数表无效')
+  map.values.forEach(fn)
+  if (map.sourceKnots !== undefined) { if (!Array.isArray(map.sourceKnots) || map.sourceKnots.length !== map.values.length) throw Error('曲线参数表无效'); map.sourceKnots.forEach(fn) }
+  return map
+}
 export function curveParameterSourceKnots(map?: CurveParameterMap): readonly number[] {
+  checkMap(map)
   return map?.sourceKnots ?? (map ? map.values.map((_, i) => i / (map.values.length - 1)) : [0, 1])
 }
 const parameterInterval = (knots: readonly number[], value: number) => {
@@ -207,7 +222,7 @@ const parameterInterval = (knots: readonly number[], value: number) => {
 }
 /** Source t → fitted t. */
 export function mappedParameter(t: number, map?: CurveParameterMap) {
-  fn(t)
+  fn(t); checkMap(map)
   if (!map) return t
   if (map.sourceKnots) { const value = clamp(t), i = parameterInterval(map.sourceKnots, value); return fn(map.values[i]! + (map.values[i + 1]! - map.values[i]!) * (value - map.sourceKnots[i]!) / (map.sourceKnots[i + 1]! - map.sourceKnots[i]!)) }
   const x = clamp(t) * (map.values.length - 1), i = Math.min(map.values.length - 2, Math.floor(x))
@@ -276,7 +291,7 @@ export function fitDeformedCubic(shape: Cubic, field: Field) {
 }
 /** The inverse of the fitted cubic's increasing source t → fitted t table. */
 export function sourceParameter(t: number, map?: CurveParameterMap): number {
-  fn(t)
+  fn(t); checkMap(map)
   if (!map) return t
   const value = clamp(t), values = map.values
   let lo = 0, hi = values.length - 1
@@ -285,14 +300,14 @@ export function sourceParameter(t: number, map?: CurveParameterMap): number {
   return fn((lo + (value - values[lo]!) / (values[hi]! - values[lo]!)) / (values.length - 1))
 }
 export function mappedParameterSlope(t: number, map?: CurveParameterMap): number {
-  fn(t)
+  fn(t); checkMap(map)
   if (!map) return 1
   if (map.sourceKnots) { const i = parameterInterval(map.sourceKnots, clamp(t)); return fn((map.values[i + 1]! - map.values[i]!) / (map.sourceKnots[i + 1]! - map.sourceKnots[i]!)) }
   const i = Math.min(map.values.length - 2, Math.floor(clamp(t) * (map.values.length - 1)))
   return fn((map.values[i + 1]! - map.values[i]!) * (map.values.length - 1))
 }
 export function sourceParameterSlope(t: number, map?: CurveParameterMap): number {
-  fn(t)
+  fn(t); checkMap(map)
   if (!map) return 1
   return fn(1 / mappedParameterSlope(sourceParameter(t, map), map))
 }

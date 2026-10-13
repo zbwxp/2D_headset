@@ -182,6 +182,16 @@ describe('corner cases', () => {
       () => D.fitCubicTarget({ point: () => P(0, 0), handles: [P(NaN, 0), P(1, 0)] }),
     ]
     for (const b of bad) expect(b).toThrow(/不是有限数/)
+    // the containers (dot 1791892166): a bend's handles and a parameter table, checked wherever they enter
+    const nanBend = (enabled: boolean) => ({ enabled, handles: D.neutralHandles().map((e, i) => e.map(p => (i === 1 ? P(NaN, p.y) : p))) as unknown as D.BendHandles })
+    for (const b of [nanBend(true), nanBend(false)]) {
+      for (const call of [() => D.isNeutralBend(b), () => D.bendPoint(b, P(0, 0)), () => D.bendVector(b, P(0, 0), P(1, 0)), () => D.inverseBend(b, P(0, 0)), () => D.bendEdges(b)]) expect(call).toThrow(/不是有限数/)
+    }
+    expect(() => D.isNeutralBend({ enabled: 'no', handles: D.neutralHandles() } as unknown as D.Bend)).toThrow(/曲边变形参数无效/)
+    for (const map of [{ values: [0, 0.5, 1], sourceKnots: [0, NaN, 1] }, { values: [0, Infinity, 1] }]) {
+      for (const call of [() => D.curveParameterSourceKnots(map), () => D.mappedParameter(0.25, map), () => D.sourceParameter(0.25, map), () => D.mappedParameterSlope(0.25, map), () => D.sourceParameterSlope(0.25, map)]) expect(call).toThrow(/不是有限数/)
+    }
+    for (const map of [{ values: [0] }, { values: [0, 1], sourceKnots: [0] }]) expect(() => D.mappedParameter(0.5, map)).toThrow(/曲线参数表无效/)
     // finite inputs: unchanged
     expect(D.bendPoint(off, P(0.3, 0.4))).toEqual(P(0.3, 0.4)); expect(D.map3(I, P(2, 3))).toEqual(P(2, 3))
   })
