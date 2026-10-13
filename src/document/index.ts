@@ -444,8 +444,9 @@ export class Editor {
    * parameters"; docs/apply-from-view-checklist.md): every line of the given layers takes its curve as
    * it is in view `from` — its end points' positions and its two handles — in this view, every value
    * read before anything is written. Nothing else is copied (widths, profiles, end strokes, radii, zones
-   * stay). No mirror sync: only the given layers are written; in the front a mirror link still keeps its
-   * partner mirrored, as it does after any move. Points of other layers linked to the given ones follow,
+   * stay). No mirror sync (bowen 1791878923): only the given layers change. In the front a mirror link
+   * keeps both sides mirrored, so a given line whose mirror partner is not given is refused there (dot
+   * 1791879211), before anything is written. Points of other layers linked to the given ones follow,
    * as after a move. Copied unchanged, or refused (dot 1791878532): a locked line in the given layers is
    * refused before anything is written; then the edit is settled as its commit would be, and unless the
    * given layers show exactly the source's curves, with no point merged, no shared structure and no other
@@ -460,6 +461,11 @@ export class Editor {
     const lines = net.lines(n).filter(l => chosen.has(net.layerOfLine(n, l.id)))
     const locked = lines.filter(l => l.state.locked).map(l => l.id)
     if (locked.length) throw new net.Refusal('locked', `Locked lines would change (${locked.join(', ')}); nothing was published`, net.lineObjects(locked))
+    if (this.tx.layer === views.FRONT) {
+      const ids = new Set(lines.map(l => l.id))
+      const alone = apply.pairs(this.s.apply).flatMap(p => (ids.has(p.a) !== ids.has(p.b) ? [ids.has(p.a) ? p.b : p.a] : []))
+      if (alone.length) throw new net.Refusal('apply-from-mirror', `apply-from-mirror: in the front a mirror link keeps both sides mirrored; the partners ${alone.join(', ')} are not in the chosen layers and would change; nothing was published`, net.lineObjects(alone))
+    }
     // every value read before anything is written, with what must not change
     const structure = (x: State) => JSON.stringify([net.points(x.network).map(p => [p.id, p.layer]), net.lines(x.network).map(l => [l.id, l.a, l.b]), joins.modes(x.joins)])
     const shapeIn = (x: State, k: string) => { const h = net.of(x.network, k); return JSON.stringify([net.points(h).map(p => p.position), net.lines(h).map(l => [l.ha, l.hb])]) }

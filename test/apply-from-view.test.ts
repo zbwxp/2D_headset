@@ -102,7 +102,7 @@ describe('apply from another view', () => {
     expect(at(SIDE, 'm')).toEqual(at(SIDE, 'a'))
   })
 
-  it('in the front, the mirror link keeps the partner mirrored (as after any move); its widths and end strokes are not touched', () => {
+  it('in the front, a chosen line whose mirror partner is not chosen: refused before anything changes (dot 1791879211)', () => {
     const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })
     d.edit(e => {
       e.layer('R', 'R')
@@ -110,16 +110,15 @@ describe('apply from another view', () => {
       e.line('r', { id: 'q1', layer: 'R', position: P(10) }, { id: 'q2', layer: 'R', position: P(20, 5) })
     })
     const g = (line: string) => d.snapshot().groups.find(x => x.lines.includes(line))!.id
-    // the side view's own values first: off the front a mirror-linked line's stroke cannot be edited
-    d.editIn(SIDE, e => { e.move([{ id: 'p2', target: P(-30, 12) }]); e.lineStroke('l', { width: 4, profile: 'taper' }); e.endStroke('p2', { taper: 5 }) })
+    d.editIn(SIDE, e => e.move([{ id: 'p2', target: P(-30, 12) }, { id: 'q2', target: P(30, 12) }]))
     d.edit(e => e.mirrorLink([g('l')], [g('r')]))
-    expect(d.in(SIDE).snapshot().points.find(x => x.id === 'p2')!.position).toEqual(P(-30, 12))
-    d.edit(e => e.applyFromView(['L'], SIDE))
-    const pt = (p: string) => d.snapshot().points.find(x => x.id === p)!
-    expect(pt('p2').position).toEqual(P(-30, 12))
-    expect(pt('q2').position).toEqual(P(30, 12))
-    expect([pt('p2').width, pt('q2').width, pt('q2').endStroke]).toEqual([1, 1, undefined])
-    expect(d.snapshot().lines.find(l => l.id === 'r')!.stroke.profile).toBe('uniform')
+    const before = every(d)
+    expect(() => d.edit(e => e.applyFromView(['L'], SIDE))).toThrow(/apply-from-mirror.*\br\b/)
+    expect(every(d)).toBe(before)
+    // both sides chosen, the source mirrored: allowed, both take the source exactly
+    d.edit(e => e.applyFromView(['L', 'R'], SIDE))
+    const pt = (p: string) => d.snapshot().points.find(x => x.id === p)!.position
+    expect([pt('p2'), pt('q2')]).toEqual([P(-30, 12), P(30, 12)])
   })
 
   it('off the front, only the chosen layer is written: its mirror partner keeps its own values', () => {
@@ -169,9 +168,9 @@ describe('apply from another view', () => {
     expect(() => d.edit(e => e.applyFromView(['L', 'R'], SIDE))).toThrow(/apply-from-not-exact/)
     expect(() => d.edit(e => e.applyFromView(['R', 'L'], SIDE))).toThrow(/apply-from-not-exact/)
     expect(every(d)).toBe(before)
-    // one side alone is the exception the mirror link makes: its partner follows
-    d.edit(e => e.applyFromView(['L'], SIDE))
-    expect(d.snapshot().points.find(p => p.id === 'q2')!.position).toEqual(P(30, 12))
+    // one side alone: refused too, its partner would change
+    expect(() => d.edit(e => e.applyFromView(['L'], SIDE))).toThrow(/apply-from-mirror/)
+    expect(every(d)).toBe(before)
   })
 
   it('a link that would pull a locked line of a layer not chosen: refused, nothing changes', () => {

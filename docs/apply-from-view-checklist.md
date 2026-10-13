@@ -14,7 +14,7 @@ Lines and points have the same ids in every view (one structure, nine shape laye
 - Nothing differs from the source already: no change, no undo step (history keeps only edits that change the state).
 - **Locked lines in a chosen layer:** refused before anything is written (an explicit check). A lock reached through a link (a locked line in a layer not chosen) is refused by the commit's lock check; the whole edit rolls back.
 - **Links — the one exception to "only the chosen layers":** a point of a layer not chosen, linked to a chosen point, follows it in this view, as after a move.
-- **No mirror sync (bowen 1791878923):** only the chosen layers are written. In the front a mirror link still keeps its partner mirrored — the commit's mirror settling, as after any move; that is the link, not this operation. Both sides chosen from a view where they are not mirror images: the trial does not equal the source → refused; never averaged, never order-dependent. Off the front the partner keeps its own curve.
+- **No mirror sync (bowen 1791878923): only the chosen layers change.** In the front a mirror link keeps both sides mirrored, so a chosen line whose mirror partner is not in the chosen layers is refused there before anything is written (`apply-from-mirror`, naming the partners; dot 1791879211) — never a silent change to the unchosen side. Both sides chosen: allowed when the source is mirrored; otherwise the trial does not equal the source → refused, whatever the order. Off the front the partner keeps its own curve.
 - From this view itself: nothing. A layer with no lines: nothing.
 - Declared in src/document/effects.ts as an edit of the edited view (`reads: 'draft', intents: 'edited', shapes: 'edited'`, full settle).
 
@@ -27,7 +27,7 @@ Lines and points have the same ids in every view (one structure, nine shape laye
 2. Two layers at once.
 3. A locked line in a chosen layer → refused before writing; a link reaching a locked line elsewhere → refused, nothing changes.
 4. A link to another layer's point → the partner follows.
-5. Front, one mirror side → the partner mirrored by the link, its widths untouched; both sides from an asymmetric view → refused in either order. Off the front → the partner keeps its curve.
+5. Front, one mirror side chosen → refused (`apply-from-mirror`), nothing changes; both sides from a mirrored source → applied; from an asymmetric one → refused in either order. Off the front → the partner keeps its curve.
 6. A source with two points of one layer on one spot (a diagonal draft) → the copy would merge them → refused.
 7. Applying the values already there → no undo step. Empty layer / the view itself → nothing.
 8. Bench: pick mode, the current view not pickable, Esc / the button again cancels.
