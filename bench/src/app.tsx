@@ -1117,7 +1117,12 @@ export function App() {
             // (s.groups is that order), each curve its fills, then the halo of its selected lines, then its lines
             const rank = new Map(s.groups.flatMap((gr, i) => gr.lines.map(l => [l, i] as const)))
             const groupOfLoop = (id: string) => rank.get(s.loops.find(l => l.id === id)?.route[0]?.line ?? '') ?? -1
-            const groupOfArc = (key: string) => rank.get(g.arcs.find(a => a.key === key)?.lines[0] ?? '') ?? -1
+            // an arc's or a cusp tip's piece belongs to the curve of its lines (dot 1791866486)
+            const groupOfPiece = (p: NonNullable<typeof ink>['pieces'][number]) => rank.get(p.source.kind === 'line' ? p.source.id : p.source.lines[0]) ?? -1
+            const pieceEl = (p: NonNullable<typeof ink>['pieces'][number]) => { const d = loopsD(p.loops); return <g key={p.source.id}><path data-ink={p.source.id} d={d} fill="#111" stroke="none" />{defectMark(p.source.id, d, inkDefects.get(p.source.id))}</g> }
+            // the arcs' debug centre line while the ink switch is off, and for an arc with no ink to draw (its diagnostic says why)
+            const arcLines = (i: number) => g.arcs.filter(a => (rank.get(a.lines[0]) ?? -1) === i && (!ink || (!inkOf.has(a.key) && ink.diagnostics.some(d => d.source.id === a.key))))
+              .map(a => <path key={a.key} data-arc-fallback={ink ? a.key : undefined} d={path(a.curve)} fill="none" stroke="#a50" strokeWidth={2} />)
             const lineEl = (G: (typeof g.lines)[number]) => {
               const l = line(G.id), stroke = paintOf(G.id)
               const u = uniform.get(G.id)
@@ -1138,8 +1143,9 @@ export function App() {
             }
             return <>
               {/* nothing should lie outside a curve; if something does, it is drawn at the bottom rather than lost */}
-              {arcsAlone.filter(p => groupOfArc(p.source.id) === -1).map(p => <path key={p.source.id} data-ink={p.source.id} d={loopsD(p.loops)} fill="#111" stroke="none" />)}
+              {arcsAlone.filter(p => groupOfPiece(p) === -1).map(pieceEl)}
               {g.lines.filter(G => !rank.has(G.id)).map(lineEl)}
+              {arcLines(-1)}
               {s.groups.map((gr, i) => <g key={'paint' + gr.id} data-paint-group={gr.id}>
                 {g.fills.filter(f => f.visible && groupOfLoop(f.id) === i).map(f => <path key={f.id} data-fill={f.id} d={f.parts.map((p, i) => (i ? path(p.curve).replace(/^M[^C]*/, '') : path(p.curve))).join(' ') + ' Z'}
                   fill={f.color} opacity={cutLines.size && s.loops.find(l => l.id === f.id)?.route.every(u => cutLines.has(u.line)) ? 0.35 : 1}
@@ -1147,8 +1153,9 @@ export function App() {
                 {/* the selection reads at a glance (bowen 1791558186): a wide blue halo under each selected line */}
                 {!pose && g.lines.filter(G => rank.get(G.id) === i && selLines.includes(G.id)).map(G => <path key={'halo' + G.id} d={path(G.curve)} fill="none" stroke="#2a7fff" strokeOpacity={0.3}
                   strokeWidth={Math.max(line(G.id).stroke.width, line(G.id).stroke.widthB ?? 0) + 8 * px} strokeLinecap="round" />)}
-                {arcsAlone.filter(p => groupOfArc(p.source.id) === i).map(p => { const d = loopsD(p.loops); return <g key={p.source.id}><path data-ink={p.source.id} d={d} fill="#111" stroke="none" />{defectMark(p.source.id, d, inkDefects.get(p.source.id))}</g> })}
+                {arcsAlone.filter(p => groupOfPiece(p) === i).map(pieceEl)}
                 {g.lines.filter(G => rank.get(G.id) === i).map(lineEl)}
+                {arcLines(i)}
               </g>)}
             </>
           })()}
@@ -1164,8 +1171,6 @@ export function App() {
             return b && <rect data-selection-outline="" x={b.min.x} y={b.min.y} width={b.max.x - b.min.x} height={b.max.y - b.min.y}
               fill="none" stroke="#2a7fff" strokeWidth={px} strokeDasharray={`${3 * px} ${2 * px}`} pointerEvents="none" />
           })()}
-          {/* the arcs' debug centre line while the ink switch is off, and for an arc with no ink to draw (its diagnostic says why) */}
-          {g.arcs.filter(a => !ink || (!inkOf.has(a.key) && ink.diagnostics.some(d => d.source.id === a.key))).map(a => <path key={a.key} data-arc-fallback={ink ? a.key : undefined} d={path(a.curve)} fill="none" stroke="#a50" strokeWidth={2} />)}
           {/* the pending mark (stage 2): an orange dot on each line whose front differs from the baseline */}
           {!pose && g.lines.filter(G => pending.includes(G.id)).map(G => { const m = mid(G.curve); return <circle key={'pending' + G.id} data-pending={G.id} cx={m.x} cy={m.y} r={4 * px} fill="#f80" stroke="#fff" strokeWidth={px} /> })}
           {/* playback on a line: the pickable points, and the drag's ghost at start + displacement (stage 3b package 5) */}

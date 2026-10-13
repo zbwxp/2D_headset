@@ -150,6 +150,40 @@ describe('layers panel drag (bowen 1791865224)', () => {
     expect(painted()).toEqual(['a3', 'a1', 'c1', 'd1', 'b1', 'a2'])
   })
 
+  // dot 1791866486: an arc's or a cusp tip's own piece, and the arc's centre line with the ink off, go with their curve
+  async function overFill(mode: 'cusp' | 'arc') {
+    const host = await setup()
+    await act(async () => {
+      bench().core.edit(e => {
+        // A (bottom): a big filled triangle under D's corner
+        e.line('a4', 'qA1', { id: 'rA', layer: 'A', position: { x: 50, y: 300 } }); e.line('a5', 'rA', 'pA1')
+        // D (top): a corner at qD1 over it, joined
+        e.line('d2', 'qD1', { id: 'rD', layer: 'D', position: { x: 20, y: 200 } })
+        e.join('qD1', 'd1', 'd2', mode === 'arc' ? { mode, radius: 10 } : { mode })
+      })
+      const loops = snap().loops
+      bench().core.edit(e => loops.forEach(l => e.fill(l.id, 'red')))
+      bench().refresh()
+    })
+    expect(snap().loops.filter(l => l.filled)).toHaveLength(1)
+    const inGroup = (line: string, sel: string) => !!host.querySelector(`[data-paint-group="${groupOf(line)}"] ${sel}`)
+    return { host, inGroup }
+  }
+  it('a cusp tip on the upper curve with one side selected is painted with that curve', async () => {
+    const { inGroup } = await overFill('cusp')
+    await act(async () => { bench().core.edit(e => e.select([{ kind: 'line', id: 'd1' }])); bench().refresh() })
+    expect(inGroup('d1', '[data-ink^="tip:"]')).toBe(true)
+    expect(inGroup('a1', '[data-ink^="tip:"]')).toBe(false)
+  })
+  it('with the ink off, an arc\'s centre line is painted with its curve, over the lower fill', async () => {
+    const { host, inGroup } = await overFill('arc')
+    const toggle = host.querySelector('[data-testid="ink-outline"]') as HTMLInputElement
+    if (toggle.checked) await act(async () => { toggle.click() })
+    expect(inGroup('d1', 'path[stroke="#a50"]')).toBe(true)
+    expect(inGroup('a1', 'path[stroke="#a50"]')).toBe(false)
+    expect(host.querySelectorAll('path[stroke="#a50"]')).toHaveLength(1)
+  })
+
   it('a drop on a row other than the marked one moves nothing', async () => {
     const host = await setup()
     await fire(layerRow(host, 'A'), 'dragstart')
