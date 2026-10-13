@@ -141,6 +141,48 @@ const TOOLS: [Tool, string][] = [['pen', 'Pen P'], ['V', 'V group'], ['A', 'A di
 /** The autosave store (docs/autosave-plan.md): IndexedDB in a browser; a test may give its own; none without either. */
 const autosaveStore = (): Store | undefined => (window as unknown as { benchStore?: Store }).benchStore ?? (typeof indexedDB !== 'undefined' ? indexedDbStore() : undefined)
 
+type Snap = ReturnType<Core['snapshot']>
+type Geo = ReturnType<Core['geometry']>
+type MaskRules = Map<string, (MaskRelation & { key: string })[]>
+const NO_MASKS = { masksOf: new Map() as MaskRules, maskCut: undefined }
+/**
+ * The drawing's masks as a view draws them: each relation's sources as their fills' own areas in this view, read
+ * before any mask (Q33); a source counts while its fill is filled and shown (bowen 1791901604) — `null` otherwise.
+ * `maskCut` is the ink's cut: a line's piece by its own relations; a join's piece (an arc, a tip) by the relations both
+ * its lines have (docs/mask-p1-checklist.md §2).
+ */
+function masksFor(s: Snap, g: Geo) {
+  const masksOf: MaskRules = new Map()
+  const areaOf = new Map<string, Area | null>()
+  const source = (id: string) => {
+    if (!areaOf.has(id)) {
+      const lp = s.loops.find(l => l.id === id), f = g.fills.find(x => x.id === id)
+      areaOf.set(id, lp?.filled && lp.visible && f ? maskArea(f.parts.map(p => p.curve as unknown as [Vec, Vec, Vec, Vec])) : null)
+    }
+    return areaOf.get(id)!
+  }
+  // the drawing's own masks (package 2, docs/mask-p2-checklist.md §4)
+  for (const m of s.masks) {
+    const target = `${m.target.kind}:${m.target.id}`
+    // a rule is its mode and its set of sources: two lines with the same rule share it (dot 1791903159)
+    const key = `${m.mode}|${[...new Set(m.sources)].sort().join(',')}`
+    masksOf.set(target, [...(masksOf.get(target) ?? []), { key, mode: m.mode, sources: m.sources.map(source) }])
+  }
+  const maskCut = !masksOf.size ? undefined : (src: { kind: string; id: string; lines?: readonly [string, string] }, loops: readonly (readonly Vec[])[]) => {
+    const own = (id: string) => masksOf.get(`line:${id}`) ?? []
+    const rs = src.lines ? own(src.lines[0]).filter(r => own(src.lines![1]).some(q => q.key === r.key)) : own(src.id)
+    return rs.length ? maskApply(loops, rs) : undefined
+  }
+  return { masksOf, maskCut }
+}
+/** What is drawn of each masked line (its masked ink) and fill (its masked area): picking follows it (docs/mask-p3-checklist.md). */
+function cutsFor(s: Snap, g: Geo, masksOf: MaskRules, inkOf: ReadonlyMap<string, { loops: readonly (readonly Vec[])[] }>) {
+  return {
+    lines: new Map(s.lines.filter(l => masksOf.has(`line:${l.id}`)).map(l => [l.id, (inkOf.get(l.id)?.loops ?? []) as Area])),
+    fills: new Map(g.fills.filter(f => masksOf.has(`fill:${f.id}`)).map(f => [f.id, maskApply(maskArea(f.parts.map(p => p.curve as unknown as [Vec, Vec, Vec, Vec])), masksOf.get(`fill:${f.id}`)!)])),
+  }
+}
+
 export function App() {
   const [, bump] = useReducer((x: number) => x + 1, 0)
   const [layer, setLayer] = useState<Id>('layer-1')
@@ -273,42 +315,10 @@ export function App() {
   // with the switch on, each visible line's ink (P1: single lines, today's round-capped look); a line whose ink a check
   // flags is still drawn and marked red (visible, reproducible — never hidden); only a line with nothing to draw is drawn
   // as today's stroke (bowen 1791801560 / 1791801629, dot 1791801801)
-  // masks: each relation's sources as their fills' own areas in this view, read before any mask (Q33); a source counts
-  // while its fill is filled and shown (bowen 1791901604) — `null` otherwise
-  const masksOf = (() => {
-    const out = new Map<string, (MaskRelation & { key: string })[]>()
-    // only with the ink: never "masks on" while uncut strokes are drawn (dot 1791902445)
-    if (!masksOn || !inkOn) return out
-    const areaOf = new Map<string, Area | null>()
-    const source = (id: string) => {
-      if (!areaOf.has(id)) {
-        const lp = s.loops.find(l => l.id === id), f = g.fills.find(x => x.id === id)
-        areaOf.set(id, lp?.filled && lp.visible && f ? maskArea(f.parts.map(p => p.curve as unknown as [Vec, Vec, Vec, Vec])) : null)
-      }
-      return areaOf.get(id)!
-    }
-    // the drawing's own masks (package 2, docs/mask-p2-checklist.md §4)
-    for (const m of s.masks) {
-      const target = `${m.target.kind}:${m.target.id}`
-      // a rule is its mode and its set of sources: two lines with the same rule share it (dot 1791903159)
-      const key = `${m.mode}|${[...new Set(m.sources)].sort().join(',')}`
-      out.set(target, [...(out.get(target) ?? []), { key, mode: m.mode, sources: m.sources.map(source) }])
-    }
-    return out
-  })()
-  // a line's piece: its own relations; a join's piece (an arc, a tip): the relations both its lines have (docs/mask-p1-checklist.md §2)
-  const maskCut = (src: { kind: string; id: string; lines?: readonly [string, string] }, loops: readonly (readonly Vec[])[]) => {
-    const own = (id: string) => masksOf.get(`line:${id}`) ?? []
-    const rs = src.lines ? own(src.lines[0]).filter(r => own(src.lines![1]).some(q => q.key === r.key)) : own(src.id)
-    return rs.length ? maskApply(loops, rs) : undefined
-  }
-  const ink = inkOn ? inkCache.current.build(g, { ...s, zones }, masksOf.size ? maskCut : undefined) : null, inkOf = new Map((ink?.pieces ?? []).map(p => [p.source.id, p] as const))
+  const { masksOf, maskCut } = masksOn && inkOn ? masksFor(s, g) : NO_MASKS
+  const ink = inkOn ? inkCache.current.build(g, { ...s, zones }, maskCut) : null, inkOf = new Map((ink?.pieces ?? []).map(p => [p.source.id, p] as const))
   const inkDefects = new Map((ink?.diagnostics ?? []).filter(d => d.status === 'defect').map(d => [d.source.id, d.reason ?? ''] as const))
-  cutRef.current = !masksOf.size ? null : {
-    core, view: shown,
-    lines: new Map(s.lines.filter(l => masksOf.has(`line:${l.id}`)).map(l => [l.id, (inkOf.get(l.id)?.loops ?? []) as Area])),
-    fills: new Map(g.fills.filter(f => masksOf.has(`fill:${f.id}`)).map(f => [f.id, maskApply(maskArea(f.parts.map(p => p.curve as unknown as [Vec, Vec, Vec, Vec])), masksOf.get(`fill:${f.id}`)!)])),
-  }
+  cutRef.current = posed ? null : { core, view: shown, ...cutsFor(s, g, masksOf, inkOf) }
   // one visibility rule for the playback drag's picking, its point marks and its ghost, computed once
   // per frame (dot 1791697776; docs/stage3b-pkg5-problems.md): the visible lines and the points they end at
   const shownLines = s.lines.filter(l => l.state.visible), shownEnds = new Set(shownLines.flatMap(l => [l.a, l.b]))
@@ -316,12 +326,19 @@ export function App() {
   const drawLayer = s.layers.some(l => l.id === layer) ? layer : s.layers[s.layers.length - 1]?.id ?? ''
   // the selected layers that still exist, always with the current one
   const selLayers = [...new Set([...layers.filter(id => s.layers.some(l => l.id === id)), ...(drawLayer ? [drawLayer] : [])])]
-  const env = useRef({ layer: drawLayer, layers: selLayers, px, view: shown })
-  env.current = { layer: drawLayer, layers: selLayers, px, view: shown }
+  const env = useRef({ layer: drawLayer, layers: selLayers, px, view: shown, masks: masksOn && inkOn })
+  env.current = { layer: drawLayer, layers: selLayers, px, view: shown, masks: masksOn && inkOn }
   const ix = useRef(createInteraction({ core: () => logged(core), view: () => env.current.view, newId: nid, layer: () => env.current.layer || undefined, layers: () => env.current.layers, pixel: () => env.current.px,
     cut: (t, at, reach) => {
-      const c = cutRef.current
-      if (!c || c.core !== core || c.view !== env.current.view) return false
+      if (!env.current.masks) return false
+      let c = cutRef.current
+      // dropped by a write (or another drawing or view): computed again from the drawing as it is now, never skipped
+      // (dot 1791908685: a width typed and committed by the same press that picks)
+      if (!c || c.core !== core || c.view !== env.current.view) {
+        const r = core.in(env.current.view), s = r.snapshot(), g = r.geometry(), { masksOf, maskCut } = masksFor(s, g)
+        const ink = masksOf.size ? inkCache.current.build(g, { ...s, zones: r.zones() }, maskCut) : null
+        c = cutRef.current = { core, view: env.current.view, ...cutsFor(s, g, masksOf, new Map((ink?.pieces ?? []).map(p => [p.source.id, p] as const))) }
+      }
       const a = (t.kind === 'line' ? c.lines : c.fills).get(t.id)
       return a !== undefined && (t.kind === 'line' ? maskDistance(a, at) > reach : !maskContains(a, at))
     } })).current

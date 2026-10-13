@@ -17,7 +17,8 @@ const bench = () => (window as unknown as { bench: { core: Core; refresh(): void
 const pe = (type: string, x: number, y: number, buttons: number) => { const e = new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0, buttons }); Object.defineProperty(e, 'pointerId', { value: 1 }); return e }
 
 /** Layer B: a filled square x 0..100, y −1..100; layer A (current): line x from (−50, 0) to (150, 0), 10 wide, masked by the square (inverse). */
-async function setup() {
+async function setup(o: { top?: number; under?: boolean } = {}) {
+  const top = o.top ?? -1
   const host = document.createElement('div'); document.body.appendChild(host)
   const root = createRoot(host); roots.push(root)
   await act(async () => { root.render(<App />) })
@@ -25,8 +26,9 @@ async function setup() {
   d.edit(e => {
     e.layer('B', 'B'); e.layer('A', 'A')
     const P = (id: string, layer: string, x: number, y: number) => ({ id, layer, position: { x, y } })
-    e.line('s1', P('q1', 'B', 0, -1), P('q2', 'B', 100, -1)); e.line('s2', 'q2', P('q3', 'B', 100, 100)); e.line('s3', 'q3', P('q4', 'B', 0, 100)); e.line('s4', 'q4', 'q1')
+    e.line('s1', P('q1', 'B', 0, top), P('q2', 'B', 100, top)); e.line('s2', 'q2', P('q3', 'B', 100, 100)); e.line('s3', 'q3', P('q4', 'B', 0, 100)); e.line('s4', 'q4', 'q1')
     e.line('x', P('a', 'A', -50, 0), P('b', 'A', 150, 0))
+    if (o.under) e.line('w', P('c', 'A', -50, 1), P('e', 'A', 150, 1)) // a thin line just under x, not masked
   })
   d.edit(e => { e.pointWidth('a', 10); e.pointWidth('b', 10) })
   const sq = d.snapshot().loops[0]!.id
@@ -95,5 +97,16 @@ describe('picking follows the masks (蒙版 on)', () => {
     await act(async () => { bench().edit(e => e.fillVisible(t.sq, false)); bench().refresh() })
     await t.click(80, t.reach - 0.5)
     expect(t.picked()).toEqual(['x'])
+  })
+
+  it('a width typed and not entered, then a press on the canvas: the press writes the width and still picks by the masks (dot 1791908685)', async () => {
+    const t = await setup({ top: -20, under: true }) // x is wholly hidden inside the square; w lies just under it
+    await t.toggle()
+    await act(async () => { bench().core.edit(e => e.select([{ kind: 'line', id: 'w' }])); bench().refresh() })
+    const field = t.host.querySelector('[data-line-width="w"]') as HTMLInputElement
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field, '3'); field.dispatchEvent(new Event('input', { bubbles: true })) })
+    await t.click(50, 0.3) // nearer x (hidden here) than w
+    expect(bench().core.snapshot().lines.find(l => l.id === 'w')!.stroke.width).toBe(3) // the press wrote the typed width
+    expect(t.picked()).toEqual(['w']) // and picked what is drawn, not the hidden x
   })
 })
