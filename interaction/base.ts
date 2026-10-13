@@ -84,7 +84,9 @@ export interface Preview {
    */
   deform?: {
     frame: { corners: Vec[]; handles: { edge: number; handle: 0 | 1; at: Vec; anchor: Vec }[]; midpoints: { edge: number; at: Vec }[]; edges: Vec[][]; grid: Vec[][] }
+    /** While dragging: every line and every join's arc the release changes (core's preview against the drawing now). */
     lines: { id: Id; curve: Vec[] }[] | null
+    arcs: { key: string; curve: Vec[] }[] | null
     maxError: number
     dragging: boolean
     refused?: string

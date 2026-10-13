@@ -1222,6 +1222,7 @@ export function App() {
             const f = pv.deform.frame, c = '#a35ac0', poly = (ps: readonly Vec[]) => ps.map((p, i) => `${i ? 'L' : 'M'}${p.x} ${p.y}`).join(' ')
             return <g data-testid="deform-frame" pointerEvents="none">
               {pv.deform.lines?.map(l => <path key={'dg' + l.id} data-deform-ghost={l.id} d={path(l.curve)} fill="none" stroke={pv.deform!.refused ? '#c00' : c} strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />)}
+              {pv.deform.arcs?.map(a => <path key={'da' + a.key} data-deform-ghost-arc={a.key} d={path(a.curve)} fill="none" stroke={c} strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />)}
               {f.grid.map((g, i) => <path key={'gr' + i} d={poly(g)} fill="none" stroke={c} strokeDasharray={`${4 * px} ${4 * px}`} opacity={0.4} strokeWidth={px} />)}
               {f.edges.map((e, i) => <path key={'ed' + i} data-deform-edge={i} d={poly(e)} fill="none" stroke={c} strokeWidth={1.5 * px} />)}
               {f.handles.map(h => <g key={'h' + h.edge + h.handle}>

@@ -105,7 +105,7 @@ interface Session {
   /** The session's lines as its last own write left them (or as they were at the start): anything else ends it. */
   mark: string
   start: string
-  drag?: { control: FrameControl; from: Vec; quad: Quad; bend: Bend; op?: DeformOp; lines?: { id: string; curve: Vec[] }[]; refused?: string }
+  drag?: { control: FrameControl; from: Vec; quad: Quad; bend: Bend; op?: DeformOp; lines?: { id: string; curve: Vec[] }[]; arcs?: { key: string; curve: Vec[] }[]; refused?: string }
 }
 
 export interface DeformFlow extends Flow {
@@ -170,10 +170,17 @@ export function deformFlow(ctx: Ctx): DeformFlow {
       frameOf(s!.rect, next.quad, next.bend)
     } catch (err) { ctx.feedback = fromError(err); return }
     ctx.feedback = undefined
-    s!.quad = next.quad; s!.bend = next.bend; g.op = op; g.refused = undefined; g.lines = undefined
+    s!.quad = next.quad; s!.bend = next.bend; g.op = op; g.refused = undefined; g.lines = undefined; g.arcs = undefined
     try {
       const shown = s!.owned.core.preview(s!.owned.view, op.run)
-      if (shown) { const ids = new Set(s!.lines.map(l => l.id)); g.lines = shown.geometry().lines.filter(l => ids.has(l.id)).map(l => ({ id: l.id, curve: [...l.curve] })) }
+      if (shown) {
+        // everything the release changes, as the box's scale and rotate show it (dot 1791894345): every line and every
+        // join's arc that is new or moved — the given lines, and those mirror or links carry along
+        const g0 = s!.owned.core.in(s!.owned.view).geometry(), g1 = shown.geometry(), key = (c: readonly Vec[]) => JSON.stringify(c)
+        const before = new Map(g0.lines.map(l => [l.id, key(l.curve)])), arcsBefore = new Map(g0.arcs.map(a => [a.key, key(a.curve)]))
+        g.lines = g1.lines.filter(l => before.get(l.id) !== key(l.curve)).map(l => ({ id: l.id, curve: l.curve.map(v => ({ ...v })) }))
+        g.arcs = g1.arcs.filter(a => arcsBefore.get(a.key) !== key(a.curve)).map(a => ({ key: a.key, curve: a.curve.map(v => ({ ...v })) }))
+      }
     } catch (err) { g.refused = (err as Error).message }
   }
   /** Its own commit: the history change it causes (synchronously, inside core's commit) is not one that ends the session. */
@@ -207,6 +214,8 @@ export function deformFlow(ctx: Ctx): DeformFlow {
       const g = s!.drag!
       s!.drag = undefined
       if (!g.op || g.refused) { s!.quad = g.quad; s!.bend = g.bend; if (g.refused) ctx.feedback = note('deform-refused', g.refused); return }
+      // the frame back where the drag began: nothing to write (dot 1791894345 — not left to core's no-change check)
+      if (JSON.stringify([s!.quad, s!.bend]) === JSON.stringify([g.quad, g.bend])) return
       if (!write(g.op)) { s!.quad = g.quad; s!.bend = g.bend; return }
       if (settled()) s!.maxError = g.op.maxError
     },
@@ -232,7 +241,7 @@ export function deformFlow(ctx: Ctx): DeformFlow {
     preview(p: Preview) {
       if (!alive()) return
       const g = s!.drag
-      p.deform = { frame: frame(), maxError: g?.op?.maxError ?? s!.maxError, lines: g?.lines ?? null, dragging: !!g, ...(g?.refused ? { refused: g.refused } : {}) }
+      p.deform = { frame: frame(), maxError: g?.op?.maxError ?? s!.maxError, lines: g?.lines ?? null, arcs: g?.arcs ?? null, dragging: !!g, ...(g?.refused ? { refused: g.refused } : {}) }
     },
   }
 }

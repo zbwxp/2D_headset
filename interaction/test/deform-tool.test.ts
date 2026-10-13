@@ -1,7 +1,7 @@
 // Package 3 of the 四角 / 曲边 deform (docs/deform-p3-checklist.md §4): the tool's session on a real Core —
 // start, the frame's controls, preview = commit, one undo step per release, no accumulated fit, Esc, reset,
 // and the session's end (and no return).
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { Core, save, open, type Vec } from '../../src'
 import { deformField, neutralBend, rectQuad, type Quad } from '../../deform'
 import { createInteraction } from '../index'
@@ -240,5 +240,30 @@ describe('the deform tool (package 3)', () => {
     t.ix.pointerUp(P(c2!.x + 5, c2!.y + 5))
     expect(t.d.geometry().lines.filter(l => l.id !== 'mn').map(l => ({ id: l.id, curve: [...l.curve] }))).toEqual(valid)
     expect(t.frame()!.corners[0]).toEqual(P(c0!.x - 5, c0!.y + 2))
+  })
+
+  // dot 1791894345
+  it('the preview shows every line and arc the release changes: an arc join, and a line a link carries along; equal to the commit', () => {
+    const t = setup()
+    t.d.edit(e => { e.join('b', 'ab', 'bc', { mode: 'arc', radius: 10 }); e.link('a', 'm') })
+    t.d.edit(e => e.select([{ kind: 'line', id: 'ab' }, { kind: 'line', id: 'bc' }]))
+    t.ix.setTool('deform')
+    const c2 = t.frame()!.corners[0]! // a is on corner 0: dragging it moves a, and the link carries m along
+    t.drag(c2, P(c2.x - 12, c2.y + 6), false)
+    const d = t.ix.preview().deform!
+    expect(d.arcs!.length).toBe(1)
+    expect(d.lines!.map(l => l.id).sort()).toEqual(['ab', 'bc', 'mn']) // mn: not selected, carried by the link a–m
+    t.ix.pointerUp(P(c2.x - 12, c2.y + 6))
+    const g = t.d.geometry()
+    expect(g.arcs.map(a => ({ key: a.key, curve: [...a.curve] }))).toEqual(d.arcs)
+    expect(g.lines.filter(l => ['ab', 'bc', 'mn'].includes(l.id)).map(l => ({ id: l.id, curve: [...l.curve] })).sort((x, y) => x.id.localeCompare(y.id))).toEqual([...d.lines!].sort((x, y) => x.id.localeCompare(y.id)))
+  })
+
+  it('a drag that ends where it began calls no commit at all', () => {
+    const t = setup()
+    t.ix.setTool('deform')
+    const c2 = t.frame()!.corners[2]!, edit = vi.spyOn(t.d, 'editIn')
+    t.ix.pointerDown(c2); t.ix.pointerMove(P(c2.x + 9, c2.y + 3)); t.ix.pointerMove(c2); t.ix.pointerUp(c2)
+    expect(edit).not.toHaveBeenCalled()
   })
 })
