@@ -42,7 +42,7 @@ export function indexedDbStore(dbName = 'headset-bench'): Store {
 }
 
 export type State = 'restoring' | 'saved' | 'saving' | 'failed' | 'off'
-/** `notice`: an unreadable, or converted, saved drawing was kept as a backup (shown, not an error). */
+/** `notice`: an unreadable saved drawing was kept as a backup (shown, not an error). */
 export interface Status { readonly state: State; readonly error?: string; readonly notice?: string }
 
 export interface Options {
@@ -54,13 +54,6 @@ export interface Options {
   changed(): void
   /** The time for a backup record's name (tests fix it). */
   now?(): number
-  /**
-   * For a stored text that opened converted (an older format): whether that conversion may replace the record. False:
-   * autosave goes off and the record stays exactly as stored. Absent: allowed (after a backup).
-   */
-  conversionApproved?(stored: string): boolean
-  /** The reason shown when a conversion is not approved. */
-  conversionHeld?: string
 }
 
 export interface Autosave {
@@ -75,8 +68,6 @@ export interface Autosave {
   unsaved(): boolean
   /** Take no new saves. Text already asked for is still written (the page's next instance waits for it). */
   dispose(): void
-  /** Turn autosave off with a reason (an opened file whose conversion is not approved): nothing more is written. */
-  hold(why: string): void
 }
 
 export const CURRENT = 'current'
@@ -180,24 +171,13 @@ export function createAutosave(store: Store, o: Options): Autosave {
       try { stored = await op(() => store.get(CURRENT)) } catch (err) { off(`could not read the saved drawing: ${(err as Error)?.message ?? err}`); return }
       if (!accepting()) return
       if (stored !== undefined) {
-        let opened = false
-        try { o.apply(stored); disk = stored; opened = true }
+        try { o.apply(stored); disk = stored }
         catch (err) {
           // never overwritten silently: backed up first; if the backup fails, autosave stays off
           const key = `unreadable-${(o.now ?? Date.now)()}`
           try { await op(() => store.put(key, stored!)) } catch (e) { off(`the saved drawing does not open and could not be backed up: ${(e as Error)?.message ?? e}`); return }
           if (!accepting()) return
           notice = `the saved drawing did not open (${(err as Error)?.message ?? err}); it was kept as ${key}`
-        }
-        // opened, but not as it was stored (an older format, converted on opening): the original is kept before the first
-        // write replaces it, so a conversion not yet approved never rewrites the only copy (dot 1791906394)
-        if (opened && o.current() !== stored) {
-          // not approved yet: nothing is written, the record stays as stored (dot 1791906782)
-          if (o.conversionApproved?.(stored) === false) { off(o.conversionHeld ?? 'the saved drawing is in an older format; saving it in the new one is not approved yet'); return }
-          const key = `before-upgrade-${(o.now ?? Date.now)()}`
-          try { await op(() => store.put(key, stored!)) } catch (e) { off(`the saved drawing was converted on opening and its original could not be backed up: ${(e as Error)?.message ?? e}`); return }
-          if (!accepting()) return
-          notice = `the saved drawing was opened in the current format; the original was kept as ${key}`
         }
       }
       state = 'saved'; notify()
@@ -213,7 +193,6 @@ export function createAutosave(store: Store, o: Options): Autosave {
       void pump()
     },
     retry() { if (accepting() && state === 'failed') void pump() },
-    hold(why) { off(why) },
     status: () => ({ state, ...(error !== undefined ? { error } : {}), ...(notice !== undefined ? { notice } : {}) }),
     unsaved() {
       if (state === 'restoring') return false

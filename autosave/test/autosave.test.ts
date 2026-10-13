@@ -35,34 +35,6 @@ describe('restore, then save', () => {
     expect([d.applied, a.status().state, s.writes.length]).toEqual([['A'], 'saved', 0])
   })
 
-  it('a saved drawing that opens converted (an older format) is backed up before the first write; a failed backup leaves autosave off (dot 1791906394)', async () => {
-    const s = slowStore({ [CURRENT]: 'old A' }), { d, options } = drawing()
-    const a = createAutosave(s.store, { ...options, apply: (t: string) => { d.text = t.replace('old ', 'new '); d.applied.push(t) } })
-    const started = a.start()
-    await tick()
-    expect(s.writes.map(w => [w.key, w.value])).toEqual([['before-upgrade-42', 'old A']])
-    s.writes.shift()!.done(); await started; await tick()
-    expect(a.status().notice).toMatch(/kept as before-upgrade-42/)
-    expect(s.writes.map(w => [w.key, w.value])).toEqual([[CURRENT, 'new A']])
-    resetPage()
-    const t = slowStore({ [CURRENT]: 'old A' }), e = drawing()
-    const b = createAutosave(t.store, { ...e.options, apply: (x: string) => { e.d.text = x.replace('old ', 'new ') } })
-    const startedB = b.start(); await tick()
-    t.writes.shift()!.fail('full'); await startedB; await tick()
-    expect(b.status().state).toBe('off')
-    expect(t.writes).toEqual([])
-  })
-
-  it('a conversion not approved: autosave off, nothing written, the record as stored (dot 1791906782)', async () => {
-    const s = slowStore({ [CURRENT]: 'old A' }), { d, options } = drawing()
-    const a = createAutosave(s.store, { ...options, apply: (t: string) => { d.text = t.replace('old ', 'new ') }, conversionApproved: t => !t.startsWith('old'), conversionHeld: 'held' })
-    await a.start(); await tick()
-    expect([a.status().state, a.status().error]).toEqual(['off', 'held'])
-    d.text = 'drawn'; a.want(); await tick()
-    expect(s.writes).toEqual([])
-    expect(a.unsaved()).toBe(true) // the leave-page prompt still warns
-  })
-
   it('an unreadable saved drawing is backed up before the first write; a failed backup leaves autosave off and writes nothing', async () => {
     const s = slowStore({ [CURRENT]: 'bad file' }), { d, options } = drawing('new')
     const a = createAutosave(s.store, options)

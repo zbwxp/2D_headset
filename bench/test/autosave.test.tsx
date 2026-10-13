@@ -13,7 +13,6 @@ import { widthsOnLines } from '../../test/old-files'
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 class Pt { constructor(public x = 0, public y = 0) {} matrixTransform() { return this } }
 ;(globalThis as { DOMPoint?: unknown }).DOMPoint ??= Pt
-if (!Blob.prototype.text) Blob.prototype.text = function (this: Blob) { return new Promise<string>(res => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.readAsText(this) }) }
 const wait = (ms = 0) => new Promise(r => setTimeout(r, ms))
 const roots: { unmount(): void }[] = []
 afterEach(async () => { await act(async () => { for (const r of roots.splice(0)) r.unmount() }); delete (window as { benchStore?: Store }).benchStore; resetPage() })
@@ -72,36 +71,7 @@ describe('autosave in the bench', () => {
     expect(cursor()).toContain('data:image/svg+xml') // the Pen again
   })
 
-  it('a version-9 record (9 → 10 not yet approved by bowen): opened, autosave off with the reason, the record untouched (dot 1791906782)', async () => {
-    const st = storedDrawing(), f = JSON.parse(st.text) as { version: number; document: Record<string, unknown> }
-    f.version = 9; delete f.document.masks
-    const m = memoryStore(JSON.stringify(f))
-    const t = await mount(m.store)
-    await m.release()
-    expect(t.status()).toMatch(/^✗ autosave off: 旧格式画稿（第 9 版）/)
-    expect(bench().core.snapshot().lines.map(l => l.id)).toContain(st.line)
-    expect(m.writes).toEqual([])
-    expect(m.data[CURRENT]).toBe(JSON.stringify(f))
-  })
-
-  it('Open of a version-9 file from a version-10 record: viewed, autosave off before anything is written, the record kept (dot 1791907011)', async () => {
-    const st = storedDrawing(), m = memoryStore(st.text)
-    const t = await mount(m.store)
-    await m.release()
-    expect(t.status()).toBe('autosave: saved')
-    const other = storedDrawing(), f = JSON.parse(other.text) as { version: number; document: Record<string, unknown> }
-    f.version = 9; delete f.document.masks
-    const input = t.host.querySelector('[data-testid="open"]') as HTMLInputElement
-    Object.defineProperty(input, 'files', { value: [new File([JSON.stringify(f)], '126.json')], configurable: true })
-    const before = m.writes.length
-    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); await wait(50) })
-    expect(bench().core.snapshot().lines.map(l => l.id)).toContain(other.line) // opened, in memory
-    expect(t.status()).toMatch(/^✗ autosave off: 旧格式画稿（第 9 版）/)
-    expect(m.writes.length).toBe(before)
-    expect(m.data[CURRENT]).toBe(st.text)
-  })
-
-  it('a version-5 record is restored converted (not backed up as unreadable, not empty), its original kept, then saved again in the current version, 10 (bowen 1791726456, 1791808493; dot 1791906394)', async () => {
+  it('a version-5 record is restored converted (not backed up, not empty), then saved again in the current version, 10 (bowen 1791726456, 1791808493)', async () => {
     const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
     const st = storedDrawing(), d = open(st.text)
     for (const v of ['view:0,0', 'view:90,0']) d.editIn(v, e => e.placeReference({ id: `${st.line}-${v}`, view: v, src: PNG, width: 40, height: 20, x: 3, y: 4, scale: 1, angle: 10, opacity: 0.5, visible: true, flipped: v === 'view:90,0' }))
@@ -111,13 +81,8 @@ describe('autosave in the bench', () => {
     const m = memoryStore(JSON.stringify(f))
     const t = await mount(m.store)
     await m.release()
-    expect(t.status()).toMatch(/^autosave: saved · the saved drawing was opened in the current format; the original was kept as before-upgrade-/)
+    expect(t.status()).toBe('autosave: saved')
     expect(m.writes.filter(k => k.startsWith('unreadable'))).toEqual([]) // never backed up as unreadable
-    // the original kept before the converted drawing replaces it (dot 1791906394)
-    const kept = m.writes.filter(k => k.startsWith('before-upgrade-'))
-    expect(kept.length).toBe(1)
-    expect(m.data[kept[0]!]).toBe(JSON.stringify(f))
-    expect(m.writes.indexOf(kept[0]!)).toBeLessThan(m.writes.indexOf(CURRENT))
     expect(bench().core.snapshot().lines.map(l => l.id)).toContain(st.line)
     expect(['view:0,0', 'view:90,0'].flatMap(v => bench().core.in(v).references())).toEqual(['view:0,0', 'view:90,0'].flatMap(v => d.in(v).references()))
     expect(JSON.parse(m.data[CURRENT]!).version).toBe(10) // the record is replaced only after the converted drawing is open
