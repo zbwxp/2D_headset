@@ -146,9 +146,9 @@ export function App() {
   const [layers, setLayers] = useState<Id[]>(['layer-1']) // the selected layers (docs/layer-scope-plan.md §1)
   // Z is a view tool: the camera is the app's, so it lives here, not in interaction (bowen 1791554415)
   const [zoomTool, setZoomTool] = useState(false)
-  // 从视角应用 (bowen 1791878160): on, the nine view buttons pick the view to apply from; Esc cancels
-  const [applyFrom, setApplyFrom] = useState(false), applyFromOn = useRef(false)
-  applyFromOn.current = applyFrom
+  // 从视角应用 (bowen 1791878160): on, the nine view buttons pick the view to apply from; Esc cancels. It belongs
+  // to the drawing and the view it was started in: another drawing or view ends it (dot 1791879488)
+  const [applyFromAt, setApplyFromAt] = useState<{ core: Core; view: string } | null>(null), applyFromOn = useRef(false)
   // the one display kind of the name labels (docs/name-labels-plan.md; bowen 1791731823; dot 1791732110): set only
   // when A / V actually hit a line, a layers row is clicked or a name is found; nothing else changes it
   const [labelKind, setLabelKind] = useState<LabelKind>('line')
@@ -244,6 +244,9 @@ export function App() {
   const px = Math.max(box.w / size.w, box.h / size.h)
 
   const shown = core.views().includes(view) ? view : 'view:0,0'
+  const applyFrom = applyFromAt !== null && applyFromAt.core === core && applyFromAt.view === shown
+  const setApplyFrom = (on: boolean) => setApplyFromAt(on ? { core, view: shown } : null)
+  applyFromOn.current = applyFrom
   // lines whose front differs from the angle baseline (stage 2): marked on the canvas
   const pending = core.pendingLines()
   // while posing, the drawing is the pose (Core.atPose: read only, drawn through the same reads as a view)
@@ -915,7 +918,7 @@ export function App() {
           }))}
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-          <button data-testid="apply-from" style={{ fontWeight: applyFrom ? 700 : 400, background: applyFrom ? '#fec' : undefined, whiteSpace: 'nowrap' }} onClick={() => setApplyFrom(a => !a)}
+          <button data-testid="apply-from" style={{ fontWeight: applyFrom ? 700 : 400, background: applyFrom ? '#fec' : undefined, whiteSpace: 'nowrap' }} onClick={() => setApplyFrom(!applyFrom)}
             title="把另一个视角里选中图层的曲线（端点位置和两个手柄）原样搬到当前视角；宽度等其他都不动；一步可撤销">从视角应用…</button>
           {applyFrom && <span style={{ color: '#a60' }}>选一个视角，把它的曲线搬到选中的图层（Esc 取消）</span>}
         </div>
