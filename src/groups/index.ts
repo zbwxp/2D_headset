@@ -38,9 +38,9 @@ const copy = (x: Group): Group => ({ id: x.id, layer: x.layer, lines: [...x.line
 
 export const get = (g: GroupsState, id: Id): Group => copy(raw(g, id))
 
-/** Groups in drawing order: layers in network order, each bottom → top. */
-export function list(g: GroupsState, n: net.NetworkState): Group[] {
-  return net.layers(n).flatMap(layer => idsOf(S(g).order, layer).map(id => copy(raw(g, id))))
+/** Groups in drawing order: layers in network order (or `layerOrder`, a view's at yaw < 0), each bottom → top. */
+export function list(g: GroupsState, n: net.NetworkState, layerOrder?: readonly net.Id[]): Group[] {
+  return (layerOrder ?? net.layers(n)).flatMap(layer => idsOf(S(g).order, layer).map(id => copy(raw(g, id))))
 }
 
 

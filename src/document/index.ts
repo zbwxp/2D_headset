@@ -101,6 +101,8 @@ interface Transaction {
   readonly appliedFrom: Map<Id, locks.View>
 }
 const transactions = new WeakMap<Editor, Transaction>()
+/** A view at yaw < 0: it stacks and reorders in the left layer order (docs/left-layer-order-checklist.md). */
+const leftSide = (key: string) => views.isView(key) && views.angle(key).yaw < 0
 
 export class Editor {
   private constructor() {}
@@ -144,8 +146,16 @@ export class Editor {
   renameGroup(id: Id, name: string) { names.rename(this.s.names, this.s.network, this.s.groups, 'group', id, name) }
   /** The layer's 元组件 type (an edit; "" for none). */
   layerType(id: Id, type: string) { meta.setType(this.s.meta, this.s.network, id, type) }
-  /** A state change: move a layer to `index` (bottom → top). */
-  reorderLayer(id: Id, index: number) { net.reorderLayer(this.s.network, id, index) }
+  /**
+   * A state change: move a layer to `index` (bottom → top) in the order of the view this edit is in: a view at yaw < 0
+   * moves the left order, any other today's (docs/left-layer-order-checklist.md; bowen 1791995249).
+   */
+  reorderLayer(id: Id, index: number) {
+    if (leftSide(this.tx.layer)) net.reorderLayerLeft(this.s.network, id, index)
+    else net.reorderLayer(this.s.network, id, index)
+  }
+  /** The left layer order dropped: yaw < 0 stacks as yaw ≥ 0 again (refused when there is none). */
+  resetLeftOrder() { net.resetLeftOrder(this.s.network) }
   /**
    * New-identity copy directly above the original (Q30). Every new id is
    * `${newId}/${old id}`. Joins, end strokes, fills and element states are copied;
@@ -826,7 +836,7 @@ function poseReader(s: State, pose: evaluate.Pose, idle: (what: string) => void)
     if (err instanceof evaluate.PoseNotFinite) throw new net.Refusal('pose-not-finite', err.message)
     throw err
   }
-  const { state, layer } = posedState(s, posed)
+  const { state, layer } = posedState(s, posed, pose.yaw < 0)
   return new PoseReader(new LayerReader(() => state, layer, idle))
 }
 
@@ -837,10 +847,12 @@ export class LayerReader {
 
   snapshot(): Snapshot {
     const s = this.state(), n = this.n
-    const groupList = groups.list(s.groups, n)
+    // a view at yaw < 0 stacks in the left order (docs/left-layer-order-checklist.md §2)
+    const left = leftSide(this.layer) ? net.leftOrder(n) : undefined
+    const groupList = groups.list(s.groups, n, left)
     const groupOfLine = new Map(groupList.flatMap(g => g.lines.map(l => [l, g.id] as const)))
     return structuredClone({
-      layers: net.layerRecords(n).map(l => { const type = meta.typeOf(s.meta, l.id); return { ...l, ...(type ? { type } : {}) } }),
+      layers: (left ? left.map(id => net.layerRecords(n).find(l => l.id === id)!) : net.layerRecords(n)).map(l => { const type = meta.typeOf(s.meta, l.id); return { ...l, ...(type ? { type } : {}) } }),
       points: net.points(n).map(p => {
         const end = joins.endStroke(s.joins, n, p.id)
         return { id: p.id, layer: p.layer, position: p.position, width: net.pointWidth(n, p.id), links: links.partners(s.links, p.id), ...(end ? { endStroke: end } : {}) }
@@ -1020,8 +1032,10 @@ function modelOf(s: State): evaluate.Model {
  * layer key is free in the copy (`pose`, `pose~1`, …; dot 1791684079). Every value is written,
  * end strokes set or cleared, so nothing copied from the front is left standing. No settling.
  */
-function posedState(s: State, posed: evaluate.Posed): { state: State; layer: string } {
+function posedState(s: State, posed: evaluate.Posed, left = false): { state: State; layer: string } {
   const c = structuredClone(s)
+  // at yaw < 0 the copy stacks in the left order (docs/left-layer-order-checklist.md §2); yaw 0 is the right side
+  if (left) net.useLeftOrder(c.network)
   const taken = new Set(net.shapeLayers(c.network).map(l => l.key))
   let layer = 'pose'
   for (let i = 1; taken.has(layer); i++) layer = `pose~${i}`

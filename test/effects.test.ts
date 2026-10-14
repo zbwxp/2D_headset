@@ -75,6 +75,8 @@ const CASES: Case[] = [
   { op: 'renameGroup', args: d => [groupOf(d, 'ab'), 'g1'] },
   { op: 'layerType', args: () => ['M', 'eye'] },
   { op: 'reorderLayer', args: () => ['M', 0] },
+  // the left layer order dropped after a move in a view at yaw < 0 (docs/left-layer-order-checklist.md)
+  { op: 'resetLeftOrder', args: () => [], setup: d => d.editIn('view:-90,0', e => e.reorderLayer('M', 0)) },
   { op: 'copyLayer', args: () => ['L', 'L2'] },
   { op: 'copyLayer', args: () => ['M', 'M2'], note: 'a typed layer: the type is copied', setup: d => d.edit(e => e.layerType('M', 'eye')) },
   { op: 'paste', args: d => [d.copy(['qr']), 'L', P(5, 5), 'p'] },
@@ -160,13 +162,13 @@ const CASES: Case[] = [
 
 /** What the operations wrote directly: the draft just before the settle against the published state. */
 function written(x: BeforeSettle) {
-  type Store = { layers: unknown; points: unknown; lines: unknown; usedPoints: unknown; usedLines: unknown; shapes: { layers: { key: string }[] } }
+  type Store = { layers: unknown; leftOrder?: unknown; points: unknown; lines: unknown; usedPoints: unknown; usedLines: unknown; shapes: { layers: { key: string }[] } }
   const store = (s: unknown) => (s as { network: { store: Store } }).network.store
   const ds = store(x.draft), ps = store(x.published)
   const json = (v: unknown) => JSON.stringify(v)
   const shapes = ds.shapes.layers.filter(l => json(l) !== json(ps.shapes.layers.find(q => q.key === l.key))).map(l => l.key)
   const shared: Shared[] = []
-  if ((['layers', 'points', 'lines', 'usedPoints', 'usedLines'] as const).some(k => json(ds[k]) !== json(ps[k]))) shared.push('structure')
+  if ((['layers', 'leftOrder', 'points', 'lines', 'usedPoints', 'usedLines'] as const).some(k => json(ds[k]) !== json(ps[k]))) shared.push('structure')
   for (const k of ['groups', 'joins', 'links', 'fills', 'masks', 'selection', 'apply', 'names', 'meta', 'animation', 'reference'] as const) {
     if (json((x.draft as unknown as Record<string, unknown>)[k]) !== json((x.published as unknown as Record<string, unknown>)[k])) shared.push(k)
   }

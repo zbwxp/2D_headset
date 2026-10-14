@@ -28,9 +28,11 @@ export const FORMAT = 'headset-v3-drawing'
  * - 11: a reference picture's `view` may be `playback` (docs/playback-edit-checklist.md §5); a 10 reader refuses it
  *   (dot 1791976669); converted to 12 when opened, each arc taking the front's radius (bowen 1791985326).
  * - 12: an arc's radius is one value of its join row, in every view; shape layers hold none
- *   (docs/arc-radius-shared-checklist.md).
+ *   (docs/arc-radius-shared-checklist.md); read as it is when opened (a 13 file without a left layer order).
+ * - 13: an optional left layer order (`network.leftOrder`, the stacking at yaw < 0; docs/left-layer-order-checklist.md);
+ *   a 12 reader would ignore it and stack wrongly.
  */
-export const VERSION = 12
+export const VERSION = 13
 
 export function save(core: Core): string {
   return JSON.stringify({ format: FORMAT, version: VERSION, document: exportState(core) })

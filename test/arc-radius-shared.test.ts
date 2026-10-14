@@ -36,10 +36,10 @@ describe('one radius in every view and at every pose', () => {
     for (const p of POSES) expect(radiusAt(d, p)).toBe(10)
   })
 
-  it('saved as version 12: the radius is in the row, no shape layer holds one; opened equal', () => {
+  it('saved (version 12 on, now 13): the radius is in the row, no shape layer holds one; opened equal', () => {
     const d = corner()
     const f = JSON.parse(save(d))
-    expect(f.version).toBe(12)
+    expect(f.version).toBe(13)
     expect(f.document.joins.rows).toEqual([{ point: 'b', lines: ['ab', 'bc'], mode: 'arc', radius: 10 }])
     for (const L of f.document.network.shapes.layers) expect(Object.hasOwn(L, 'radius')).toBe(false)
     expect(save(open(save(d)))).toBe(save(d))
@@ -54,7 +54,7 @@ describe('a version 11 file (dot 1791985599)', () => {
     const d = open(JSON.stringify(f))
     for (const k of d.views()) expect([k, radiusIn(d, k)]).toEqual([k, 10])
     for (const p of POSES) expect(radiusAt(d, p)).toBe(10)
-    expect(JSON.parse(save(d)).version).toBe(12)
+    expect(JSON.parse(save(d)).version).toBe(13)
   })
 
   it('views that agree: opens as the same drawing', () => {

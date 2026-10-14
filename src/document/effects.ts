@@ -67,6 +67,8 @@ export const EFFECTS: Record<string, Effect> = {
   renameGroup: full({ reads: 'draft', shared: ['names'] }),
   layerType: full({ reads: 'draft', shared: ['meta'] }),
   reorderLayer: full({ reads: 'draft', shared: ['structure'] }),
+  // the left layer order dropped (docs/left-layer-order-checklist.md §3)
+  resetLeftOrder: full({ reads: 'draft', shared: ['structure'] }),
   // copies carry no corrections (docs/correction-cleanup-checklist.md §1)
   copyLayer: full({ reads: 'settled-trial', shapes: 'all-views', records: true, shared: [...STRUCTURAL, 'meta'] }),
   // paste selects what it pasted (its nested select)

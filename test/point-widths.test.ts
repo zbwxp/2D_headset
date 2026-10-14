@@ -39,11 +39,11 @@ describe('widths belong to points', () => {
     d.undo()
     expect(width(d, 'p')).toBe(1)
   })
-  it('saved and opened unchanged (version 12)', () => {
+  it('saved and opened unchanged (current version, 13)', () => {
     const d = pair()
     d.edit(e => e.pointWidth('p', 6))
     const text = save(d)
-    expect(JSON.parse(text).version).toBe(12)
+    expect(JSON.parse(text).version).toBe(13)
     expect(width(open(text), 'p')).toBe(6)
     expect(save(open(text))).toBe(text)
   })
@@ -62,7 +62,7 @@ describe('widths belong to points', () => {
     const back = open(JSON.stringify(v9))
     expect(['a', 'p', 'c'].map(id => width(back, id))).toEqual([3, 5, 1])
     expect(back.in('view:90,0').snapshot().points.map(p => p.width)).toEqual([1, 1, 1])
-    expect(JSON.parse(save(back)).version).toBe(12)
+    expect(JSON.parse(save(back)).version).toBe(13)
   })
   it('a version 8 file with a bad old width is refused, not opened with another width (dot 1791821589)', () => {
     const d = pair()

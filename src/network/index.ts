@@ -55,8 +55,10 @@ type Mutable<T> = { -readonly [K in keyof T]: T[K] }
 interface TPoint { id: Id; layer: Id }
 interface TLine { id: Id; a: Id; b: Id; state: ElementState }
 interface Store {
-  /** Bottom → top. */
+  /** Bottom → top: the stacking at yaw ≥ 0. */
   layers: Mutable<Layer>[]
+  /** The stacking at yaw < 0, layer ids bottom → top (docs/left-layer-order-checklist.md); absent = the same as `layers`. */
+  leftOrder?: Id[]
   points: TPoint[]
   lines: TLine[]
   /** Every point / line id ever used in this document. Ids are never reused (dot 1791427637). */
@@ -334,7 +336,15 @@ export function restore(v: unknown, layer: string): NetworkState {
   for (const l of lines) if (!ul.has(l.id)) d.fail(`line ${l.id} is not marked as used`)
   const sh = shapes.restore(o.shapes, { points: points.map(p => p.id), lines: lines.map(l => l.id) })
   if (!shapes.hasLayer(sh, layer)) d.fail(`there is no shape layer ${layer}`)
-  return { store: { layers, points, lines, usedPoints, usedLines, shapes: sh }, layer } as Handle as unknown as NetworkState
+  // the left order (archive 13): exactly the layer ids, each once, when present (dot 1791997825)
+  let leftOrder: Id[] | undefined
+  if (Object.hasOwn(o, 'leftOrder')) {
+    leftOrder = d.arr(o.leftOrder, 'left layer order').map((x, i) => d.str(x, `left layer order ${i}`))
+    d.unique(leftOrder, 'left layer order')
+    for (const id of leftOrder) if (!layerIds.has(id)) d.fail(`left layer order names a missing layer ${id}`)
+    if (leftOrder.length !== layers.length) d.fail('left layer order does not hold every layer')
+  }
+  return { store: { layers, points, lines, usedPoints, usedLines, shapes: sh, ...(leftOrder ? { leftOrder } : {}) }, layer } as Handle as unknown as NetworkState
 }
 
 // ---- copies in and out ---------------------------------------------------
@@ -620,6 +630,9 @@ export function addLayer(n: NetworkState, id: Id, name: string = id, above?: Id)
   const at = above === undefined ? list.length : list.findIndex(l => l.id === above) + 1
   if (above !== undefined && at === 0) throw new Error(`No layer ${above}`)
   list.splice(at, 0, { id, name })
+  // the left order gets it too, directly above the same layer, else on top
+  const left = S(n).leftOrder
+  if (left) left.splice(above === undefined ? left.length : left.indexOf(above) + 1, 0, id)
 }
 
 export function renameLayer(n: NetworkState, id: Id, name: string) {
@@ -638,6 +651,30 @@ export function reorderLayer(n: NetworkState, id: Id, index: number) {
   list.splice(Math.max(0, Math.min(index, list.length)), 0, layer!)
 }
 
+/** The stacking at yaw < 0 (bottom → top), or undefined when it is the same as `layers`. */
+export const leftOrder = (n: NetworkState): Id[] | undefined => (S(n).leftOrder ? [...S(n).leftOrder!] : undefined)
+/** Move a layer to `index` in the left order; the first move starts it as a copy of `layers` (a state change). */
+export function reorderLayerLeft(n: NetworkState, id: Id, index: number) {
+  if (!Number.isInteger(index)) throw new Error('Order index must be an integer')
+  if (!hasLayer(n, id)) throw new Error(`No layer ${id}`)
+  const list = (S(n).leftOrder ?? S(n).layers.map(l => l.id)).filter(x => x !== id)
+  list.splice(Math.max(0, Math.min(index, list.length)), 0, id)
+  S(n).leftOrder = list
+}
+/** The left order dropped: yaw < 0 stacks as `layers` again. Refused when there is none. */
+export function resetLeftOrder(n: NetworkState) {
+  if (!S(n).leftOrder) throw new Refusal('left-order-none', 'left-order-none: the left layer order is already the same as the right one')
+  delete S(n).leftOrder
+}
+/** On a private copy only (a pose's reader at yaw < 0): `layers` takes the left order. */
+export function useLeftOrder(n: NetworkState) {
+  const left = S(n).leftOrder
+  if (!left) return
+  const byId = new Map(S(n).layers.map(l => [l.id, l] as const))
+  S(n).layers = left.map(id => byId.get(id)!)
+  delete S(n).leftOrder
+}
+
 /** Remove a layer that holds no line; its leftover (isolated) points go with it. */
 export function removeLayerIfEmpty(n: NetworkState, ch: Changes, id: Id): boolean {
   if (S(n).lines.some(l => rawPoint(n, l.a).layer === id)) return false
@@ -646,6 +683,7 @@ export function removeLayerIfEmpty(n: NetworkState, ch: Changes, id: Id): boolea
   for (const p of gone) shapes.removePoint(SH(n), p)
   ch.deletedPoints.push(...gone)
   S(n).layers = S(n).layers.filter(l => l.id !== id)
+  if (S(n).leftOrder) S(n).leftOrder = S(n).leftOrder!.filter(x => x !== id)
   return true
 }
 

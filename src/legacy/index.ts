@@ -1,7 +1,7 @@
 // legacy — opening drawings saved in older formats (bowen 1791820592, dot 1791820713): this one module turns a version
-// 5–11 document into version 12; the archive's normal reader then takes it. Nothing else in the program knows an old
+// 5–12 document into version 13; the archive's normal reader then takes it. Nothing else in the program knows an old
 // format. For a release that drops old files: delete this folder and its one call in src/archive/index.ts.
-// The conversions, each approved by bowen: 5 → 6 (1791726456), 6 → 7 (1791808493), 7 / 8 → 9 (1791820592); 9 → 10 (1791907933) only adds an empty mask list (docs/mask-p2-checklist.md §3); 10 → 11 (1791976935) changes nothing (11 only allows playback pictures); 11 → 12 (1791985326) keeps one arc radius per join, the front's.
+// The conversions, each approved by bowen: 5 → 6 (1791726456), 6 → 7 (1791808493), 7 / 8 → 9 (1791820592); 9 → 10 (1791907933) only adds an empty mask list (docs/mask-p2-checklist.md §3); 10 → 11 (1791976935) changes nothing (11 only allows playback pictures); 11 → 12 (1791985326) keeps one arc radius per join, the front's; 12 → 13 changes nothing (13 only adds the optional left layer order).
 import * as net from '../network'
 import * as reference from '../reference'
 
@@ -58,14 +58,21 @@ export function fromV11(doc: unknown): unknown {
   }
 }
 
-/** An old document as version 12, or a refusal for a version that cannot be read. */
+/** A version 12 drawing as version 13: as stored (13 only adds the optional left layer order). */
+export function fromV12(doc: unknown): unknown {
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) throw new Error('open-failed: the document must be an object')
+  return doc
+}
+
+/** An old document as version 13, or a refusal for a version that cannot be read. */
 export function upgrade(version: unknown, doc: unknown): unknown {
-  if (version === 5) return fromV11(fromV10(fromV9(fromV8(fromV6(fromV5(doc))))))
-  if (version === 6) return fromV11(fromV10(fromV9(fromV8(fromV6(doc)))))
-  if (version === 7 || version === 8) return fromV11(fromV10(fromV9(fromV8(doc))))
-  if (version === 9) return fromV11(fromV10(fromV9(doc)))
-  if (version === 10) return fromV11(fromV10(doc))
-  if (version === 11) return fromV11(doc)
+  if (version === 5) return fromV12(fromV11(fromV10(fromV9(fromV8(fromV6(fromV5(doc)))))))
+  if (version === 6) return fromV12(fromV11(fromV10(fromV9(fromV8(fromV6(doc))))))
+  if (version === 7 || version === 8) return fromV12(fromV11(fromV10(fromV9(fromV8(doc)))))
+  if (version === 9) return fromV12(fromV11(fromV10(fromV9(doc))))
+  if (version === 10) return fromV12(fromV11(fromV10(doc)))
+  if (version === 11) return fromV12(fromV11(doc))
+  if (version === 12) return fromV12(doc)
   throw new Error(`open-failed: unsupported version ${String(version)}`)
 }
 
