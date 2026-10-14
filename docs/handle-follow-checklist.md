@@ -11,7 +11,9 @@ Interaction only: no core change, no stored relation (as v103: "the result is or
 - **Degenerate:** an old or new chord shorter than 1e-9 → that line's handles do not follow (v103 fades its turn near a collapsed chord; here: unchanged).
 - **The switch:** 「手柄跟随」 in the toolbar, **on by default** (a drawing tool option, not saved in the drawing); off = today's behaviour.
 - **One edit, one undo step:** the `translate` and the handles' `moveHandle` calls in the same edit.
-- **The drag ghost** shows the followed handles: the follow is one pure function used by the commit and by the preview data (`Preview.drag.handles`), so what is shown is what is written.
+- **Frozen at the start** (dot 1791946066): the drawing as it was when the drag began and the switch's state are taken then; every preview and the commit are computed from that one state (never from the last preview), and a line two moved ends share is computed once.
+- **The drag ghost is core's preview of the release's op** (dot 1791946066, as the deform tool): the translate and the followed handles as one op, previewed through `core.preview` (its settle, mirror and links included) and committed as the same op; the ghost draws every line it changes (`Preview.drag.lines`). About 7 ms a move on 211.json.
+- Points moved by links or binds are settled by core as today: their lines' handles are not promised to keep their shape.
 
 ## 2. Straight (S)
 - **S** (no modifier, focus not in a field) with lines selected: each selected line's handles go to its chord at 1/3 and 2/3 (`ha = (b − a)/3`, `hb = (a − b)/3`) — a straight line. One edit, one undo step. With no line selected: the status line says 「先选中要拉直的线」 and nothing changes. With V a selected curve's lines all go straight.
