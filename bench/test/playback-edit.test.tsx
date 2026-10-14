@@ -160,3 +160,54 @@ describe('playback pictures (§5; bowen 1791970202)', () => {
     expect(bench().core.in('view:0,0').references().some(r => r.id === id)).toBe(false)
   })
 })
+
+describe('review fixes (dot 1791978385)', () => {
+  it('V picks by editing\'s rules: an unselected layer\'s line is not taken; a line the masks hide wholly gives the press to the visible line under it', async () => {
+    const t = await setup(), k = t.k, Y = t.Y
+    await act(async () => {
+      bench().core.edit(e => {
+        e.layer(`B${k}`, `B${k}`)
+        const P = (id: string, layer: string, x: number, y: number) => ({ id, layer, position: { x, y } })
+        e.line(`s1${k}`, P(`c1${k}`, `B${k}`, 300, Y - 20), P(`c2${k}`, `B${k}`, 400, Y - 20)); e.line(`s2${k}`, `c2${k}`, P(`c3${k}`, `B${k}`, 400, Y + 100)); e.line(`s3${k}`, `c3${k}`, P(`c4${k}`, `B${k}`, 300, Y + 100)); e.line(`s4${k}`, `c4${k}`, `c1${k}`)
+        e.line(`x${k}`, P(`xa${k}`, 'layer-1', 310, Y), P(`xb${k}`, 'layer-1', 390, Y)) // wholly inside the square
+        e.line(`ww${k}`, P(`wa${k}`, 'layer-1', 310, Y + 2), P(`wb${k}`, 'layer-1', 390, Y + 2))
+      })
+      const sq = bench().core.snapshot().loops.find(l => l.route.some(u => u.line === `s1${k}`))!.id
+      bench().core.edit(e => { e.fill(sq, '#ccc'); e.mask(`m${k}`, [sq], { kind: 'line', id: `x${k}` }, 'inverse') })
+      bench().refresh()
+    })
+    await t.play(30, 0, 'v')
+    const before = save(bench().core)
+    await t.drag({ x: 350, y: Y - 20 }, { x: 5, y: 5 }) // the square's top edge: layer B is not selected
+    expect(save(bench().core)).toBe(before)
+    const x0 = t.posed(`xa${k}`), w0 = t.posed(`wa${k}`)
+    await t.drag({ x: 350, y: Y }, { x: 4, y: 3 }) // on x, which is hidden: w under it is taken
+    expect([near(t.posed(`wa${k}`), { x: w0.x + 4, y: w0.y + 3 }), near(t.posed(`xa${k}`), x0)]).toEqual([true, true])
+  })
+
+  it('A: the hovered line keeps its handles while the pointer travels off the line to a handle; the drag there corrects it', async () => {
+    const t = await setup(), v = `v${t.k}`
+    await t.play(30, 0)
+    const l = t.posedLine(v), p = t.posed(`p${t.k}`), tip = { x: p.x + l.ha.x, y: p.y + l.ha.y }
+    await t.hover({ x: p.x + 0.5 * l.ha.x + 5, y: p.y + 0.5 * l.ha.y + 1 })
+    await t.hover({ x: tip.x + 9, y: tip.y - 9 }) // off the line, on the way
+    expect(t.svg.querySelector(`[data-pose-handle="${v}:a"]`)).not.toBeNull()
+    await t.hover(tip)
+    await t.drag(tip, { x: 4, y: 4 })
+    expect(bench().log[0]!.calls).toMatch(/^correct\(.*handles/)
+  })
+
+  it('「刚才改了什么」 follows every playback write: after a correction at yaw 30, a drag at view 90,0 replaces it', async () => {
+    const t = await setup(), q = `q${t.k}`
+    await t.play(30, 0)
+    await t.drag(t.posed(q), { x: 5, y: 5 })
+    expect(t.host.querySelector('[data-testid="last-change"]')!.textContent).toContain('加修正')
+    await t.pose(90, 0)
+    const at = bench().core.in('view:90,0').snapshot().points.find(x => x.id === q)!.position
+    await t.drag(at, { x: 6, y: 2 })
+    const text = t.host.querySelector('[data-testid="last-change"]')!.textContent!
+    expect(text).toContain('yaw 90, pitch 0')
+    expect(text).toContain(`视角 90,0 的点 ${q} 被移动了 (6, 2)`)
+    expect(text).not.toContain('加修正')
+  })
+})

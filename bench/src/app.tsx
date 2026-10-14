@@ -356,7 +356,18 @@ export function App() {
   // with its drawing and view and dropped by every write, so a click between a write and the next render never uses an
   // old cut (dot 1791907635); interaction asks through env.cut
   const cutRef = useRef<{ core: Core; view: string; lines: Map<string, Area>; fills: Map<string, Area> } | null>(null)
-  const logged = useRef(loggedFor(() => (restoringNow.current ? 'locked' : posing.current ? 'playback' : 'edit'), () => { cutRef.current = null; saver.current?.want() }, () => (posing.current ? viewAtPose(poseRef.current) : null))).current
+  // 「刚才改了什么」 (§3) for every write made in playback — a correction, a deletion, a view's own edit, a visibility switch
+  // (dot 1791978385): the model before it is kept from entering playback and from each write
+  const changeBase = useRef<null | { core: Core; model: Model }>(null)
+  const noteChange = () => {
+    if (!posing.current || !poseRef.current) return
+    const now = core.model(), base = changeBase.current
+    changeBase.current = { core, model: now }
+    if (!base || base.core !== core) return
+    const lines = changesBetween(base.model, now, core.snapshot())
+    setLastChange({ pose: { ...poseRef.current }, lines: lines[0] === '（没有数据变化）' ? [`（没有改动视角或修正：${log[0]?.calls ?? ''}）`] : lines })
+  }
+  const logged = useRef(loggedFor(() => (restoringNow.current ? 'locked' : posing.current ? 'playback' : 'edit'), () => { cutRef.current = null; saver.current?.want(); noteChange() }, () => (posing.current ? viewAtPose(poseRef.current) : null))).current
   const svg = useRef<SVGSVGElement>(null)
   // one screen pixel in document units, from the canvas's real size (the viewBox is fitted, so the
   // larger ratio wins); the old fixed 900-pixel width made picking about half as wide as meant
@@ -399,6 +410,8 @@ export function App() {
   const ink = inkOn ? inkCache.current.build(g, { ...s, zones }, maskCut) : null, inkOf = new Map((ink?.pieces ?? []).map(p => [p.source.id, p] as const))
   const inkDefects = new Map((ink?.diagnostics ?? []).filter(d => d.status === 'defect').map(d => [d.source.id, d.reason ?? ''] as const))
   cutRef.current = posed ? null : { core, view: shown, ...cutsFor(s, g, masksOf, inkOf) }
+  // between the views, what the masks leave of each masked line in this frame: playback's picks follow it as editing's do (dot 1791978385)
+  const poseCut = posed && !(posed instanceof Error) && masksOn && inkOn ? cutsFor(s, g, masksOf, inkOf).lines : null
   // one visibility rule for the playback drag's picking, its point marks and its ghost, computed once
   // per frame (dot 1791697776; docs/stage3b-pkg5-problems.md): the visible lines and the points they end at
   const shownLines = s.lines.filter(l => l.state.visible), shownEnds = new Set(shownLines.flatMap(l => [l.a, l.b]))
@@ -751,8 +764,11 @@ export function App() {
   type PlaybackPick = { kind: 'points'; starts: Record<Id, Vec> } | { kind: 'handle'; line: Id; end: 'a' | 'b'; tip: Vec; point: Vec }
   /** The nearest visible line within the line reach, in this frame's geometry (V's press, A's hover). */
   const shownLineAt = (at: Vec): Id | null => {
-    const ids = new Set(shownLines.map(l => l.id))
-    const hit = g.lines.filter(G => ids.has(G.id)).map(G => ({ id: G.id, d: curveDistance(G.curve, at) })).filter(x => x.d <= REACH.line * px).sort((a, b) => a.d - b.d)[0]
+    // editing's rules (dot 1791978385): only the selected layers' visible lines; a masked line by what is drawn of it
+    const layerOf = new Map(s.points.map(p => [p.id, p.layer]))
+    const ids = new Set(shownLines.filter(l => selLayers.includes(layerOf.get(l.a) ?? '')).map(l => l.id))
+    const dist = (G: { id: Id; curve: readonly Vec[] }) => { const cut = poseCut?.get(G.id); return cut ? maskDistance(cut, at) : curveDistance(G.curve, at) }
+    const hit = g.lines.filter(G => ids.has(G.id)).map(G => ({ id: G.id, d: dist(G) })).filter(x => x.d <= REACH.line * px).sort((a, b) => a.d - b.d)[0]
     return hit?.id ?? null
   }
   /**
@@ -763,7 +779,7 @@ export function App() {
     if (ix.tool === 'A') {
       // the nearest within reach: a visible line's end point, or a handle of the hovered line; a tie goes to the point
       // (a handle of zero length sits on its point)
-      const cands: { d: number; rank: number; pick: PlaybackPick }[] = s.points.filter(p => shownEnds.has(p.id))
+      const cands: { d: number; rank: number; pick: PlaybackPick }[] = s.points.filter(p => shownEnds.has(p.id) && selLayers.includes(p.layer))
         .map(p => ({ d: Math.hypot(p.position.x - at.x, p.position.y - at.y), rank: 0, pick: { kind: 'points', starts: { [p.id]: p.position } } as PlaybackPick }))
         .filter(x => x.d <= REACH.point * px)
       const hl = poseHover ? shownLines.find(l => l.id === poseHover) : undefined
@@ -818,8 +834,7 @@ export function App() {
       stop()
       if (!moved) return
       if (core !== bound.core || save(core) !== bound.text) { note('playback drag cancelled: the drawing changed during the drag'); bump(); return }
-      const before = core.model()
-      try { logged(core).edit(x => x.correct(bound.pose, targetsAt(offset(ev)))); setLastChange({ pose: bound.pose, lines: changesBetween(before, core.model(), core.snapshot()) }) }
+      try { logged(core).edit(x => x.correct(bound.pose, targetsAt(offset(ev)))) }
       catch (err) { setCorrRefusal({ message: (err as Error).message, objects: err instanceof Refusal ? err.objects : [] }) }
       bump()
     }
@@ -859,10 +874,11 @@ export function App() {
     gesture.current?.cancel('entering playback')
     ix.cancelAll(); setApplyFrom(false)
     posing.current = true; poseGen.current++; refGen.current++
+    changeBase.current = { core, model: core.model() }
     const [yaw, pitch] = shown.slice('view:'.length).split(',').map(Number)
     setPose({ yaw: yaw!, pitch: pitch! }); setCorrRefusal(null)
   }
-  const stopPose = () => { gesture.current?.cancel('leaving playback'); refGen.current++; posing.current = false; setPose(null); setCorrRefusal(null); setLastChange(null); setPoseHover(null) }
+  const stopPose = () => { gesture.current?.cancel('leaving playback'); refGen.current++; posing.current = false; changeBase.current = null; setPose(null); setCorrRefusal(null); setLastChange(null); setPoseHover(null) }
   /** A valid pose change ends a playback drag first: a target belongs to one pose (dot 1791696847). */
   /**
    * The one update of a pose that takes effect (dot 1791727663, 1791727680): the pose and both number fields
@@ -1067,8 +1083,8 @@ export function App() {
   /** 「删除修正拐点」 (§4): one uncorrect, its change shown as a drag's is. */
   const removeCorrection = (control: (typeof correctedHere.list)[number]['control']) => {
     if (!pose) return
-    const before = core.model(), at = { ...pose }
-    try { logged(core).edit(x => x.uncorrect(at, control)); setCorrRefusal(null); setLastChange({ pose: at, lines: changesBetween(before, core.model(), core.snapshot()) }) }
+    const at = { ...pose }
+    try { logged(core).edit(x => x.uncorrect(at, control)); setCorrRefusal(null) }
     catch (err) { setCorrRefusal({ message: (err as Error).message, objects: err instanceof Refusal ? err.objects : [] }) }
     bump()
   }
@@ -1342,7 +1358,8 @@ export function App() {
             if (e.buttons !== 0) return
             rehover.current()
             // playback with A at a correction pose: the line under the pointer shows its handles (§2)
-            if (playbackMarks) { const h = shownLineAt(toDoc(e)); if (h !== poseHover) setPoseHover(h) }
+            // the last line hovered keeps its handles until another line is hovered, so the pointer can travel to a handle (dot 1791978385)
+            if (playbackMarks) { const h = shownLineAt(toDoc(e)); if (h && h !== poseHover) setPoseHover(h) }
           }}
           onPointerUp={e => { hoverAt.current = { clientX: e.clientX, clientY: e.clientY, mods: mods(e) } }} onPointerLeave={() => { hoverAt.current = null; ix.pointerHover(null) }} onWheel={onWheel}
           // the right click itself is the unmoved right press (onDown); a right press during a left
@@ -1454,7 +1471,7 @@ export function App() {
             return <g key={'ph' + l.id + end} data-pose-handle={`${l.id}:${end}`}><line x1={point.x} y1={point.y} x2={tip.x} y2={tip.y} stroke="#888" strokeWidth={px} />
               <rect x={tip.x - 3 * px} y={tip.y - 3 * px} width={6 * px} height={6 * px} fill={here ? '#f80' : '#fff'} stroke="#06f" strokeWidth={px} /></g>
           }))}
-          {pose && playbackMarks && [...shownEnds].map(pid => { const p = pos(pid), here = correctedHere.points.has(pid)
+          {pose && playbackMarks && [...shownEnds].filter(pid => selLayers.includes(s.points.find(p => p.id === pid)!.layer)).map(pid => { const p = pos(pid), here = correctedHere.points.has(pid)
             return <g key={'pm' + pid} data-pose-point={pid}>{here && <circle data-corrected-here={pid} cx={p.x} cy={p.y} r={6.5 * px} fill="none" stroke="#f80" strokeWidth={1.5 * px} />}
               <circle cx={p.x} cy={p.y} r={3 * px} fill="#fff" stroke="#06f" strokeWidth={px} /></g> })}
           {!inBetween && ghostLines.map((c, i) => <path key={'g' + i} data-drag-ghost={i} d={path(c)} fill="none" stroke="#06f" strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />)}
