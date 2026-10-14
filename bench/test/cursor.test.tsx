@@ -49,10 +49,10 @@ describe('the canvas cursor', () => {
   it('each tool shows its own: Pen a pen, Fill a bucket, A and V a hand, Z zoom, others the arrow', async () => {
     const t = await setup()
     const seen: [string, string][] = []
-    for (const k of ['p', 'f', 'a', 'v', 's', 'b', 'z']) { await t.tool(k); seen.push([k, t.cursor()]) }
+    for (const k of ['p', 'f', 'a', 'v', 'u', 'b', 'z']) { await t.tool(k); seen.push([k, t.cursor()]) }
     // jsdom normalises the url's quoting; compare by the picture's identity (its hotspot) and the keywords
     expect(seen.map(([k, c]) => [k, c.includes('data:image/svg+xml') ? (c.includes(' 2 2') ? 'pen' : c.includes(' 3 21') ? 'bucket' : '?') : c])).toEqual(
-      [['p', 'pen'], ['f', 'bucket'], ['a', 'grab'], ['v', 'grab'], ['s', 'default'], ['b', 'default'], ['z', 'zoom-in']])
+      [['p', 'pen'], ['f', 'bucket'], ['a', 'grab'], ['v', 'grab'], ['u', 'default'], ['b', 'default'], ['z', 'zoom-in']])
     void PEN; void BUCKET
   })
 
@@ -72,7 +72,7 @@ describe('the canvas cursor', () => {
     expect(t.cursor()).toBe('grab')
     await t.press(); await act(async () => { window.dispatchEvent(new Event('blur')) })
     expect(t.cursor()).toBe('grab')
-    await t.press(); await t.tool('s')
+    await t.press(); await t.tool('u') // S is Straight now (bowen 1791944499)
     expect(t.cursor()).toBe('default')
   })
 

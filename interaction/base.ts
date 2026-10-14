@@ -8,7 +8,8 @@ import { fromError, type Feedback } from './feedback'
 export type Id = string
 export type Unit = Snapshot['selection'][number]
 export type Tool = 'pen' | 'V' | 'A' | 'split' | 'bind' | 'merge' | 'link' | 'unbind' | 'join' | 'fill' | 'deform'
-export interface Options { joinMode: 'bound' | 'smooth' | 'cusp' | 'arc'; radius: number; color: string }
+/** `follow`: a move's handles follow their lines' chords (docs/handle-follow-checklist.md; on by default). */
+export interface Options { joinMode: 'bound' | 'smooth' | 'cusp' | 'arc'; radius: number; color: string; follow: boolean }
 /** `meta`: ⌘ or Ctrl, for the shortcuts; `ctrl` alone and `repeat` (a held key) are read by moving with arrow keys only. */
 export interface Mods { shift?: boolean; alt?: boolean; meta?: boolean; ctrl?: boolean; repeat?: boolean }
 
@@ -60,7 +61,8 @@ const ORDER = { point: 0, handle: 1, line: 2 } as const
 /** What to show, as plain data (the view draws it). */
 export interface Preview {
   /** A drag in progress: the units it moves and the offset so far. */
-  drag?: { units: Unit[]; offset: Vec }
+  /** `handles`: the handle offsets the move makes follow (handle follow), as the commit writes them. */
+  drag?: { units: Unit[]; offset: Vec; handles: { line: Id; end: 'a' | 'b'; offset: Vec }[] }
   /** A selection box being dragged: right = lines wholly inside (`whole`), left = lines it touches. */
   box?: { from: Vec; to: Vec; whole: boolean }
   /** Groups of a pending cut, shown grey. */

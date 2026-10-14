@@ -30,7 +30,7 @@ describe('a focused button never blocks a shortcut (bowen 1791556992)', () => {
     await act(async () => { keyOn(zoom, 'z', true) })
     expect(bench().core.snapshot().points.find(p => p.id === 's1')!.position).toEqual({ x: 0, y: 0 })
 
-    const field = [...host.querySelectorAll('input')].find(i => i.type !== 'file')!
+    const field = [...host.querySelectorAll('input')].find(i => !['file', 'checkbox', 'radio', 'range', 'color'].includes(i.type))! // a field that takes typing
     await act(async () => { field.focus(); keyOn(field, 'a') })
     expect(bench().ix.tool).toBe('V')
   })

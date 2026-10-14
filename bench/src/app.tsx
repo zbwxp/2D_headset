@@ -136,7 +136,7 @@ function v2Eye() {
   })
 }
 
-const TOOLS: [Tool, string][] = [['pen', 'Pen P'], ['V', 'V group'], ['A', 'A direct'], ['split', 'Split S'], ['bind', 'Bind B'], ['merge', 'Merge pos M'], ['link', 'Link L'], ['unbind', 'Unbind U'], ['join', 'Join J'], ['fill', 'Fill F'], ['deform', '四角/曲边']]
+const TOOLS: [Tool, string][] = [['pen', 'Pen P'], ['V', 'V group'], ['A', 'A direct'], ['split', 'Split'], ['bind', 'Bind B'], ['merge', 'Merge pos M'], ['link', 'Link L'], ['unbind', 'Unbind U'], ['join', 'Join J'], ['fill', 'Fill F'], ['deform', '四角/曲边']]
 
 /** The autosave store (docs/autosave-plan.md): IndexedDB in a browser; a test may give its own; none without either. */
 const autosaveStore = (): Store | undefined => (window as unknown as { benchStore?: Store }).benchStore ?? (typeof indexedDB !== 'undefined' ? indexedDbStore() : undefined)
@@ -906,7 +906,9 @@ export function App() {
     return s.lines.filter(l => pts.has(l.a) || pts.has(l.b) || hs.has(l.id + 'a') || hs.has(l.id + 'b')).map(l => {
       const mv = (id: Id) => (pts.has(id) ? add(pos(id), d.offset) : pos(id))
       const a = mv(l.a), b = mv(l.b)
-      return [a, add(a, add(l.ha, hs.has(l.id + 'a') ? d.offset : P(0, 0))), add(b, add(l.hb, hs.has(l.id + 'b') ? d.offset : P(0, 0))), b]
+      // a followed handle is drawn where the release writes it (handle follow)
+      const followed = (end: 'a' | 'b') => d.handles.find(h => h.line === l.id && h.end === end)?.offset
+      return [a, add(a, followed('a') ?? add(l.ha, hs.has(l.id + 'a') ? d.offset : P(0, 0))), add(b, followed('b') ?? add(l.hb, hs.has(l.id + 'b') ? d.offset : P(0, 0))), b]
     })
   })()
   // the refusal mark: a red cross on each object it names
@@ -968,6 +970,8 @@ export function App() {
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
           {TOOLS.map(([t, label]) => { const on = !zoomTool && ix.tool === t; return <button key={t} style={{ fontWeight: on ? 700 : 400, background: on ? '#cde' : undefined }} onClick={() => chooseTool(t)}>{label}</button> })}
         </div>
+        {/* handle follow (docs/handle-follow-checklist.md): a move's lines keep their shape along their chords; S straightens */}
+        <label title="移动端点时，相连线的手柄跟着弦转动和伸缩，形状不变；S = 把选中的线拉直"><input type="checkbox" data-testid="handle-follow" checked={opts.follow} onChange={e => ix.setOptions({ follow: e.target.checked })} /> 手柄跟随 · S 拉直</label>
         {ix.tool === 'join' && <div>
           <select value={opts.joinMode} onChange={e => ix.setOptions({ joinMode: e.target.value as typeof opts.joinMode })}><option>bound</option><option>smooth</option><option>cusp</option><option>arc</option></select>
           {opts.joinMode === 'arc' && <Slider label="r" value={opts.radius} identity="join-radius" accept={v => v > 0} track={null} steps={{ step: 1, long: 10, short: 0.1 }}
@@ -1274,7 +1278,7 @@ export function App() {
             return <path key={'cg' + l.id} data-ghost={l.id} d={path([a, add(a, l.ha), add(b, l.hb), b])} fill="none" stroke="#06f" strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />
           })}
           {pose && corrGhost && <circle data-ghost-point={corrGhost.id} cx={corrGhost.to.x} cy={corrGhost.to.y} r={4 * px} fill="#06f" />}
-          {!pose && ghostLines.map((c, i) => <path key={'g' + i} d={path(c)} fill="none" stroke="#06f" strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />)}
+          {!pose && ghostLines.map((c, i) => <path key={'g' + i} data-drag-ghost={i} d={path(c)} fill="none" stroke="#06f" strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />)}
           {/* the selection box (docs/selection-box-plan.md): not in playback, while restoring or with Move picture — nor hit there */}
           {!pose && !restoring && !moveRef && pv.transform && pv.transform.lines.map(l => <path key={'t' + l.id} data-transform-ghost={l.id} d={path(l.curve)} fill="none" stroke={pv.transform!.refused ? '#c00' : '#06f'} strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />)}
           {!pose && !restoring && !moveRef && pv.transform && pv.transform.arcs.map(a => <path key={'ta' + a.key} data-transform-ghost-arc={a.key} d={path(a.curve)} fill="none" stroke="#06f" strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />)}

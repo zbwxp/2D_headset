@@ -48,7 +48,7 @@ describe('state owners (graph row 1)', () => {
   it('2. interaction imports only the core package root, the move package root and the deform package root (and its own files), and core never imports interaction', () => {
     const dir = join(__dirname, '..')
     const own = readdirSync(dir, { recursive: true }).map(String).filter(f => f.endsWith('.ts') && !f.startsWith('test'))
-    expect(own.sort()).toEqual(['base.ts', 'feedback.ts', 'flows/clipboard.ts', 'flows/deform.ts', 'flows/mirror.ts', 'flows/pen.ts', 'flows/select-transform.ts', 'flows/selection-box.ts', 'flows/steps.ts', 'index.ts'])
+    expect(own.sort()).toEqual(['base.ts', 'feedback.ts', 'flows/clipboard.ts', 'flows/deform.ts', 'flows/follow.ts', 'flows/mirror.ts', 'flows/pen.ts', 'flows/select-transform.ts', 'flows/selection-box.ts', 'flows/steps.ts', 'index.ts'])
     for (const f of own) {
       const specs = [...readFileSync(join(dir, f), 'utf8').matchAll(/from '([^']+)'/g)].map(m => m[1]!)
       const root = f.includes('/') ? '../../src' : '../src'

@@ -8,7 +8,8 @@
 // edit. Nothing here draws: `preview()` describes what to show, as plain data.
 import type { Snapshot, Vec } from '../src'
 import { createCtx, POINT_TOOLS, type Env, type Flow, type Mods, type Options, type Preview, type Tool } from './base'
-import { fromError } from './feedback'
+import { fromError, note } from './feedback'
+import { straightHandles } from './flows/follow'
 import { isArrow } from '../move'
 import { selectTransform } from './flows/select-transform'
 import { pen } from './flows/pen'
@@ -89,11 +90,12 @@ export interface Interaction {
   subscribe(listener: () => void): () => void
 }
 
-const KEY_TOOLS: Record<string, Tool> = { v: 'V', a: 'A', p: 'pen', s: 'split', b: 'bind', m: 'merge', l: 'link', u: 'unbind', j: 'join', f: 'fill' }
+// S is Straight, not Split (bowen 1791944499: Split keeps its tool, loses its key)
+const KEY_TOOLS: Record<string, Tool> = { v: 'V', a: 'A', p: 'pen', b: 'bind', m: 'merge', l: 'link', u: 'unbind', j: 'join', f: 'fill' }
 
 export function createInteraction(env: Env): Interaction {
   let tool: Tool = 'pen'
-  let opts: Options = { joinMode: 'smooth', radius: 10, color: '#f2c94c' }
+  let opts: Options = { joinMode: 'smooth', radius: 10, color: '#f2c94c', follow: true }
   const ctx = createCtx(env, { tool: () => tool, options: () => ({ ...opts }) })
   const st = selectTransform(ctx), pn = pen(ctx), sp = steps(ctx), mr = mirror(ctx), cb = clipboard(ctx), df = deformFlow(ctx)
   const flows: Flow[] = [st, pn, sp, mr, cb, df]
@@ -143,6 +145,14 @@ export function createInteraction(env: Env): Interaction {
       return false
     }
     if (k === 'delete' || k === 'backspace') { ctx.commit(e => e.deleteSelection(ctx.selection())); return true }
+    // Straight: the selected lines' handles on their chords at 1/3 and 2/3, one edit (docs/handle-follow-checklist.md §2)
+    if (k === 's' && !mods.shift && !mods.alt && !mods.ctrl) {
+      const lines = ctx.selection().flatMap(u => (u.kind === 'line' ? [u.id] : []))
+      if (!lines.length) { ctx.feedback = note('straight-select-lines', '先选中要拉直的线'); return true }
+      const hs = straightHandles(ctx.snap(), lines)
+      ctx.commit(e => { for (const h of hs) e.moveHandle(h.line, h.end, h.offset) })
+      return true
+    }
     if (KEY_TOOLS[k]) { setTool(KEY_TOOLS[k]!); return true }
     return false
   }

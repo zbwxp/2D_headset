@@ -8,6 +8,7 @@ import { createMover, type Target } from '../../move'
 import type { Core, Snapshot, Vec } from '../../src'
 import type { Ctx, Flow, Id, Mods, Preview, Unit } from '../base'
 import { handlesOf, hitBox, opAt, startHandleDrag, type BoxOp, type Bounds, type HandleDrag } from './selection-box'
+import { followHandles } from './follow'
 
 export interface SelectTransform extends Flow {
   pointerDown(at: Vec, mods: Mods): boolean
@@ -45,7 +46,14 @@ export function selectTransform(ctx: Ctx): SelectTransform {
     return {
       begin: () => { moving = { ...owned, units, offset: { x: 0, y: 0 } }; return true },
       preview: o => { if (moving) moving.offset = { x: o.x, y: o.y } },
-      commit: o => { moving = null; if (ctx.mine(owned)) ctx.commit(e => e.translate(o.x, o.y, units)) },
+      // with handle follow on, the lines whose ends the move takes keep their shape along their chords: one edit
+      // with the translate (docs/handle-follow-checklist.md §1)
+      commit: o => {
+        moving = null
+        if (!ctx.mine(owned)) return
+        const follow = ctx.options().follow ? followHandles(ctx.snap(), units, o) : []
+        ctx.commit(e => { e.translate(o.x, o.y, units); for (const h of follow) e.moveHandle(h.line, h.end, h.offset) })
+      },
       cancel: () => { moving = null },
     }
   }
@@ -208,7 +216,7 @@ export function selectTransform(ctx: Ctx): SelectTransform {
     // the drawing changed under the move (undo, redo, a selection change, an edit such as Delete): it ends
     historyChanged() { stop() },
     preview(p: Preview) {
-      if (moving && ctx.mine(moving)) p.drag = { units: structuredClone(moving.units), offset: { ...moving.offset } }
+      if (moving && ctx.mine(moving)) p.drag = { units: structuredClone(moving.units), offset: { ...moving.offset }, handles: ctx.options().follow ? followHandles(ctx.snap(), moving.units, moving.offset).map(h => ({ ...h, offset: { ...h.offset } })) : [] }
       const b = boxNow()
       if (b) {
         const px = ctx.env.pixel()
