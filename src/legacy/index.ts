@@ -1,7 +1,7 @@
 // legacy — opening drawings saved in older formats (bowen 1791820592, dot 1791820713): this one module turns a version
-// 5–9 document into version 10; the archive's normal reader then takes it. Nothing else in the program knows an old
+// 5–10 document into version 11; the archive's normal reader then takes it. Nothing else in the program knows an old
 // format. For a release that drops old files: delete this folder and its one call in src/archive/index.ts.
-// The conversions, each approved by bowen: 5 → 6 (1791726456), 6 → 7 (1791808493), 7 / 8 → 9 (1791820592); 9 → 10 (1791907933) only adds an empty mask list (docs/mask-p2-checklist.md §3).
+// The conversions, each approved by bowen: 5 → 6 (1791726456), 6 → 7 (1791808493), 7 / 8 → 9 (1791820592); 9 → 10 (1791907933) only adds an empty mask list (docs/mask-p2-checklist.md §3); 10 → 11 (1791976935) changes nothing (11 only allows playback pictures).
 import * as net from '../network'
 import * as reference from '../reference'
 
@@ -11,12 +11,19 @@ export function fromV9(doc: unknown): unknown {
   return { ...(doc as object), masks: { masks: [] } }
 }
 
-/** An old document as version 10, or a refusal for a version that cannot be read. */
+/** A version 10 drawing as version 11: as stored (11 only adds playback pictures; docs/playback-edit-checklist.md §5). */
+export function fromV10(doc: unknown): unknown {
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) throw new Error('open-failed: the document must be an object')
+  return doc
+}
+
+/** An old document as version 11, or a refusal for a version that cannot be read. */
 export function upgrade(version: unknown, doc: unknown): unknown {
-  if (version === 5) return fromV9(fromV8(fromV6(fromV5(doc))))
-  if (version === 6) return fromV9(fromV8(fromV6(doc)))
-  if (version === 7 || version === 8) return fromV9(fromV8(doc))
-  if (version === 9) return fromV9(doc)
+  if (version === 5) return fromV10(fromV9(fromV8(fromV6(fromV5(doc)))))
+  if (version === 6) return fromV10(fromV9(fromV8(fromV6(doc))))
+  if (version === 7 || version === 8) return fromV10(fromV9(fromV8(doc)))
+  if (version === 9) return fromV10(fromV9(doc))
+  if (version === 10) return fromV10(doc)
   throw new Error(`open-failed: unsupported version ${String(version)}`)
 }
 

@@ -338,9 +338,12 @@ describe('mirror a picture left-right (§9)', () => {
     expect(save(bench().core)).toBe(before)
   })
 
-  it('Mirror is unavailable in playback', async () => {
+  it('in playback a view\'s picture is not listed (playback has its own, docs/playback-edit-checklist.md §5); a change of it through the wrapper is refused', async () => {
     const t = await setup()
     await act(async () => { t.button('Playback').click() })
-    expect(t.button('Mirror ⇆', t.host.querySelector(`[data-ref="${t.id}"]`)!).matches(':disabled')).toBe(true)
+    expect(t.host.querySelector(`[data-ref="${t.id}"]`)).toBeNull()
+    const before = save(bench().core)
+    expect(() => (bench() as unknown as { edit(fn: (e: { setReference(id: string, p: object): void }) => void): void }).edit(e => e.setReference(t.id, { flipped: true }))).toThrow(/read-only-playback: setReference is not allowed/)
+    expect(save(bench().core)).toBe(before)
   })
 })

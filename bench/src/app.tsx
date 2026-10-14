@@ -67,13 +67,17 @@ type WriteMode = 'edit' | 'playback' | 'locked'
  * angle — a layer's or a fill's visibility — and `uncorrect`; checked on the call's target, not its name only (dot
  * 1791976669). Undefined when allowed, else why not.
  */
-function refusedInPlayback(n: string, a: readonly unknown[], atView: boolean): string | undefined {
+function refusedInPlayback(n: string, a: readonly unknown[], atView: boolean, playbackRef: (id: unknown) => boolean): string | undefined {
   const onlyVisible = (o: unknown) => !!o && typeof o === 'object' && Object.keys(o).every(k => k === 'visible')
   if (n === 'uncorrect' || n === 'fillVisible') return undefined
   // at a view, writing that view: what A and V do there in editing — pick, then move points, curves and handles (§2)
   if (atView && (n === 'select' || n === 'selectGroup' || n === 'translate' || n === 'moveHandle')) return undefined
   if ((n === 'layerState' || n === 'fillState') && onlyVisible(a[1])) return undefined
-  return `${n} is not allowed during playback (only a correction, deleting one, layer or fill visibility, and at a view moving its points and handles)`
+  // playback's own pictures (§5): placed at `playback`, changed or removed only if they are playback's; the library takes new pictures
+  if (n === 'placeReference' && (a[0] as { view?: unknown } | null)?.view === 'playback') return undefined
+  if ((n === 'setReference' || n === 'removeReference') && playbackRef(a[0])) return undefined
+  if (n === 'addAsset') return undefined
+  return `${n} is not allowed during playback (only a correction, deleting one, layer or fill visibility, playback's own pictures, and at a view moving its points and handles)`
 }
 type Pose = { yaw: number; pitch: number }
 /** The view a pose is exactly at (yaw 0 / ±90 × pitch 0 / ±45), else null. */
@@ -143,10 +147,12 @@ function loggedFor(mode: () => WriteMode, afterWrite: () => void = () => {}, pos
           // playback at a view, writing that view: A's and V's editing of it (docs/playback-edit-checklist.md §2)
           const playback = m === 'playback', atView = playback && view === poseView()
           const calls: string[] = []
+          // playback's own pictures as they are before the edit (a read inside the edit is refused by core)
+          const playbackRefs = new Set(playback ? t.playbackReferences().map(r => r.id) : [])
           let corrects = 0, others = 0, forbidden: string | undefined
           const rec = (e: Editor) => new Proxy(e, { get: (x, n) => { const v = Reflect.get(x, n); return typeof v === 'function' ? (...a: unknown[]) => {
             // the gate first, then the log: nothing before the gate may throw (dot 1791697642)
-            const why = playback && n !== 'correct' ? refusedInPlayback(String(n), a, atView) : undefined
+            const why = playback && n !== 'correct' ? refusedInPlayback(String(n), a, atView, id => typeof id === 'string' && playbackRefs.has(id)) : undefined
             if (why !== undefined) forbidden ??= String(n)
             calls.push(`${String(n)}(${a.map(short).join(', ')})`)
             if (why !== undefined) throw new Error(`read-only-playback: ${why}`)
@@ -464,7 +470,9 @@ export function App() {
 
   /** A one-shot panel command: straight to core, then interaction checks its unfinished operations (doc 22 §3.5). */
   /** The picture a binding names, if the drawing, the counter, the view's list and its source still hold. */
-  const refNow = (b: RefBind | null) => (b && b.core === core && b.gen === refGen.current ? core.in(shown).references().find(r => r.id === b.id && r.src === b.src) : undefined)
+  /** The pictures this mode shows: playback's own while posing (§5), else the current view's. */
+  const refsHere = () => (posing.current ? core.playbackReferences() : core.in(shown).references())
+  const refNow = (b: RefBind | null) => (b && b.core === core && b.gen === refGen.current ? refsHere().find(r => r.id === b.id && r.src === b.src) : undefined)
   const SETTABLE = ['x', 'y', 'scale', 'angle', 'opacity', 'visible', 'flipped'] as const
   const sameBase = (a: ReferenceImage, b: ReferenceImage) => SETTABLE.every(k => a[k] === b[k])
   /** A live change of one picture, drawn but not written (§8.1). */
@@ -662,7 +670,7 @@ export function App() {
       const lx = dx * Math.cos(a) - dy * Math.sin(a), ly = dx * Math.sin(a) + dy * Math.cos(a)
       return Math.abs(lx) <= r.width * r.scale / 2 && Math.abs(ly) <= r.height * r.scale / 2
     }
-    const hit = [...core.in(shown).references()].reverse().find(r => r.visible && inside(r))
+    const hit = [...refsHere()].reverse().find(r => r.visible && inside(r))
     if (!hit) return
     const bind = { core: shownFrom.core, gen: refGen.current, id: hit.id, src: hit.src }
     setActiveRef(bind)
@@ -962,6 +970,8 @@ export function App() {
       if (e.key.toLowerCase() === 'z' && !e.metaKey && !e.ctrlKey && !e.altKey) { if (!e.repeat) toggleZoom(); e.preventDefault(); return }
       // then the write gates: restoring and playback take no other shortcut (dot 1791704242, 1791683911)
       if (restoringNow.current) return
+      // Move picture on: the arrows move the picture, in playback too (§5)
+      if (keyHooks.current.nudge?.(e)) return
       // playback: a plain arrow on the canvas turns the view; its default is prevented even when it changes nothing
       // (a limit, a gesture running), so the page never scrolls; ⌘ + arrow keeps its own behaviour (dot 1791769087)
       if (posing.current && isArrow(e.key) && !e.metaKey) { // every ⌘ combination keeps its own (⌘ + Ctrl too; dot 1791770081)
@@ -973,7 +983,6 @@ export function App() {
       // playback: A and V choose how a drag corrects (docs/playback-edit-checklist.md §2); no other tool key
       if (posing.current && /^[av]$/i.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); chooseTool(e.key.toUpperCase() as Tool); return }
       if (posing.current) return
-      if (keyHooks.current.nudge?.(e)) return
       if (isArrow(e.key) && gesture.current && gesture.current.id !== KEYS) { e.preventDefault(); return } // a drag runs: one session at a time
       // one Esc cancels one thing: a gesture in progress (above) if there is one, else interaction's innermost (dot 1791553129)
       // a plain letter interaction takes is a tool key: it ends any gesture and leaves Z
@@ -1063,7 +1072,7 @@ export function App() {
     catch (err) { setCorrRefusal({ message: (err as Error).message, objects: err instanceof Refusal ? err.objects : [] }) }
     bump()
   }
-  const brokenHere = core.in(shown).references().filter(r => refBroken.some(x => x.core === core && x.id === r.id && x.src === r.src)).map(r => r.id)
+  const brokenHere = refsHere().filter(r => refBroken.some(x => x.core === core && x.id === r.id && x.src === r.src)).map(r => r.id)
   const status = pose ? (corrRefusal ? '✗ ' + withNames(corrRefusal.message)
     : `playback yaw ${pose.yaw}, pitch ${pose.pitch} · ${atCorrection && where && 'edge' in where ? `修正点：${where.inner} → ${where.outer}，t = ${+where.t.toFixed(3)} · A 拖点或手柄，V 拖整条曲线` : viewAtPose(pose) ? `视角 ${viewAtPose(pose)} · A / V 直接改这个视角` : '这里只能看；修正点在 yaw ±30 / ±60、pitch 0 / ±45'}${posed instanceof Error ? ' · ✗ ' + posed.message : ''}`)
     : pv.refusal ? '✗ ' + withNames(pv.refusal.message)
@@ -1179,13 +1188,16 @@ export function App() {
           {B('Fit', () => ix.fit(), 'accept the selected lines\' front as the baseline; no view changes')}
           {B('Draft corners', () => ix.draftCorners(), 'the four corner views of the selected lines = front + yaw change + pitch change')}
         </div>
-        <b>Reference ({shown})</b>
+        </fieldset>
+        {/* the pictures, and the ink and 蒙版 display switches, work in playback too: playback's own pictures (§1, §5) */}
+        <fieldset disabled={restoring} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <b>Reference ({pose ? 'playback' : shown})</b>
         <div data-testid="reference" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           <label>Place… <input type="file" data-testid="ref-file" accept="image/png,image/jpeg,image/webp" onChange={e => {
             const f = e.target.files?.[0]; e.target.value = ''
             if (!f) return
             // bound at the start: the view and the box it is placed into (§7.1); into the library (or the identical entry), then placed
-            const view = shown, at = box
+            const view = posing.current ? 'playback' : shown, at = box
             readPicture(f, pic => {
               const k = Math.min(1, 0.9 * at.w / pic.width, 0.9 * at.h / pic.height)
               run(x => { const asset = x.addAsset({ id: nid('asset-'), name: f.name.slice(0, 100), ...pic }); x.placeReference({ id: nid('ref-'), view, asset, width: pic.width, height: pic.height, x: at.x + at.w / 2, y: at.y + at.h / 2, scale: k, angle: 0, opacity: 0.5, visible: true }) })
@@ -1194,7 +1206,7 @@ export function App() {
           <label title="实验：用墨迹轮廓画线（单线，与今天的圆头描边同形）"><input type="checkbox" data-testid="ink-outline" checked={inkOn} onChange={e => setInkOn(e.target.checked)} /> 墨迹轮廓（实验）{ink && <span data-testid="ink-diagnostics"> · 已验证 {ink.diagnostics.filter(d => d.status === 'verified').length} · 未完全证明 {ink.diagnostics.filter(d => d.status === 'unproven').length} · 瑕疵 {ink.diagnostics.filter(d => d.status === 'defect').length} · 回退 {ink.diagnostics.filter(d => d.status === 'fallback').length}</span>}</label>
           <label title="画出画稿里的蒙版（默认开；需要墨迹轮廓开着）" style={{ color: inkOn ? undefined : '#999' }}><input type="checkbox" data-testid="masks" disabled={!inkOn} checked={masksOn && inkOn} onChange={e => setMasksOn(e.target.checked)} /> 蒙版（实验）{!inkOn && ' · 需要墨迹轮廓'}</label>
           <label><input type="checkbox" data-testid="move-picture" checked={moveRef} onChange={e => { if (!e.target.checked) { gesture.current?.cancel('Move picture turned off'); setActiveRef(null) } cancelPreview(); setMoveRef(e.target.checked) }} /> Move picture (drag it, or arrow keys; Shift ×10)</label>
-          {core.in(shown).references().map(r => {
+          {refsHere().map(r => {
             const live = refPreview && refPreview.id === r.id && refNow(refPreview) ? { ...r, ...refPreview.props } : r
             const active = refNow(activeRef)?.id === r.id
             const RANGE = { x: [box.x, box.x + box.w, 1], y: [box.y, box.y + box.h, 1], scale: [-3, 2, 0.01], angle: [-180, 180, 1], opacity: [0, 1, 0.01] } as const
@@ -1230,6 +1242,8 @@ export function App() {
           </div>
           })}
         </div>
+        </fieldset>
+        <fieldset disabled={!!pose || restoring} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
         <b>Library</b>
         {/* each picture's content once (§10; bowen 1791725516): placed into a view by its button, removed only when no view shows it */}
         <div data-testid="library" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -1319,7 +1333,7 @@ export function App() {
         {/* one line always, and the column never widened by it (minWidth 0): a status that wrapped would resize the canvas between a press and its release and move the press (a click on a curve with long ids nudged it) */}
         <div data-testid="status" title={status} style={{ padding: '4px 8px', borderBottom: '1px solid #ccc', height: 18, lineHeight: '18px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: (pose ? corrRefusal : pv.refusal) ? '#c00' : '#333' }}>{status}</div>
         <svg ref={svg} style={{ flex: 1, background: '#fafafa', touchAction: 'none', cursor: cursorFor(pressTakenBy, pressed) }} data-testid="canvas" viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
-          onPointerDown={e => (viewportPress(e) ? onDown(e) : restoring ? undefined : inBetween ? onPoseDown(e) : poseView ? (ix.tool === 'A' || ix.tool === 'V' ? onDown(e) : undefined) : moveRef ? onRefDown(e) : onDown(e))}
+          onPointerDown={e => (viewportPress(e) ? onDown(e) : restoring ? undefined : moveRef ? onRefDown(e) : inBetween ? onPoseDown(e) : poseView ? (ix.tool === 'A' || ix.tool === 'V' ? onDown(e) : undefined) : onDown(e))}
           // hovering tells interaction what the pointer is over on the selection box (the cursor follows; selection-box plan §6)
           // the pointer's place is kept on every move and release over the canvas, a drag's too (a pan ends where the pointer
           // is, dot 1791737940); the hover is asked only with no button and no gesture — and after every render
@@ -1334,7 +1348,7 @@ export function App() {
           // the right click itself is the unmoved right press (onDown); a right press during a left
           // drag comes only as this event, and cancels that drag (one level)
           onContextMenu={e => { e.preventDefault(); if (gesture.current && !gesture.current.right) gesture.current.cancel('a right click') }}>
-          {!pose && core.in(shown).references().filter(r => r.visible).map(r0 => {
+          {refsHere().filter(r => r.visible).map(r0 => {
             // a live preview of this picture, if it is still bound to what is shown (§8.1, §8a.3)
             const r = refPreview && refPreview.id === r0.id && refNow(refPreview) ? { ...r0, ...refPreview.props } : r0
             const w = r.width * r.scale, h = r.height * r.scale

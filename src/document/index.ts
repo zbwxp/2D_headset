@@ -770,6 +770,8 @@ export class Core {
 
   snapshot(): Snapshot { return this.in(views.FRONT).snapshot() }
   library(): reference.AssetUse[] { return this.in(views.FRONT).library() }
+  /** Playback's own pictures (docs/playback-edit-checklist.md §5): placed and moved by hand, shown at every pose, in no view. */
+  playbackReferences(): reference.ReferenceImage[] { this.idle('playbackReferences'); return reference.list(this.state.reference, reference.PLAYBACK) }
   geometry(): Geometry { return this.in(views.FRONT).geometry() }
   copy(lines?: readonly Id[]): clipboard.Clip { return this.in(views.FRONT).copy(lines) }
   nearby(at: Vec, radius: number): derived.Nearby[] { return this.in(views.FRONT).nearby(at, radius) }

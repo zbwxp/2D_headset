@@ -6,7 +6,7 @@ import * as views from '../views'
 
 export interface ReferenceImage {
   readonly id: string
-  /** The view it belongs to and is shown in (one of the nine). */
+  /** The view it belongs to and is shown in (one of the nine), or `playback` (docs/playback-edit-checklist.md §5). */
   readonly view: string
   /** The library picture it shows (§10). */
   readonly asset: string
@@ -60,6 +60,8 @@ const TYPES: Record<string, (b: number[]) => boolean> = {
   webp: b => String.fromCharCode(...b.slice(0, 4)) === 'RIFF' && String.fromCharCode(...b.slice(8, 12)) === 'WEBP',
 }
 const refuse = (code: string, why: string): never => { throw new net.Refusal(code, `${code}: ${why}`) }
+/** Playback's own place (bowen 1791970202): plain pictures placed and dragged by hand, shown in playback at every pose. */
+export const PLAYBACK = 'playback'
 
 /** A picture's content: a PNG, JPEG or WebP data URL, the whole payload base64, the signature matching (§3). */
 function checkSrc(src: unknown): string {
@@ -80,7 +82,7 @@ function checkPlacement(v: unknown, asset: string, w: number, h: number): Stored
   if (!v || typeof v !== 'object') refuse('reference-bad-value', 'an image must be an object')
   const i = v as Record<string, unknown>
   if (typeof i.id !== 'string' || !i.id) refuse('reference-bad-value', 'id must be a non-empty string')
-  if (typeof i.view !== 'string' || !views.isView(i.view)) refuse('reference-bad-value', `${JSON.stringify(i.view)} is not a view`)
+  if (typeof i.view !== 'string' || !(views.isView(i.view) || i.view === PLAYBACK)) refuse('reference-bad-value', `${JSON.stringify(i.view)} is not a view or ${PLAYBACK}`)
   checkSize(w, h)
   const finite = (k: string) => { if (typeof i[k] !== 'number' || !Number.isFinite(i[k])) refuse('reference-bad-value', `${k} must be a finite number`) }
   for (const k of ['x', 'y', 'scale', 'angle', 'opacity']) finite(k)

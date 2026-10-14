@@ -71,7 +71,7 @@ describe('autosave in the bench', () => {
     expect(cursor()).toContain('data:image/svg+xml') // the Pen again
   })
 
-  it('a version-5 record is restored converted (not backed up, not empty), then saved again in the current version, 10 (bowen 1791726456, 1791808493)', async () => {
+  it('a version-5 record is restored converted (not backed up, not empty), then saved again in the current version, 11 (bowen 1791726456, 1791808493, 1791976935)', async () => {
     const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
     const st = storedDrawing(), d = open(st.text)
     for (const v of ['view:0,0', 'view:90,0']) d.editIn(v, e => e.placeReference({ id: `${st.line}-${v}`, view: v, src: PNG, width: 40, height: 20, x: 3, y: 4, scale: 1, angle: 10, opacity: 0.5, visible: true, flipped: v === 'view:90,0' }))
@@ -85,7 +85,7 @@ describe('autosave in the bench', () => {
     expect(m.writes.filter(k => k.startsWith('unreadable'))).toEqual([]) // never backed up as unreadable
     expect(bench().core.snapshot().lines.map(l => l.id)).toContain(st.line)
     expect(['view:0,0', 'view:90,0'].flatMap(v => bench().core.in(v).references())).toEqual(['view:0,0', 'view:90,0'].flatMap(v => d.in(v).references()))
-    expect(JSON.parse(m.data[CURRENT]!).version).toBe(10) // the record is replaced only after the converted drawing is open
+    expect(JSON.parse(m.data[CURRENT]!).version).toBe(11) // the record is replaced only after the converted drawing is open
   })
 
   it('a restore returning after the App unmounted applies nothing', async () => {

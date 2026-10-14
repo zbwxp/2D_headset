@@ -23,9 +23,12 @@ export const FORMAT = 'headset-v3-drawing'
  *   to 9 when opened (with 7, 6 and 5 on their way) — the third conversion, asked of bowen (docs/point-widths-checklist.md).
  * - 9: widths belong to points (`widths` per shape layer; a line keeps only its profile; bowen 1791820396); converted
  *   to 10 when opened (no masks) — the fourth conversion, approved by bowen 1791907933.
- * - 10: plus masks (`masks`, 显隐; docs/mask-p2-checklist.md).
+ * - 10: plus masks (`masks`, 显隐; docs/mask-p2-checklist.md); read as it is when opened (an 11 file without playback
+ *   pictures), approved by bowen 1791976935.
+ * - 11: a reference picture's `view` may be `playback` (docs/playback-edit-checklist.md §5); a 10 reader refuses it
+ *   (dot 1791976669).
  */
-export const VERSION = 10
+export const VERSION = 11
 
 export function save(core: Core): string {
   return JSON.stringify({ format: FORMAT, version: VERSION, document: exportState(core) })

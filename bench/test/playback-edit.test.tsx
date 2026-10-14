@@ -140,3 +140,23 @@ describe('at a view (§2)', () => {
     expect(anim().points[q]).toBeUndefined()
   })
 })
+
+describe('playback pictures (§5; bowen 1791970202)', () => {
+  const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+  it('placed in playback, drawn and listed there at every pose, never in a view; Move picture drags it; a view picture is refused', async () => {
+    const t = await setup(), id = `pb${t.k}`
+    await t.play(20, 0)
+    await act(async () => { bench().edit(e => { const asset = e.addAsset({ id: `as${t.k}`, name: 'sheet', src: PNG, width: 40, height: 20 }); e.placeReference({ id, view: 'playback', asset, x: 50, y: t.Y, scale: 1, angle: 0, opacity: 0.5, visible: true }) }); bench().refresh() })
+    expect(t.svg.querySelector(`[data-reference="${id}"]`)).not.toBeNull()
+    expect(t.host.querySelector(`[data-ref="${id}"]`)).not.toBeNull()
+    await t.pose(60, 45)
+    expect(t.svg.querySelector(`[data-reference="${id}"]`)).not.toBeNull()
+    expect(() => bench().edit(e => e.placeReference({ id: `v${id}`, view: 'view:0,0', asset: `as${t.k}`, x: 0, y: 0, scale: 1, angle: 0, opacity: 1, visible: true }))).toThrow(/placeReference is not allowed/)
+    await act(async () => { (t.host.querySelector('[data-testid="move-picture"]') as HTMLInputElement).click() })
+    await t.drag({ x: 50, y: t.Y }, { x: 15, y: 5 })
+    expect(bench().core.playbackReferences().find(r => r.id === id)).toMatchObject({ x: 65, y: t.Y + 5 })
+    await act(async () => { t.button('Leave playback').click() })
+    expect(t.svg.querySelector(`[data-reference="${id}"]`)).toBeNull()
+    expect(bench().core.in('view:0,0').references().some(r => r.id === id)).toBe(false)
+  })
+})

@@ -84,7 +84,7 @@ describe('reference pictures', () => {
     expect(open(text).in('view:0,0').references()).toEqual(d.in('view:0,0').references())
     const bad = JSON.parse(text); bad.document.reference.library[0].src = 'data:image/png;base64,/9j/4AAQSkZJRgABAQAAAQABAAD='
     expect(() => open(JSON.stringify(bad))).toThrow(/open-failed: reference: reference-bad-image/)
-    expect(() => open(text.replace('"version":10', '"version":4'))).toThrow(/unsupported version 4/)
+    expect(() => open(text.replace('"version":11', '"version":4'))).toThrow(/unsupported version 4/)
     const pasted = doc()
     pasted.edit(e => e.paste(d.copy(['ab']), 'L', { x: 100, y: 0 }, 'p'))
     expect(pasted.in('view:0,0').references()).toEqual([])
@@ -152,5 +152,31 @@ describe('reference pictures', () => {
     const read = d.in('view:0,0').references()[0]!
     ;(read.slots[0]!.placement as { x: number }).x = 777
     expect(d.in('view:0,0').references()[0]!.slots[0]!.placement!.x).toBe(1)
+  })
+})
+
+describe('playback pictures (docs/playback-edit-checklist.md §5; bowen 1791970202)', () => {
+  it('a picture placed at `playback` is read by playbackReferences, never by a view; another key is refused', () => {
+    const d = doc()
+    d.edit(e => e.placeReference(img('pb', { view: 'playback' })))
+    expect(d.playbackReferences().map(r => r.id)).toEqual(['pb'])
+    for (const k of ['view:0,0', 'view:90,0', 'view:0,45']) expect(d.in(k).references()).toEqual([])
+    expect(code(() => d.edit(e => e.placeReference(img('bad', { view: 'nowhere' }))))).toBe('reference-bad-value')
+    d.edit(e => e.setReference('pb', { x: 7 }))
+    expect(d.playbackReferences()[0]!.x).toBe(7)
+  })
+
+  it('saved as version 11 and opened again; a version 10 file opens as it is (bowen 1791976935)', () => {
+    const d = doc()
+    d.edit(e => { e.placeReference(img('pb', { view: 'playback' })); e.placeReference(img('v', { view: 'view:0,0' })) })
+    const text = save(d)
+    expect(JSON.parse(text).version).toBe(11)
+    const back = open(text)
+    expect(back.playbackReferences()).toEqual(d.playbackReferences())
+    expect(back.in('view:0,0').references()).toEqual(d.in('view:0,0').references())
+    const old = doc()
+    old.edit(e => e.placeReference(img('v', { view: 'view:0,0' })))
+    const v10 = save(old).replace('"version":11', '"version":10')
+    expect(save(open(v10))).toBe(save(old))
   })
 })
