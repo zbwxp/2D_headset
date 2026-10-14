@@ -15,7 +15,7 @@ Then:
 - **The views** (yaw 0 / ±90 × pitch 0 / ±45): a drag edits that view itself (§2).
 - **Anywhere else:** preview only, at any angle (bowen 1791970497). A press there writes nothing, and the status line says 「这里只能看；修正点在 yaw ±30 / ±60、pitch 0 / ±45」.
 - **Assumption:** pitch ±45 both count; to be confirmed by bowen (asked 1791976469).
-- **Next package (not this one):** corrections at any angle inside a cell, as a stored displacement (the experiment in 1791972504 / 1791972880, accepted as the candidate by dot 1791972971).
+- **Later, set aside (bowen 1791976739):** corrections inside a cell. The default is the same blend-weight approach as on the lines (v103 stored interior samples as weights), not a displacement. See the experiments 1791972504 / 1791972880 and my answer 1791976763.
 
 What playback is today (stage 3a / 3b, `bench/src/app.tsx`):
 - the drawing at the pose is `core.atPose(pose)`, read only;
@@ -28,9 +28,11 @@ What playback is today (stage 3a / 3b, `bench/src/app.tsx`):
 - **The gate:** in playback the wrapper also lets through an edit made only of these calls:
   - `layerState(id, { visible })` (the eye, «hide all», Option-click);
   - `fillState` / `fillVisible` with `visible` only (the fill on/off);
-  - the playback pictures' calls (§5);
+  - the playback pictures' calls (§5), only on a picture whose `view` is `playback` (dot 1791976669: the check is the target, not the call name);
   - `uncorrect` (§4).
   These are the same data at every angle (`shared: structure / fills / reference`), so nothing is pose dependent.
+- **At a view** (§2), the ordinary edits of that view are let through, bound to the view the press started in.
+- **A picture read that returns later** (a file chosen for a playback picture) writes only if the drawing, the App's counter and the mode (playback) are still the ones it started with; otherwise it is dropped and the log says why (as reference-images-plan §7.1).
 - **Still refused:** everything else, e.g. a lock, a rename, a colour, a new layer, Open, undo / redo. It is refused as today, and the status line names the call.
 - **The panels:** the layers panel and the fill list are no longer inside the disabled fieldset. Their other controls stay and are refused by the gate (bench glue, not a design).
 - The 蒙版 and ink switches are bench display options, never written: on in every mode.
@@ -43,7 +45,12 @@ What playback is today (stage 3a / 3b, `bench/src/app.tsx`):
   - **A handle:** dragging it gives one `correct(pose, { handles: [{ line, end, vector }] })`, where the vector is the handle's new end minus its point at the pose.
 - **V at a correction pose:** pressing a line takes its whole curve, by the same rule V uses in editing (the curve it belongs to, else the line alone). The drag moves every end point of those lines by the pointer's displacement. The release makes one `correct` with all those points; handle vectors are unchanged.
 - **Ghost and cancel:** the ghost is start + displacement. The press binds the frame, the drawing and the pose; every cancel path is today's (Esc, a right click, a pose change, leaving playback, a changed drawing).
-- **At a view** (yaw and pitch both on views): A and V edit that view itself, as editing in that view does. Concretely, the press goes to interaction with `view` set to that view's key, and the commit is interaction's ordinary `translate` / `moveHandle`. The gate lets these edits through only while the pose is that view.
+- **At a view** (yaw and pitch both on views): A and V edit that view itself, as editing in that view does. Concretely:
+  - the press goes to interaction with `view` set to that view's key;
+  - the commit is interaction's ordinary `translate` / `moveHandle`, with the 手柄跟随 switch as in editing (dot 1791976669);
+  - the ghost is interaction's own preview (`core.preview`), as in editing;
+  - the press binds that view: a pose change during the drag cancels it;
+  - the gate lets these edits through only while the pose is that view.
 - **Elsewhere** (neither a correction pose nor a view): no marks; a press does nothing; the status line says where corrections can be made (above).
 
 ## 3. What a move changed, shown
@@ -59,14 +66,18 @@ What playback is today (stage 3a / 3b, `bench/src/app.tsx`):
 - **Refusals:**
   - `correction-at-view` and `correction-off-edge`, exactly as `correct` gives them;
   - `uncorrect-none` when there is no knot there.
-- **What it does not undo:** a view that core moved when the correction was made stays where it is; undo, not delete, reverses that. The list says so next to the button.
+- **What it does not undo:** a view that core moved when the correction was made stays where it is; undo, not delete, reverses that.
+- **The button** is labelled 「删除修正拐点」, not 「撤销」, so it is not mistaken for undoing that drag (dot 1791976669). A note beside the list says that a moved view stays.
 - One edit, one undo step, declared in effects (`reads: draft`, `shared: animation`), settle `none`.
 - **Tests:** knots removed on both axes; the linked members too; a knot of another t kept; the refusals; one undo step; evaluate at the pose falls back to the line's linear value when no knot is left.
 
 ## 5. Playback pictures
 - **Data:** the pictures keep their own place key `playback` beside the nine views. This is `reference`'s one change: a picture's `view` is a view key or `'playback'`; everything else is the same (library, opacity, visibility, slots, flip). They are shown in playback only, whatever the pose, and never in a view.
 - **API:** `Core.playbackReferences()`, and `placeReference` / `setReference` / `removeReference` accepting `view: 'playback'`.
-- **The file:** saved with the drawing like the others. The archive shape does not change, so there is no version bump; an old file never has `playback`.
+- **The file** (dot 1791976669): saved with the drawing like the others.
+  - **Archive version 10 → 11:** a v10 reader refuses `view: 'playback'`, so a file with a playback picture is not a v10 file.
+  - **Older files:** `src/legacy` reads v10 unchanged, through an identity step `fromV10` (disposable, as the other legacy steps; bowen 1791907735).
+  - An old file never has `playback`.
 - **The bench:**
   - in playback the 参考图 panel lists and places the playback pictures;
   - Move picture works there, by drag and by arrows, as in a view;
@@ -82,7 +93,10 @@ What playback is today (stage 3a / 3b, `bench/src/app.tsx`):
   - at view 90,0, A edits the view;
   - at yaw 20 / pitch 0 and at yaw 30 / pitch 20 the press does nothing and the message shows;
   - the list's delete removes the knot and the ring;
-  - a playback picture is placed, moved, saved and reopened.
+  - a playback picture is placed, moved, saved and reopened;
+  - a picture call on a view's picture is refused in playback;
+  - a view drag is cancelled by a pose change;
+  - a v10 file opens, and a saved file is v11.
 - **Screenshots (5199):**
   - 211.json at yaw 30 with A marks and a handle drag, before and after;
   - the 「刚才改了什么」 panel;
@@ -92,4 +106,4 @@ What playback is today (stage 3a / 3b, `bench/src/app.tsx`):
 - corrections inside a cell;
 - undo during playback (still ⌘Z after leaving);
 - pose-bound pictures;
-- handle follow in playback drags (a corrected point's lines keep their handle vectors).
+- handle follow in correction drags (a corrected point's lines keep their handle vectors). At a view the editing switch applies (§2).
