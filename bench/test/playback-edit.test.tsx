@@ -114,17 +114,58 @@ describe('drags at a correction pose (§2) and what they changed (§3)', () => {
     expect([`p${k}`, `q${k}`, `r${k}`].map((id, i) => near(t.posed(id), { x: ps[i]!.x + 10, y: ps[i]!.y + 5 }))).toEqual([true, true, true])
   })
 
-  it('the corrections here are listed and ringed; 「删除修正拐点」 removes one, and the panel says so', async () => {
+  it('the corrections here are listed one row per curve and ringed; a row clears that curve on every angle, the layer button the whole layer (docs/correction-cleanup-checklist.md §3)', async () => {
     const t = await setup(), q = `q${t.k}`
-    await t.play(30, 0)
+    await t.play(60, 0)
+    await t.drag(t.posed(q), { x: 4, y: 3 })
+    await t.pose(30, 0)
     await t.drag(t.posed(q), { x: 5, y: 5 })
+    expect(Object.keys(anim().points[q]!).length).toBeGreaterThan(0)
     expect(t.svg.querySelector(`[data-corrected-here="${q}"]`)).not.toBeNull()
-    const row = t.host.querySelector(`[data-correction="${q}"]`)!
+    // v and w, joined at q, are one curve (their group): one row for both (earlier tests' curves in layer-1 have theirs)
+    const curve = bench().core.snapshot().groups.find(g => g.lines.includes(`v${t.k}`))?.id ?? `v${t.k}`
+    expect(bench().core.snapshot().groups.find(g => g.id === curve)?.lines.sort()).toEqual([`v${t.k}`, `w${t.k}`])
+    const row = t.host.querySelector(`[data-correction-curve="${curve}"]`)!
+    expect(row.textContent).toContain('处')
     await act(async () => { (row.querySelector('button') as HTMLButtonElement).click() })
-    expect(bench().log[0]!.calls).toMatch(/^uncorrect\(/)
-    expect(anim().points[q]).toBeUndefined()
+    expect(bench().log[0]!.calls).toMatch(/^clearCorrections\(/)
+    expect(anim().points[q]).toBeUndefined() // the knots at 30 and at 60 both gone
     expect(t.svg.querySelector(`[data-corrected-here="${q}"]`)).toBeNull()
     expect(t.host.querySelector('[data-testid="last-change"]')!.textContent).toContain('删除修正拐点')
+    // the layer button: a handle correction on v, then the whole selected layer cleared
+    await t.drag(t.posed(q), { x: 6, y: 2 })
+    expect(anim().points[q]).toBeDefined()
+    await act(async () => { (t.host.querySelector('[data-testid="clear-layer-corrections"]') as HTMLButtonElement).click() })
+    expect([anim().points[q], anim().points[`p${t.k}`], anim().points[`r${t.k}`]]).toEqual([undefined, undefined, undefined])
+  })
+
+  it('a curve corrected only at another angle is still listed here and cleared whole (dot 1791995359)', async () => {
+    const t = await setup(), q = `q${t.k}`
+    await t.play(60, 0)
+    await t.drag(t.posed(q), { x: 4, y: 3 })
+    await t.pose(30, 0)
+    const curve = bench().core.snapshot().groups.find(g => g.lines.includes(`v${t.k}`))?.id ?? `v${t.k}`
+    const row = t.host.querySelector(`[data-correction-curve="${curve}"]`)!
+    expect(row.textContent).toContain('本角度 0 处')
+    await act(async () => { (row.querySelector('button') as HTMLButtonElement).click() })
+    expect(anim().points[q]).toBeUndefined()
+  })
+
+  it('only the selected layers\' curves are listed (bowen 1791993161): another layer\'s corrected curve has no row', async () => {
+    const t = await setup(), k = t.k
+    await act(async () => {
+      bench().core.edit(e => { e.layer(`L2${k}`, 'other'); e.line(`o${k}`, { id: `o1${k}`, layer: `L2${k}`, position: { x: 0, y: t.Y + 50 } }, { id: `o2${k}`, layer: `L2${k}`, position: { x: 50, y: t.Y + 50 } }) })
+      bench().core.editIn('view:90,0', e => e.move([{ id: `o2${k}`, target: { x: 80, y: t.Y + 70 } }]))
+      bench().core.edit(e => e.correct({ yaw: 30, pitch: 0 }, { points: [{ id: `o2${k}`, position: { x: 70, y: t.Y + 52 } }] }))
+      bench().refresh()
+    })
+    await t.play(30, 0)
+    await t.drag(t.posed(`q${k}`), { x: 5, y: 5 })
+    const keys = [...t.host.querySelectorAll('[data-correction-curve]')].map(r => r.getAttribute('data-correction-curve'))
+    const curveOf = (line: string) => bench().core.snapshot().groups.find(g => g.lines.includes(line))?.id ?? line
+    expect(keys).toContain(curveOf(`v${k}`))
+    expect(keys).not.toContain(curveOf(`o${k}`))
+    expect(anim().points[`o2${k}`]).toBeDefined()
   })
 })
 

@@ -74,7 +74,7 @@ type WriteMode = 'edit' | 'playback' | 'locked'
  */
 function refusedInPlayback(n: string, a: readonly unknown[], atView: boolean, playbackRef: (id: unknown) => boolean, arcRow: (point: unknown, l1: unknown, l2: unknown) => boolean): string | undefined {
   const onlyVisible = (o: unknown) => !!o && typeof o === 'object' && Object.keys(o).every(k => k === 'visible')
-  if (n === 'uncorrect' || n === 'fillVisible') return undefined
+  if (n === 'uncorrect' || n === 'clearCorrections' || n === 'fillVisible') return undefined
   // an existing arc's radius: one value for every view and pose (bowen 1791985326; docs/arc-radius-shared-checklist.md §5b,
   // dot 1791985670) — the row is an arc before the edit and stays one; a new join or a mode change is refused
   if (n === 'join' && arcRow(a[0], a[1], a[2])) {
@@ -1283,11 +1283,41 @@ export function App() {
     }
     return out
   })()
-  /** 「删除修正拐点」 (§4): one uncorrect, its change shown as a drag's is. */
-  const removeCorrection = (control: (typeof correctedHere.list)[number]['control']) => {
-    if (!pose) return
-    const at = { ...pose }
-    try { logged(core).edit(x => x.uncorrect(at, control)); setCorrRefusal(null) }
+  type Control = (typeof correctedHere.list)[number]['control']
+  /**
+   * The corrections list (docs/correction-cleanup-checklist.md §3; bowen 1791993536, 1791993161): one row per curve
+   * (its group, else the line alone) of the selected layers with a knot at any angle (dot 1791995359: one with none at
+   * this pose is still found); a curve's controls are its lines' end points and handle ends. `shared`: a point the
+   * curve shares with another curve, `linked`: a point linked to another (clearing it clears those too).
+   */
+  const curveRows = (() => {
+    const out: { key: string; label: string; controls: Control[]; here: number; all: number; shared: boolean; linked: boolean }[] = []
+    if (!atCorrection) return out
+    const resp = core.model().responses, linkedPts = new Set(s.points.filter(p => p.links.length).map(p => p.id))
+    const anyKnot = (c?: Record<string, { x?: Knots; y?: Knots }>) => !!c && Object.values(c).some(ax => !!(ax.x?.length || ax.y?.length))
+    const layerOfPoint = new Map(s.points.map(p => [p.id, p.layer])), seen = new Set<Id>()
+    for (const l of s.lines) {
+      if (seen.has(l.id) || !selLayers.includes(layerOfPoint.get(l.a) ?? '')) continue
+      const gr = s.groups.find(g => g.lines.includes(l.id)), ids = gr ? gr.lines : [l.id]
+      for (const i of ids) seen.add(i)
+      const lines = ids.map(i => s.lines.find(x => x.id === i)!), pts = [...new Set(lines.flatMap(x => [x.a, x.b]))]
+      const handles = lines.flatMap(x => (['a', 'b'] as const).map(end => ({ kind: 'handle' as const, line: x.id, end })))
+      const here = pts.filter(p => correctedHere.points.has(p)).length + handles.filter(h => correctedHere.handles.has(`${h.line}:${h.end}`)).length
+      const all = pts.filter(p => anyKnot(resp?.points?.[p])).length + handles.filter(h => anyKnot(resp?.handles?.[h.line]?.[h.end])).length
+      if (!all) continue
+      const inside = new Set(ids)
+      out.push({ key: gr?.id ?? l.id, label: gr?.name || l.name || l.id, controls: [...pts.map(id => ({ kind: 'point' as const, id })), ...handles], here, all, shared: pts.some(p => s.lines.some(x => !inside.has(x.id) && (x.a === p || x.b === p))), linked: pts.some(p => linkedPts.has(p)) })
+    }
+    return out
+  })()
+  /** Every control of the selected layers, for 「删除选中图层的全部修正」 (all angles). */
+  const layerControls = (): Control[] => {
+    const pts = s.points.filter(p => selLayers.includes(p.layer)).map(p => p.id), ptSet = new Set(pts)
+    return [...pts.map(id => ({ kind: 'point' as const, id })), ...s.lines.filter(l => ptSet.has(l.a)).flatMap(l => (['a', 'b'] as const).map(end => ({ kind: 'handle' as const, line: l.id, end })))]
+  }
+  /** One clearCorrections (docs/correction-cleanup-checklist.md §2), all angles; its change shown as a drag's is. */
+  const clearCorrections = (controls: Control[]) => {
+    try { logged(core).edit(x => x.clearCorrections(controls)); setCorrRefusal(null) }
     catch (err) { setCorrRefusal({ message: (err as Error).message, objects: err instanceof Refusal ? err.objects : [] }) }
     bump()
   }
@@ -1334,10 +1364,12 @@ export function App() {
             </div>}
             {/* §3: the corrections at exactly this pose, each removable; what the last playback write changed */}
             {atCorrection && <div data-testid="corrections-here" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <b>本角度的修正（{correctedHere.list.length}）</b>
-              {correctedHere.list.map(c => <div key={c.label} data-correction={c.control.kind === 'point' ? c.control.id : `${c.control.line}:${c.control.end}`} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                <span style={{ flex: 1 }}>{c.label} · {c.axes}</span><button onClick={() => removeCorrection(c.control)}>删除修正拐点</button></div>)}
-              {correctedHere.list.length > 0 && <div style={{ color: '#888' }}>删除只去掉这个角度的拐点；当时被挪动的视角不会复原（要复原请离开 playback 后撤销）</div>}
+              <b>有修正的曲线（{curveRows.length}，只列选中图层）</b>
+              {curveRows.map(r => <div key={r.key} data-correction-curve={r.key} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                <span style={{ flex: 1 }}>{r.label} · 本角度 {r.here} 处 / 全部角度 {r.all} 处{r.shared ? ' · 含与别的曲线共用的接点（那条曲线的这个点也一起清掉）' : ''}{r.linked ? ' · 含跨图层联动的点（联动的点也一起清掉）' : ''}</span>
+                <button onClick={() => clearCorrections(r.controls)}>删除这条曲线的全部修正</button></div>)}
+              <button data-testid="clear-layer-corrections" onClick={() => clearCorrections(layerControls())}>删除选中图层的全部修正</button>
+              <div style={{ color: '#888' }}>删除去掉所有角度的修正。共用接点、跨图层联动的点会连带别的曲线 / 图层一起清；当时被挪动的视角不会复原（要复原请离开 playback 后撤销）</div>
             </div>}
             {lastChange && <div data-testid="last-change" style={{ color: '#333', background: '#f6f6f0', padding: 3 }}>
               <b>刚才改了什么</b>（yaw {lastChange.pose.yaw}, pitch {lastChange.pose.pitch}）
