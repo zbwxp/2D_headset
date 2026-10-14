@@ -894,6 +894,8 @@ export function App() {
   const ghostLines = (() => {
     const d = pv.drag
     if (!d) return []
+    // what the release writes, as core previews it (handle follow, settle, links); the plain moved ghost otherwise
+    if (d.lines.length) return d.lines.map(l => l.curve as [Vec, Vec, Vec, Vec])
     const pts = new Set<Id>(), hs = new Set<string>(), lns = new Set<Id>()
     // the view never dereferences an id that is gone (dot 1791544530)
     const has = (id: Id) => s.lines.some(l => l.id === id), hasPoint = (id: Id) => s.points.some(p => p.id === id)
@@ -906,9 +908,7 @@ export function App() {
     return s.lines.filter(l => pts.has(l.a) || pts.has(l.b) || hs.has(l.id + 'a') || hs.has(l.id + 'b')).map(l => {
       const mv = (id: Id) => (pts.has(id) ? add(pos(id), d.offset) : pos(id))
       const a = mv(l.a), b = mv(l.b)
-      // a followed handle is drawn where the release writes it (handle follow)
-      const followed = (end: 'a' | 'b') => d.handles.find(h => h.line === l.id && h.end === end)?.offset
-      return [a, add(a, followed('a') ?? add(l.ha, hs.has(l.id + 'a') ? d.offset : P(0, 0))), add(b, followed('b') ?? add(l.hb, hs.has(l.id + 'b') ? d.offset : P(0, 0))), b]
+      return [a, add(a, add(l.ha, hs.has(l.id + 'a') ? d.offset : P(0, 0))), add(b, add(l.hb, hs.has(l.id + 'b') ? d.offset : P(0, 0))), b]
     })
   })()
   // the refusal mark: a red cross on each object it names

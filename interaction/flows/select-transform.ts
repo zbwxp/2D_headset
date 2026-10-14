@@ -5,7 +5,7 @@
 // dragged right, it takes the lines wholly inside; dragged left, every line it touches; only in
 // the selected layers (bowen 1791897991: with two layers lit, the box takes lines of both).
 import { createMover, type Target } from '../../move'
-import type { Core, Snapshot, Vec } from '../../src'
+import type { Core, Editor, Snapshot, Vec } from '../../src'
 import type { Ctx, Flow, Id, Mods, Preview, Unit } from '../base'
 import { handlesOf, hitBox, opAt, startHandleDrag, type BoxOp, type Bounds, type HandleDrag } from './selection-box'
 import { followHandles } from './follow'
@@ -37,22 +37,40 @@ export function selectTransform(ctx: Ctx): SelectTransform {
   const mover = createMover()
   /** The selection's arrows: 1 drawing unit, Shift 10, Option / Ctrl 0.1 (bowen 1791733125, 1791733775) — this caller's sizes (bowen 1791769146). */
   const SELECTION_STEPS = { step: 1, long: 10, short: 0.1 }
-  let moving: { core: Core; view: string; units: Unit[]; offset: Vec } | null = null
-  /** The selection as a move target: taken at begin (drawing, view, units), re-checked at commit (dot 1791733489). */
+  let moving: { core: Core; view: string; units: Unit[]; offset: Vec; lines: { id: Id; curve: Vec[] }[] } | null = null
+  /**
+   * The selection as a move target: taken at begin (drawing, view, units), re-checked at commit (dot 1791733489). With
+   * handle follow (docs/handle-follow-checklist.md §1) the drawing as it was at begin and the switch are frozen then
+   * (dot 1791946066): every preview and the commit are one op from that state — the translate and the followed
+   * handles — previewed through core (its settle, mirror and links included) and committed as the same op.
+   */
   const selectionTarget = (): Target | undefined => {
     const units = ctx.selection()
     if (!units.length) return undefined
     const owned = ctx.owned()
+    let base: Snapshot, follow = false
+    const op = (o: Vec) => {
+      const hs = follow ? followHandles(base, units, o) : []
+      return (e: Editor) => { e.translate(o.x, o.y, units); for (const h of hs) e.moveHandle(h.line, h.end, h.offset) }
+    }
     return {
-      begin: () => { moving = { ...owned, units, offset: { x: 0, y: 0 } }; return true },
-      preview: o => { if (moving) moving.offset = { x: o.x, y: o.y } },
-      // with handle follow on, the lines whose ends the move takes keep their shape along their chords: one edit
-      // with the translate (docs/handle-follow-checklist.md §1)
+      begin: () => { base = ctx.snap(); follow = ctx.options().follow; moving = { ...owned, units, offset: { x: 0, y: 0 }, lines: [] }; return true },
+      preview: o => {
+        if (!moving) return
+        moving.offset = { x: o.x, y: o.y }
+        // what the release writes, as core settles it: every line it changes (as the deform tool shows it)
+        moving.lines = []
+        try {
+          const shown = owned.core.preview(owned.view, op(o))
+          if (shown) {
+            const key = (c: readonly Vec[]) => JSON.stringify(c), before = new Map(owned.core.in(owned.view).geometry().lines.map(l => [l.id, key(l.curve)]))
+            moving.lines = shown.geometry().lines.filter(l => before.get(l.id) !== key(l.curve)).map(l => ({ id: l.id, curve: l.curve.map(v => ({ ...v })) }))
+          }
+        } catch { /* refused: the plain ghost; the release reports it */ }
+      },
       commit: o => {
         moving = null
-        if (!ctx.mine(owned)) return
-        const follow = ctx.options().follow ? followHandles(ctx.snap(), units, o) : []
-        ctx.commit(e => { e.translate(o.x, o.y, units); for (const h of follow) e.moveHandle(h.line, h.end, h.offset) })
+        if (ctx.mine(owned)) ctx.commit(op(o))
       },
       cancel: () => { moving = null },
     }
@@ -216,7 +234,7 @@ export function selectTransform(ctx: Ctx): SelectTransform {
     // the drawing changed under the move (undo, redo, a selection change, an edit such as Delete): it ends
     historyChanged() { stop() },
     preview(p: Preview) {
-      if (moving && ctx.mine(moving)) p.drag = { units: structuredClone(moving.units), offset: { ...moving.offset }, handles: ctx.options().follow ? followHandles(ctx.snap(), moving.units, moving.offset).map(h => ({ ...h, offset: { ...h.offset } })) : [] }
+      if (moving && ctx.mine(moving)) p.drag = { units: structuredClone(moving.units), offset: { ...moving.offset }, lines: structuredClone(moving.lines) }
       const b = boxNow()
       if (b) {
         const px = ctx.env.pixel()

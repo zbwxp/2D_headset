@@ -76,13 +76,22 @@ describe('handle follow', () => {
     expect(ha.x * hb.x + ha.y * hb.y).toBeLessThan(0) // opposite
   })
 
-  it('the drag preview carries the same handle offsets the release writes', () => {
+  it('the drag preview is core\'s preview of the release\'s op: its lines equal the drawing after the release (dot 1791946066)', () => {
     const t = setup()
-    t.ix.setTool('A'); t.ix.pointerDown(P(0, 0)); t.ix.pointerMove(P(10, 20))
-    const shown = t.ix.preview().drag!.handles
+    t.ix.setTool('A'); t.ix.pointerDown(P(0, 0)); t.ix.pointerMove(P(4, 7)); t.ix.pointerMove(P(10, 20))
+    const shown = t.ix.preview().drag!.lines
     t.ix.pointerUp(P(10, 20))
-    for (const h of shown) close((h.end === 'a' ? t.line(h.line).ha : t.line(h.line).hb), h.offset)
-    expect(shown.map(h => `${h.line}:${h.end}`).sort()).toEqual(['ab:a', 'ab:b', 'ca:a', 'ca:b'])
+    const after = t.d.geometry().lines
+    expect(shown.map(l => l.id).sort()).toEqual(['ab', 'ca'])
+    for (const l of shown) l.curve.forEach((v, i) => close(v, after.find(x => x.id === l.id)!.curve[i]!))
+  })
+
+  it('frozen at the start: the switch turned off mid-drag changes nothing for this drag; previews never compound', () => {
+    const t = setup(), ab0 = t.line('ab')
+    t.ix.setTool('A'); t.ix.pointerDown(P(0, 0)); t.ix.pointerMove(P(10, 20)); t.ix.pointerMove(P(5, 10))
+    t.ix.setOptions({ follow: false })
+    t.ix.pointerMove(P(10, 20)); t.ix.pointerUp(P(10, 20))
+    close(t.line('ab').ha, follow(P(100, 0), P(90, -20), ab0.ha))
   })
 })
 

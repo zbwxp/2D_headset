@@ -61,8 +61,8 @@ const ORDER = { point: 0, handle: 1, line: 2 } as const
 /** What to show, as plain data (the view draws it). */
 export interface Preview {
   /** A drag in progress: the units it moves and the offset so far. */
-  /** `handles`: the handle offsets the move makes follow (handle follow), as the commit writes them. */
-  drag?: { units: Unit[]; offset: Vec; handles: { line: Id; end: 'a' | 'b'; offset: Vec }[] }
+  /** `lines`: every line the release changes, as core's preview of the same op settles them (empty before the first move or when refused). */
+  drag?: { units: Unit[]; offset: Vec; lines: { id: Id; curve: Vec[] }[] }
   /** A selection box being dragged: right = lines wholly inside (`whole`), left = lines it touches. */
   box?: { from: Vec; to: Vec; whole: boolean }
   /** Groups of a pending cut, shown grey. */
