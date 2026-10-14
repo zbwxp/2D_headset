@@ -157,7 +157,8 @@ describe('atPose: read only', () => {
     ;(m.views[0]!.points.a as { x: number }).x = 999
     expect(d.model().views[0]!.points.a!.x).not.toBe(999)
     const r = d.atPose({ yaw: 10, pitch: 10 })
-    expect(Object.getOwnPropertyNames(Object.getPrototypeOf(r)).sort()).toEqual(['constructor', 'geometry', 'snapshot', 'zones'])
+    // linesInRect: a read for playback's box (docs/playback-tools-checklist.md §1)
+    expect(Object.getOwnPropertyNames(Object.getPrototypeOf(r)).sort()).toEqual(['constructor', 'geometry', 'linesInRect', 'snapshot', 'zones'])
   })
 })
 

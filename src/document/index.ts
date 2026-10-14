@@ -791,16 +791,15 @@ export class Core {
    * parameters, which are written into a scratch layer of a private copy, and read there by the
    * same code as any view, so arcs and fills come from `derived`. Nothing is published.
    */
-  atPose(pose: evaluate.Pose): PoseReader {
-    if (!evaluate.inRange(pose)) throw new net.Refusal('pose-out-of-range', `pose-out-of-range: yaw ${pose.yaw}, pitch ${pose.pitch} (yaw within ±${evaluate.YAW_LIMIT}, pitch within ±${evaluate.PITCH_LIMIT})`)
-    let posed: evaluate.Posed
-    // a drawing with no finite value at this pose is refused; only that error, nothing else (docs/stage3b-pkg4-move.md §7a)
-    try { posed = evaluate.evaluate(modelOf(this.state), pose) } catch (err) {
-      if (err instanceof evaluate.PoseNotFinite) throw new net.Refusal('pose-not-finite', err.message)
-      throw err
-    }
-    const { state, layer } = posedState(this.state, posed)
-    return new PoseReader(new LayerReader(() => state, layer, what => this.idle(what)))
+  atPose(pose: evaluate.Pose): PoseReader { return poseReader(this.state, pose, what => this.idle(what)) }
+  /**
+   * What `edit(fn)` would publish, read at `pose` (docs/playback-tools-checklist.md §3): `preview`'s pipeline on a copy,
+   * then that draft read as `atPose` reads the drawing. Nothing is published; throws as the edit would; null for a
+   * cancelled edit. For a playback batch, whose preview is the release's own `correct`.
+   */
+  previewAt(pose: evaluate.Pose, fn: (e: Editor) => void): PoseReader | null {
+    const draft = this.runEdit(views.FRONT, fn)
+    return draft ? poseReader(draft, pose, () => {}) : null
   }
 }
 
@@ -810,6 +809,21 @@ export class PoseReader {
   snapshot(): Snapshot { return this.reader.snapshot() }
   geometry(): Geometry { return this.reader.geometry() }
   zones(): Zones { return this.reader.zones() }
+  /** The lines a box from `a` to `b` takes at this pose: wholly inside (`whole`), or touched (docs/playback-tools-checklist.md §1). */
+  linesInRect(a: Vec, b: Vec, whole: boolean): Id[] { return this.reader.linesInRect(a, b, whole) }
+}
+
+/** `s` read at `pose` (stage 3a): refused out of range or where the drawing has no finite value; never settled. */
+function poseReader(s: State, pose: evaluate.Pose, idle: (what: string) => void): PoseReader {
+  if (!evaluate.inRange(pose)) throw new net.Refusal('pose-out-of-range', `pose-out-of-range: yaw ${pose.yaw}, pitch ${pose.pitch} (yaw within ±${evaluate.YAW_LIMIT}, pitch within ±${evaluate.PITCH_LIMIT})`)
+  let posed: evaluate.Posed
+  // a drawing with no finite value at this pose is refused; only that error, nothing else (docs/stage3b-pkg4-move.md §7a)
+  try { posed = evaluate.evaluate(modelOf(s), pose) } catch (err) {
+    if (err instanceof evaluate.PoseNotFinite) throw new net.Refusal('pose-not-finite', err.message)
+    throw err
+  }
+  const { state, layer } = posedState(s, posed)
+  return new PoseReader(new LayerReader(() => state, layer, idle))
 }
 
 /** The document read in one view. */
