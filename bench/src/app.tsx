@@ -72,9 +72,15 @@ type WriteMode = 'edit' | 'playback' | 'locked'
  * angle — a layer's or a fill's visibility — and `uncorrect`; checked on the call's target, not its name only (dot
  * 1791976669). Undefined when allowed, else why not.
  */
-function refusedInPlayback(n: string, a: readonly unknown[], atView: boolean, playbackRef: (id: unknown) => boolean): string | undefined {
+function refusedInPlayback(n: string, a: readonly unknown[], atView: boolean, playbackRef: (id: unknown) => boolean, arcRow: (point: unknown, l1: unknown, l2: unknown) => boolean): string | undefined {
   const onlyVisible = (o: unknown) => !!o && typeof o === 'object' && Object.keys(o).every(k => k === 'visible')
   if (n === 'uncorrect' || n === 'fillVisible') return undefined
+  // an existing arc's radius: one value for every view and pose (bowen 1791985326; docs/arc-radius-shared-checklist.md §5b,
+  // dot 1791985670) — the row is an arc before the edit and stays one; a new join or a mode change is refused
+  if (n === 'join' && arcRow(a[0], a[1], a[2])) {
+    const o = a[3] as Record<string, unknown> | null
+    if (o && typeof o === 'object' && o.mode === 'arc' && Object.keys(o).every(k => k === 'mode' || k === 'radius')) return undefined
+  }
   // at a view, writing that view: what A and V do there in editing — pick, then move points, curves and handles (§2)
   if (atView && (n === 'select' || n === 'selectGroup' || n === 'translate' || n === 'moveHandle')) return undefined
   // every show / hide switch of the panels: a layer's lines or fills, a curve, a line, a fill (bowen 1791979917: layerFills was missed)
@@ -83,7 +89,7 @@ function refusedInPlayback(n: string, a: readonly unknown[], atView: boolean, pl
   if (n === 'placeReference' && (a[0] as { view?: unknown } | null)?.view === 'playback') return undefined
   if ((n === 'setReference' || n === 'removeReference') && playbackRef(a[0])) return undefined
   if (n === 'addAsset') return undefined
-  return `${n} is not allowed during playback (only a correction, deleting one, showing or hiding, playback's own pictures, and at a view moving its points and handles)`
+  return `${n} is not allowed during playback (only a correction, deleting one, showing or hiding, an arc's radius, playback's own pictures, and at a view moving its points and handles)`
 }
 type Pose = { yaw: number; pitch: number }
 /** The view a pose is exactly at (yaw 0 / ±90 × pitch 0 / ±45), else null. */
@@ -209,10 +215,13 @@ function loggedFor(mode: () => WriteMode, afterWrite: () => void = () => {}, pos
           const calls: string[] = []
           // playback's own pictures as they are before the edit (a read inside the edit is refused by core)
           const playbackRefs = new Set(playback ? t.playbackReferences().map(r => r.id) : [])
+          // the arc rows as they are before the edit (point and its two lines, in either order)
+          const arcs = new Set(playback ? t.snapshot().joins.filter(r => r.mode === 'arc').map(r => JSON.stringify([r.point, ...[...r.lines].sort()])) : [])
+          const arcRow = (point: unknown, l1: unknown, l2: unknown) => typeof point === 'string' && typeof l1 === 'string' && typeof l2 === 'string' && arcs.has(JSON.stringify([point, ...[l1, l2].sort()]))
           let corrects = 0, others = 0, forbidden: string | undefined
           const rec = (e: Editor) => new Proxy(e, { get: (x, n) => { const v = Reflect.get(x, n); return typeof v === 'function' ? (...a: unknown[]) => {
             // the gate first, then the log: nothing before the gate may throw (dot 1791697642)
-            const why = playback && n !== 'correct' ? refusedInPlayback(String(n), a, atView, id => typeof id === 'string' && playbackRefs.has(id)) : undefined
+            const why = playback && n !== 'correct' ? refusedInPlayback(String(n), a, atView, id => typeof id === 'string' && playbackRefs.has(id), arcRow) : undefined
             if (why !== undefined) forbidden ??= String(n)
             calls.push(`${String(n)}(${a.map(short).join(', ')})`)
             if (why !== undefined) throw new Error(`read-only-playback: ${why}`)
