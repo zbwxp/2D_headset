@@ -112,6 +112,7 @@ describe('batch writes (§2, §3)', () => {
     await t.play(30, 0)
     const p0 = t.posed(t.p), q0 = t.posed(t.q), r0 = t.posed(t.r), ha0 = t.posedLine(`e${t.k}`).ha
     await t.drag({ x: p0.x - 5, y: p0.y - 40 }, { x: r0.x + 5, y: r0.y + 40 })
+    await key('v') // with A the end point r on the side handle comes first, as in editing (dot 1791982484); V lets the handle win over lines
     const h = t.svg.querySelector('[data-pb-handle="e"]')!, hx = Number(h.getAttribute('x')) + 3.5, hy = Number(h.getAttribute('y')) + 3.5
     const n0 = t.corrects(), w = r0.x - p0.x
     await t.drag({ x: hx, y: hy }, { x: hx - w / 2, y: hy })
@@ -138,6 +139,44 @@ describe('batch writes (§2, §3)', () => {
     expect(t.corrects()).toBe(n0 + 1)
     expect(near(t.posed(t.p), p0)).toBe(true) // the opposite corner's point stays
     expect(t.svg.querySelector('[data-testid="pb-deform-frame"]')).not.toBeNull()
+  })
+
+  it('A inside the box: a Bézier handle is dragged before the box moves; Shift on a picked point drops it, Option too (dot 1791982484)', async () => {
+    const t = await setup()
+    await t.play(30, 0)
+    const p0 = t.posed(t.p), q0 = t.posed(t.q), r0 = t.posed(t.r), e0 = t.posedLine(`e${t.k}`)
+    await t.drag({ x: p0.x - 5, y: p0.y - 40 }, { x: r0.x + 5, y: r0.y + 40 })
+    const n0 = t.corrects()
+    const on = { x: (p0.x + q0.x) / 2, y: (p0.y + q0.y) / 2 + 1 } // hover line e, so its handles show
+    await act(async () => { t.svg.dispatchEvent(pe('pointermove', on.x, on.y, 0)) })
+    const tip = { x: p0.x + e0.ha.x, y: p0.y + e0.ha.y }
+    await t.drag(tip, { x: tip.x + 3, y: tip.y + 4 })
+    expect(t.corrects()).toBe(n0 + 1)
+    expect([near(t.posed(t.p), p0), near(t.posed(t.q), q0), near(t.posedLine(`e${t.k}`).ha, { x: e0.ha.x + 3, y: e0.ha.y + 4 })]).toEqual([true, true, true])
+    await act(async () => { t.svg.dispatchEvent(pe('pointerdown', q0.x, q0.y, 1, { shiftKey: true })); window.dispatchEvent(pe('pointerup', q0.x, q0.y, 0, { shiftKey: true })) })
+    expect(t.picked()).toEqual([t.p, t.r].sort())
+    await act(async () => { t.svg.dispatchEvent(pe('pointerdown', r0.x, r0.y, 1, { altKey: true })); window.dispatchEvent(pe('pointerup', r0.x, r0.y, 0, { altKey: true })) })
+    expect(t.picked()).toEqual([t.p])
+    expect(t.corrects()).toBe(n0 + 1)
+  })
+
+  it('四角 after another write: the frame is rebuilt from the curves as they are now, so the next corner drag keeps the arrows\' move (dot 1791982484)', async () => {
+    const t = await setup()
+    await t.play(30, 0)
+    const p0 = t.posed(t.p), r0 = t.posed(t.r)
+    await t.drag({ x: p0.x - 5, y: p0.y - 40 }, { x: r0.x + 5, y: r0.y + 40 })
+    await act(async () => { t.button('四角/曲边').click() })
+    const corner = () => { const c = t.svg.querySelector('[data-pb-deform-corner="2"]')!; return { x: Number(c.getAttribute('x')) + 6, y: Number(c.getAttribute('y')) + 6 } }
+    const c0 = corner()
+    await t.drag(c0, { x: c0.x + 10, y: c0.y + 8 })
+    const p1 = t.posed(t.p)
+    await key('ArrowUp'); await key('ArrowUp', 'keyup')
+    expect(near(t.posed(t.p), { x: p1.x, y: p1.y - 1 })).toBe(true)
+    const n0 = t.corrects(), c1 = corner()
+    expect(c1).not.toEqual({ x: c0.x + 10, y: c0.y + 8 }) // a fresh frame, not the dragged one
+    await t.drag(c1, { x: c1.x + 5, y: c1.y })
+    expect(t.corrects()).toBe(n0 + 1)
+    expect(near(t.posed(t.p), { x: p1.x, y: p1.y - 1 })).toBe(true) // the opposite corner's point keeps the arrow's move
   })
 
   it('a pose change mid-drag writes nothing', async () => {

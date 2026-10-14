@@ -353,7 +353,7 @@ export function App() {
   const [batchGhost, setBatchGhost] = useState<null | { lines: { id: Id; curve: readonly Vec[] }[]; arcs: { key: string; curve: readonly Vec[] }[]; points: { id: Id; position: Vec }[] }>(null)
   const [pbBox, setPbBox] = useState<null | { from: Vec; to: Vec }>(null)
   // 四角 / 曲边 on the playback selection: frozen at its start (drawing, pose, picked points), the frame kept across its writes
-  const [pbDeform, setPbDeform] = useState<null | { core: Core; key: string; lines: PlanLine[]; rect: Rect; quad: Quad; bend: Bend }>(null)
+  const [pbDeform, setPbDeform] = useState<null | { core: Core; key: string; text: string; lines: PlanLine[]; rect: Rect; quad: Quad; bend: Bend }>(null)
   // the line under the resting pointer in playback with A: its handles are marked and pickable (docs/playback-edit-checklist.md §2)
   const [poseHover, setPoseHover] = useState<Id | null>(null)
   // what the last playback write changed (§3), shown until the next write or leaving playback
@@ -888,29 +888,30 @@ export function App() {
     let frameNext: null | { quad: Quad; bend: Bend } = null
     const dfm = ix.tool === 'deform' ? pbDeform : null
     if (ix.tool === 'deform') {
-      if (!dfm) return
+      if (!dfm || dfm.core !== core || dfm.text !== shownFrom.text) return // a frame from another drawing is never dragged
       const f = frameOf(dfm.rect, dfm.quad, dfm.bend), r = FRAME.reach * px
       const near = <T extends { at: Vec }>(xs: T[]) => xs.map(x => ({ x, d: Math.hypot(x.at.x - at.x, x.at.y - at.y) })).filter(c => c.d <= r).sort((p, q) => p.d - q.d)[0]?.x
       const c = near(f.corners.map((q, i) => ({ i, at: q }))), h = c ? undefined : near(f.handles), m = c || h ? undefined : near(f.midpoints)
       const control: FrameControl | null = c ? { corner: c.i } : h ? { edge: h.edge, handle: h.handle } : m ? { edge: m.edge, handle: 2 } : null
       if (!control) return
       startBatch(e, at, snap, geo, poseNow, shownFrom, now => { frameNext = dragFrame(dfm.rect, dfm.quad, dfm.bend, control, at, now); return deformTargets(dfm.lines, dfm.rect, frameNext.quad, frameNext.bend) },
-        () => { const n = frameNext; if (n) setPbDeform(v => (v === dfm ? { ...dfm, quad: n.quad, bend: n.bend } : v)) })
+        () => { const n = frameNext; if (n) setPbDeform(v => (v === dfm ? { ...dfm, quad: n.quad, bend: n.bend, text: save(core) } : v)) })
       return
     }
     const sel = pbSel.core === core ? pbSel.ids : [], bounds = boundsOf(snap, sel)
     const hit = bounds ? hitBox(bounds, at, px) : null
     // what this press does: a target function of the pointer, or a box selection
+    // editing's order (select-transform pressHit; dot 1791982484): A's points and handles first, then a box handle, then
+    // what the tool picks, then the inside of the box unless Shift / Option ask for the marquee that adds / removes
     let targetsOf: ((now: Vec, m: { alt?: boolean; shift?: boolean }) => Targets) | null = null
-    if (hit && hit !== 'inside') { const d = startHandleDrag(hit, bounds!, at, px); targetsOf = (now, m) => boxTargets(snap, sel, opAt(d, now, m)) }
-    else if (hit === 'inside') targetsOf = now => moveTargets(snap, sel, P(now.x - at.x, now.y - at.y), opts.follow)
-    else {
-      const pick = playbackPick(at)
-      if (pick?.kind === 'handle') targetsOf = now => ({ points: [], handles: [{ line: pick.line, end: pick.end, vector: P(pick.tip.x + now.x - at.x - pick.point.x, pick.tip.y + now.y - at.y - pick.point.y) }] })
+    const pick = playbackPick(at)
+    if (!(ix.tool === 'A' && pick) && hit && hit !== 'inside') { const d = startHandleDrag(hit, bounds!, at, px); targetsOf = (now, m) => boxTargets(snap, sel, opAt(d, now, m)) }
+    else if (pick) {
+      if (pick.kind === 'handle') targetsOf = now => ({ points: [], handles: [{ line: pick.line, end: pick.end, vector: P(pick.tip.x + now.x - at.x - pick.point.x, pick.tip.y + now.y - at.y - pick.point.y) }] })
       else if (pick) {
         const ids = Object.keys(pick.starts)
-        if (e.shiftKey) { // Shift toggles them in the selection; no drag
-          const on = ids.every(id => sel.includes(id))
+        if (e.shiftKey || e.altKey) { // Shift toggles them in the selection, Option removes them; no drag
+          const on = e.altKey || ids.every(id => sel.includes(id))
           setPbSel({ core, ids: on ? sel.filter(id => !ids.includes(id)) : [...new Set([...sel, ...ids])] }); return
         }
         const take = ids.every(id => sel.includes(id)) ? sel : ids
@@ -918,6 +919,7 @@ export function App() {
         targetsOf = now => moveTargets(snap, take, P(now.x - at.x, now.y - at.y), opts.follow)
       }
     }
+    else if (hit === 'inside' && !e.shiftKey && !e.altKey) targetsOf = now => moveTargets(snap, sel, P(now.x - at.x, now.y - at.y), opts.follow)
     startBatch(e, at, snap, geo, poseNow, shownFrom, targetsOf, null, sel)
   }
   /** A playback batch gesture (§2–§4): a drag whose targets `targetsOf` gives, previewed by the release's own correct; or, with none, a box selection. */
@@ -1248,16 +1250,18 @@ export function App() {
   const atCorrection = !!pose && correctionPose(pose) && !!where && 'edge' in where
   // the playback selection as drawn: only while it belongs to this drawing; its box from the pose's points (§1)
   const pbIds = atCorrection && pbSel.core === core ? pbSel.ids : [], pbBounds = pbIds.length ? boundsOf(s, pbIds) : null
-  // 四角 / 曲边 on the playback selection (§2): started for this drawing, pose and selection; kept through its own writes; ended otherwise
+  // 四角 / 曲边 on the playback selection (§2): started for this drawing, pose and selection; kept through its own writes
+  // only — any other write (an arrow, a move, a scale) leaves another drawing, and the frame is rebuilt from it (dot 1791982484)
   const deformKey = pose ? `${pose.yaw},${pose.pitch}|${pbIds.join(',')}` : ''
   const deformOn = atCorrection && ix.tool === 'deform' && pbIds.length > 0
   useEffect(() => {
     if (!deformOn) { if (pbDeform) setPbDeform(null); return }
-    if (pbDeform && pbDeform.core === core && pbDeform.key === deformKey) return
+    const text = frame.current?.text ?? save(core)
+    if (pbDeform && pbDeform.core === core && pbDeform.key === deformKey && pbDeform.text === text) return
     const st = deformStart(s, pbIds)
-    setPbDeform(st ? { core, key: deformKey, ...st, quad: rectQuad(st.rect), bend: neutralBend() } : null)
+    setPbDeform(st ? { core, key: deformKey, text, ...st, quad: rectQuad(st.rect), bend: neutralBend() } : null)
   })
-  const pbFrame = deformOn && pbDeform && pbDeform.core === core && pbDeform.key === deformKey ? frameOf(pbDeform.rect, pbDeform.quad, pbDeform.bend) : null
+  const pbFrame = deformOn && pbDeform && pbDeform.core === core && pbDeform.key === deformKey && pbDeform.text === frame.current?.text ? frameOf(pbDeform.rect, pbDeform.quad, pbDeform.bend) : null
   const playbackMarks = atCorrection && !zoomTool && ix.tool === 'A'
   const correctedHere = (() => {
     const out = { points: new Set<Id>(), handles: new Set<string>(), list: [] as { control: { kind: 'point'; id: Id } | { kind: 'handle'; line: Id; end: 'a' | 'b' }; label: string; axes: string }[] }
