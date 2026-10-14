@@ -37,7 +37,7 @@ export function selectTransform(ctx: Ctx): SelectTransform {
   const mover = createMover()
   /** The selection's arrows: 1 drawing unit, Shift 10, Option / Ctrl 0.1 (bowen 1791733125, 1791733775) — this caller's sizes (bowen 1791769146). */
   const SELECTION_STEPS = { step: 1, long: 10, short: 0.1 }
-  let moving: { core: Core; view: string; units: Unit[]; offset: Vec; lines: { id: Id; curve: Vec[] }[] } | null = null
+  let moving: { core: Core; view: string; units: Unit[]; offset: Vec; lines: { id: Id; curve: Vec[] }[]; arcs: { key: string; curve: Vec[] }[] } | null = null
   /**
    * The selection as a move target: taken at begin (drawing, view, units), re-checked at commit (dot 1791733489). With
    * handle follow (docs/handle-follow-checklist.md §1) the drawing as it was at begin and the switch are frozen then
@@ -54,17 +54,20 @@ export function selectTransform(ctx: Ctx): SelectTransform {
       return (e: Editor) => { e.translate(o.x, o.y, units); for (const h of hs) e.moveHandle(h.line, h.end, h.offset) }
     }
     return {
-      begin: () => { base = ctx.snap(); follow = ctx.options().follow; moving = { ...owned, units, offset: { x: 0, y: 0 }, lines: [] }; return true },
+      begin: () => { base = ctx.snap(); follow = ctx.options().follow; moving = { ...owned, units, offset: { x: 0, y: 0 }, lines: [], arcs: [] }; return true },
       preview: o => {
         if (!moving) return
         moving.offset = { x: o.x, y: o.y }
-        // what the release writes, as core settles it: every line it changes (as the deform tool shows it)
-        moving.lines = []
+        // what the release writes, as core settles it: every line and every join's arc it changes (as the deform tool
+        // shows them; dot 1791946539)
+        moving.lines = []; moving.arcs = []
         try {
           const shown = owned.core.preview(owned.view, op(o))
           if (shown) {
-            const key = (c: readonly Vec[]) => JSON.stringify(c), before = new Map(owned.core.in(owned.view).geometry().lines.map(l => [l.id, key(l.curve)]))
-            moving.lines = shown.geometry().lines.filter(l => before.get(l.id) !== key(l.curve)).map(l => ({ id: l.id, curve: l.curve.map(v => ({ ...v })) }))
+            const key = (c: readonly Vec[]) => JSON.stringify(c), g0 = owned.core.in(owned.view).geometry(), g1 = shown.geometry()
+            const before = new Map(g0.lines.map(l => [l.id, key(l.curve)])), arcsBefore = new Map(g0.arcs.map(a => [a.key, key(a.curve)]))
+            moving.lines = g1.lines.filter(l => before.get(l.id) !== key(l.curve)).map(l => ({ id: l.id, curve: l.curve.map(v => ({ ...v })) }))
+            moving.arcs = g1.arcs.filter(a => arcsBefore.get(a.key) !== key(a.curve)).map(a => ({ key: a.key, curve: a.curve.map(v => ({ ...v })) }))
           }
         } catch { /* refused: the plain ghost; the release reports it */ }
       },
@@ -234,7 +237,7 @@ export function selectTransform(ctx: Ctx): SelectTransform {
     // the drawing changed under the move (undo, redo, a selection change, an edit such as Delete): it ends
     historyChanged() { stop() },
     preview(p: Preview) {
-      if (moving && ctx.mine(moving)) p.drag = { units: structuredClone(moving.units), offset: { ...moving.offset }, lines: structuredClone(moving.lines) }
+      if (moving && ctx.mine(moving)) p.drag = { units: structuredClone(moving.units), offset: { ...moving.offset }, lines: structuredClone(moving.lines), arcs: structuredClone(moving.arcs) }
       const b = boxNow()
       if (b) {
         const px = ctx.env.pixel()

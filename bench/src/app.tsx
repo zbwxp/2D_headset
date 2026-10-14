@@ -895,7 +895,7 @@ export function App() {
     const d = pv.drag
     if (!d) return []
     // what the release writes, as core previews it (handle follow, settle, links); the plain moved ghost otherwise
-    if (d.lines.length) return d.lines.map(l => l.curve as [Vec, Vec, Vec, Vec])
+    if (d.lines.length || d.arcs.length) return [...d.lines, ...d.arcs].map(l => l.curve as [Vec, Vec, Vec, Vec])
     const pts = new Set<Id>(), hs = new Set<string>(), lns = new Set<Id>()
     // the view never dereferences an id that is gone (dot 1791544530)
     const has = (id: Id) => s.lines.some(l => l.id === id), hasPoint = (id: Id) => s.points.some(p => p.id === id)

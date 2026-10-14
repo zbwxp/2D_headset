@@ -86,6 +86,18 @@ describe('handle follow', () => {
     for (const l of shown) l.curve.forEach((v, i) => close(v, after.find(x => x.id === l.id)!.curve[i]!))
   })
 
+  it('an arc join moved with its lines: the preview carries the changed arc too, equal to the arc after the release (dot 1791946539)', () => {
+    const t = setup()
+    t.d.edit(e => e.join('b', 'ab', 'bc', { mode: 'arc', radius: 5 }))
+    t.ix.setTool('A'); t.ix.pointerDown(P(50, 80)); t.ix.pointerMove(P(70, 90))
+    const shown = t.ix.preview().drag!
+    t.ix.pointerUp(P(70, 90))
+    const after = t.d.geometry().arcs
+    expect(shown.arcs.length).toBe(1)
+    for (const a of shown.arcs) a.curve.forEach((v, i) => close(v, after.find(x => x.key === a.key)!.curve[i]!))
+    for (const l of shown.lines) l.curve.forEach((v, i) => close(v, t.d.geometry().lines.find(x => x.id === l.id)!.curve[i]!))
+  })
+
   it('frozen at the start: the switch turned off mid-drag changes nothing for this drag; previews never compound', () => {
     const t = setup(), ab0 = t.line('ab')
     t.ix.setTool('A'); t.ix.pointerDown(P(0, 0)); t.ix.pointerMove(P(10, 20)); t.ix.pointerMove(P(5, 10))
