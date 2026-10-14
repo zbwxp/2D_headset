@@ -3,7 +3,7 @@
 // continuous curves; rows drag to reorder; buttons along the bottom. Visual UI only: every
 // change is a one-shot core operation through `run` (doc 22 §3.5). Part of the visual package
 // (docs/visual-plan.md); no visual principles yet.
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Snapshot, Geometry, Zones, Editor, Vec } from '../src'
 import { PropertiesPanel, type Subject } from './PropertiesPanel'
 import type { SliderHooks } from './JoinList'
@@ -50,9 +50,11 @@ interface Props {
   joinScope?: string
   /** A count of canvas picks: a new pick of the same object shows it again after a list click (dot). */
   canvasPicks?: number
+  /** A line under the title about which layer order is shown (the app's; docs/left-layer-order-checklist.md §4). */
+  orderNote?: ReactNode
 }
 
-export function LayersPanel({ s, g, selected, active, select, run, newLayerId, onPick, zones, slider, toolRadius, canvasSubject, joinScope, canvasPicks = 0 }: Props) {
+export function LayersPanel({ s, g, selected, active, select, run, newLayerId, onPick, zones, slider, toolRadius, canvasSubject, joinScope, canvasPicks = 0, orderNote }: Props) {
   const [open, setOpen] = useState<Set<Id>>(new Set())
   const [anchor, setAnchor] = useState<Id | null>(null)
   const [rowAnchor, setRowAnchor] = useState<Id | null>(null)
@@ -228,6 +230,7 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId, o
         <Icon d={COPY} title="复制当前图层" onClick={() => { if (activeLayer) run(x => x.copyLayer(activeLayer.id, newLayerId())) }} />
         <Icon d={TRASH} title="删除当前图层" onClick={() => { if (activeLayer) run(x => x.deleteLayer(activeLayer.id)) }} />
       </div>
+      {orderNote}
       <div style={{ flex: 1, overflow: 'auto' }} onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setTarget(null) }}>
         {layers.map(L => {
           const lines = linesIn(L.id), ids = lines.map(l => l.id)

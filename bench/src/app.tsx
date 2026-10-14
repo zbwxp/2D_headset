@@ -478,6 +478,10 @@ export function App() {
   frame.current = pose || moveRef ? { core, text: save(core) } : null
   const reader = posed && !(posed instanceof Error) ? posed : core.in(poseView ?? shown)
   const s = reader.snapshot(), g = reader.geometry(), zones = reader.zones()
+  // yaw < 0 stacks the layers by the left order (bowen 1791995249; docs/left-layer-order-checklist.md): the panel shows
+  // this frame's order; a side change remounts it, so a drag begun on one side never writes the other's (dot 1791997825)
+  const leftNow = pose ? pose.yaw < 0 : Number(shown.slice('view:'.length).split(',')[0]) < 0
+  const leftDiffers = leftNow && s.layers.map(l => l.id).join() !== core.in('view:0,0').snapshot().layers.map(l => l.id).join()
   // the canvas's one selected line or point: the properties panel shows it (J1b)
   const canvasSubject = s.selection.length === 1 && (s.selection[0]!.kind === 'line' || s.selection[0]!.kind === 'point') ? { kind: s.selection[0]!.kind, id: s.selection[0]!.id } : null
   // with the switch on, each visible line's ink (P1: single lines, today's round-capped look); a line whose ink a check
@@ -1790,7 +1794,12 @@ export function App() {
           wheel or Z (drag up / down, click) zooms · right- or middle-drag pans · Esc / right-click cancels · ⌘Z / ⇧⌘Z · ⌘C ⌘X ⌘V · Delete · window.bench = {'{ core, ix, refresh, svg, log }'}
         </div>
       </div>
-      <LayersPanel key={drawing} s={s} g={g} selected={selLayers} active={drawLayer} select={selectLayers} run={run} newLayerId={() => nid('layer-')} onPick={setLabelKind}
+      <LayersPanel key={`${drawing}|${leftNow ? 'left' : 'right'}`} orderNote={leftNow ? (
+        <div data-testid="left-order-note" style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '4px 10px', background: '#3a3320', color: '#e8d9a8', borderBottom: '1px solid #444' }}>
+          <span style={{ flex: 1 }}>{leftDiffers ? '左转顺序（yaw < 0）' : '左转顺序（目前同右转）'}</span>
+          <button data-testid="reset-left-order" disabled={!!pose || !leftDiffers} title={pose ? '播放时不能改图层顺序' : undefined}
+            onClick={() => run(e => e.resetLeftOrder())}>左转顺序恢复成跟右转一样</button>
+        </div>) : null} s={s} g={g} selected={selLayers} active={drawLayer} select={selectLayers} run={run} newLayerId={() => nid('layer-')} onPick={setLabelKind}
         zones={zones} slider={sliderHooks} toolRadius={opts.radius} canvasSubject={canvasSubject} canvasPicks={canvasPicks} joinScope={`${drawing}|${shown}`} />
     </div>
   )
