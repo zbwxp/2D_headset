@@ -522,6 +522,10 @@ export class Editor {
       settled: () => { const trial = this.view(); return { network: trial.network, model: modelOf(trial) } },
     })
   }
+  /** A correction's knots removed at this pose (docs/playback-edit-checklist.md §4); a moved view stays. */
+  uncorrect(pose: evaluate.Pose, control: animation.Control) {
+    animation.uncorrect(this.s.animation, this.s.network, this.s.links, pose, control)
+  }
   /** Reference pictures (docs/reference-images-plan.md): place, change or remove one; never settles. */
   placeReference(image: reference.ReferenceInput) { reference.place(this.s.reference, image) }
   setReference(id: Id, props: reference.ReferenceProps) { reference.set(this.s.reference, id, props) }

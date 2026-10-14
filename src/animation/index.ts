@@ -283,7 +283,7 @@ export interface CorrectionTargets {
   readonly points?: readonly { readonly id: Id; readonly position: Vec }[]
   readonly handles?: readonly { readonly line: Id; readonly end: net.End; readonly vector: Vec }[]
 }
-type Control = { readonly kind: 'point'; readonly id: Id } | { readonly kind: 'handle'; readonly line: Id; readonly end: net.End }
+export type Control = { readonly kind: 'point'; readonly id: Id } | { readonly kind: 'handle'; readonly line: Id; readonly end: net.End }
 const objectsOf = (c: Control): net.RefusalObject[] => (c.kind === 'point' ? [{ kind: 'point', id: c.id }] : net.lineObjects([c.line]))
 /** A control's key: unambiguous for any id (the prefix and the one-letter end come first). */
 const keyOf = (c: Control) => (c.kind === 'point' ? `p:${c.id}` : `h:${c.end}:${c.line}`)
@@ -618,4 +618,46 @@ export function correct(a: ResponsesState, n: net.NetworkState, l: links.LinksSt
     const got = evaluate.onEdge(knots, k.t, inView(net.of(trial.network, k.e.inner), k.c)[k.axis], inView(net.of(trial.network, k.e.outer), k.c)[k.axis])
     if (resolved ? !near(got, k.v) : got !== k.v) notReproduced(k.c, `lost its earlier target at progress ${k.t} on ${k.e.key}, axis ${k.axis} (${k.v} → ${got})`)
   }
+}
+
+/**
+ * `uncorrect(pose, control)` (docs/playback-edit-checklist.md §4): on the pose's edge, the control's
+ * knots at the pose's progress are removed, both axes; a point stands for its link component (linked
+ * points hold identical response sets). Nothing else changes: a view that a correction moved stays
+ * where it is (undo, not this, reverses that). Refused as `correct` is at a view or off the lines, and
+ * with `uncorrect-none` when there is no knot there. Locks are not consulted (bowen 1791903940: locks are
+ * ignored, to be removed).
+ */
+export function uncorrect(a: ResponsesState, n: net.NetworkState, l: links.LinksState, pose: evaluate.Pose, control: Control) {
+  const { edge, t } = edgeAt(pose)
+  const bad = (why: string): never => { throw new net.Refusal('correction-bad-target', `correction-bad-target: ${why}`) }
+  if (!control || typeof control !== 'object') bad('no control')
+  if (control.kind === 'point') { if (typeof control.id !== 'string' || !net.hasPoint(n, control.id)) bad(`no point ${JSON.stringify(control.id)}`) }
+  else if (control.kind === 'handle') {
+    if (typeof control.line !== 'string' || !net.hasLine(n, control.line)) bad(`no line ${JSON.stringify(control.line)}`)
+    if (control.end !== 'a' && control.end !== 'b') bad(`line ${control.line} has no end ${JSON.stringify(control.end)}`)
+  } else bad(`unknown control kind ${JSON.stringify((control as { kind: unknown }).kind)}`)
+  const set: Control[] = control.kind === 'point' ? component(l, control.id).map(id => ({ kind: 'point', id })) : [control]
+  const s = R(a)
+  let removed = false
+  for (const c of set) for (const axis of AXES) {
+    const knots = knotsOf(s, c, edge.key, axis)
+    if (!knots?.some(k => k[0] === t)) continue
+    removed = true
+    dropKnot(s, c, edge.key, axis, t)
+  }
+  if (!removed) throw new net.Refusal('uncorrect-none', `uncorrect-none: ${nameOf(control)} has no correction on ${edge.key} at progress ${t}`, objectsOf(control))
+}
+/** The knot at `t` removed; an emptied axis, edge or control record goes too (the data stays in normal form). */
+function dropKnot(s: RStore, c: Control, edge: string, axis: 'x' | 'y', t: number) {
+  const holder: Rec<Rec<{ x?: Knot[]; y?: Knot[] }>> | undefined = c.kind === 'point' ? s.points : own(s.handles, c.line) as Rec<Rec<{ x?: Knot[]; y?: Knot[] }>> | undefined
+  const key = c.kind === 'point' ? c.id : c.end
+  const rec = holder ? own(holder, key) : undefined, axes = rec ? own(rec, edge) : undefined
+  if (!holder || !rec || !axes) return
+  const left = (axes[axis] ?? []).filter(k => k[0] !== t)
+  if (left.length) axes[axis] = left
+  else delete axes[axis]
+  if (!axes.x && !axes.y) delete rec[edge]
+  if (!Object.keys(rec).length) delete holder[key]
+  if (c.kind === 'handle' && !Object.keys(s.handles[c.line] ?? {}).length) delete s.handles[c.line]
 }

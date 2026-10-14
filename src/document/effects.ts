@@ -138,6 +138,8 @@ export const EFFECTS: Record<string, Effect> = {
   // move (one of the front's four neighbours; that at most one changes is the final check's, not
   // this table's). The final check reads the settled trial (docs/stage3b-pkg4-move.md §8)
   correct: { reads: 'settled-trial', intents: 'front-neighbours', shapes: 'front-neighbours', records: false, shared: ['animation'], autoStructure: false, settle: 'non-front-positions', alone: true, companion: false },
+  // a correction's knots removed (docs/playback-edit-checklist.md §4): responses only, nothing settles
+  uncorrect: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['animation'], autoStructure: false, settle: 'none', alone: false, companion: false },
   broadcastStroke: { reads: 'draft', intents: 'none', shapes: 'others', records: false, shared: [], autoStructure: false, settle: 'none', alone: false, companion: true },
   // mirror (front only, so the edited view is the front). Inside the operation apply copies the
   // source's geometry, strokes, end strokes and line states onto the target in the front; sets or
