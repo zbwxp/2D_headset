@@ -1,54 +1,67 @@
-# Editing tools at a correction pose: checklist before any code, for dot's review
+# Batch tools at a correction pose: checklist before any code, for dot's review
 
-Asked by bowen 1791980073 (at yaw −60: move the whole eye, maybe squeeze it sideways; box select, scaling, 四角 / 曲边 are missing, the A / V buttons are grey). Proposed in 1791980144 (approved by bowen 1791980604): the editing tools as they are, on a working copy of the drawing at this pose, each release written back as one correction.
+**Ask** (bowen 1791980073): at yaw −60, move the whole eye and maybe squeeze it sideways. Box select, scaling and 四角 / 曲边 are missing in playback.
 
-**Builds on:** `docs/playback-edit-checklist.md`, accepted by dot 1791979065 at cb26949.
-- Corrections are only at yaw ±30 / ±60 × pitch 0 / ±45 (bowen 1791976386, 1791976935).
-- Views are edited directly.
-- Elsewhere playback is preview only.
+**Constraint** (bowen 1791980816, 1791980832): these tools are only batch processing of what exists. They change no framework and must not break anything.
 
-## 1. The working copy
-- **On entering a correction pose** (and after every write to the drawing while there), the bench builds a copy:
-  - `open(save(core))`, then in its front view every point moved to its position at the pose and every handle set to its vector at the pose (`move`, `moveHandle`);
-  - its settle may move a smooth join's handles slightly, so the copy is what the tools act on, not a claim to equal the pose.
-- **The canvas at a correction pose** draws the copy, so the selection, its box, the handles and the ghosts are the editing ones.
-- **The copy is never saved, autosaved or undone.** It is dropped when:
-  - the pose changes;
-  - playback is left;
-  - the drawing changes.
+**Dropped:** the working-copy design of 88b3362. dot 1791980825 showed that it would run the front view's mirror, merge and join rules on a copy. It was never committed.
 
-## 2. The tools on it
-- **Interaction runs on the copy** at a correction pose (`core: () => copy`, view `view:0,0`):
-  - V / A picking, the box, Shift adding, the arrows, drag, the selection box's scale and rotate, 四角 / 曲边, handle follow — all as in editing;
-  - the left panel's tool buttons for these (V, A, 四角/曲边, the handle-follow switch) are enabled in playback.
-- **Only these operations reach the copy:** `select`, `selectGroup`, `translate`, `rotate`, `scale`, `transform`, `move`, `moveHandle`.
-  - Anything else (a pen, a split, a join, delete, paste…) is refused, and the status line names it.
-- **The selection is the copy's:** it is not written to the drawing.
+**Builds on** `docs/playback-edit-checklist.md` (accepted by dot 1791979065 at cb26949, plus 7dd73ca):
+- corrections only at yaw ±30 / ±60 × pitch 0 / ±45;
+- a view is edited directly;
+- elsewhere playback is preview only.
 
-## 3. Each write → one correction
-- **When an edit commits on the copy**, the bench reads the copy before and after it and computes the deltas:
-  - every point whose position changed: `posed + (after − before)`;
-  - every handle whose vector changed: `posed vector + (after − before)`.
-- **These targets become one `correct(pose, { points, handles })` on the drawing**, through the logged wrapper (one undo step after leaving playback, as today).
-- **A selection-only edit** writes nothing to the drawing.
-- **If core refuses the correction**, the copy is rebuilt from the drawing (the edit is dropped). The refusal shows in the status line, as a playback drag's does.
-- **「刚才改了什么」 shows the correction**, as today (fed from the wrapper).
+**What changes:** bench only. No core change, no new stored data. Every write is the existing `correct(pose, { points, handles })`.
 
-## 4. Unchanged
-- The A / V single drags of cb26949 are replaced by the editing ones at a correction pose: the same picks, plus selection.
-- Views and in-between poses behave as before.
+## 1. A selection that lives in playback
+- **What it holds:** a set of point ids, kept by the bench, at a correction pose only. It is never written to the drawing; `select` is not called.
+- **What picks:**
+  - A: a click on a visible end point (of a selected layer) picks it; Shift adds or removes.
+  - V: a click on a line picks every end point of its curve (its group, else the line); Shift adds or removes.
+  - A press on nothing starts a box. Every visible end point of the selected layers inside it is picked (Shift adds). With V, a point picks its whole curve.
+  - The picks follow the rules of cb26949 / 79484d9 / cb26949: only selected layers; a masked line is picked by what is drawn of it.
+- **What clears it:** Esc, a pose change, leaving playback, an Open, a layer-scope change.
+- **What survives:** a write. The same point ids stay picked, so "move, then squeeze, then nudge" goes on (dot 1791980846).
+- **How it shows:** picked points are filled blue. The box around them has the editing selection box's 8 handles (`handlesOf`). A single A pick still shows the hovered line's handles (cb26949).
+
+## 2. The batch operations
+Each one computes targets for the picked points, and for the handles of every line touching them, in the pose's geometry (`core.atPose(pose).snapshot()`). The release writes one `correct`.
+- **Move:** a drag on a picked point or inside the box, or the arrows with a selection (Shift ×10, Option ×0.1).
+  - Points take start + offset.
+  - A handle whose line has both ends picked keeps its vector. A line with one end picked keeps its other end's handle. With 手柄跟随 on, its handles follow the chord, as `followHandles` (the same pure function as editing).
+  - Without a selection the arrows still turn the pose.
+- **Scale:** a drag on one of the box's 8 handles. Points are scaled about the opposite side or corner (Option: about the centre; Shift: keep the ratio). This is the editing box's `startHandleDrag` / `opAt`.
+  - Handle vectors are scaled by the same (sx, sy).
+  - A side handle alone squeezes sideways.
+- **Rotate:** the box's rotate handle, as editing (`opAt`). Points and handle vectors are rotated.
+- **四角 / 曲边:** the deform tool with a selection. Its frame is around the picked points' lines. `deformPlan` (the pure function editing uses) gives the point targets and handle offsets, on curves read from the pose's geometry.
+- **One handle:** A on the hovered line's handle, as cb26949.
+
+## 3. Preview = the release (dot 1791980921: the real correct previews and commits)
+- **Each preview frame tries the release's correct on a draft:** `core.preview('view:0,0', e => e.correct(pose, targets))`. That is core's own edit pipeline on a copy of the state, the same call the release makes; nothing is published.
+  - **Accepted:** the ghost is the pose's drawing with the targets. core guarantees this is exactly the drawing at this pose after the correct: its final check refuses with `correction-not-reproduced` a target off by more than 1e-9 · max(1, |q|), and refuses any other control that changes at this pose.
+  - **Refused:** the ghost turns red and the status line shows the refusal. The release then writes nothing, as the deform tool does with a refused frame.
+- **The release** calls the same `correct` with the same targets, through the logged wrapper.
+- **No working copy and no second geometry:** the targets come from the pose's geometry only.
+
+## 4. Cancel paths (dot 1791980846)
+- **These end a drag or a key run without writing:** a pose change, leaving playback, an Open, a drawing changed under it, Esc, a right click, the window's blur. These are the cancel paths of today's playback drag.
+- The selection is kept only through a write of its own.
 
 ## 5. Evidence
-- **bench at yaw −60:**
-  - a box selection of an eye's curves;
-  - a drag of the selection: one correct with all their points;
-  - the box's side handle squeezing it sideways: one correct, points and handles;
-  - 四角 on it: one correct;
-  - the drawing's other poses: the corrections only at their knots;
-  - a pen key does nothing; a refused correction rebuilds the copy and writes nothing;
-  - nothing in the drawing's selection changes.
-- **A screenshot** of 211.json at −60 with the eye selected and squeezed.
+**bench, the steps bowen described (dot 1791980846):**
+- At −60 (211.json, 左眼 + 左睫毛) the picture does not jump on entering.
+- Box-select the eye. Move it: one correct, with all its points and the handles of their lines.
+- Drag the box's left side to squeeze it: one correct, points and handle vectors scaled in x only.
+- The arrows: one correct per key run. The selection is still there after each.
+- Mirror-linked eyes: the other eye is not made symmetric. `correct` touches only the targets and their link components; no front mirror rule runs.
+- Each preview equals the drawing after the release (every changed point and handle).
+- **Cancel cases:** a pose change mid-drag writes nothing. A refused correction writes nothing and shows the refusal.
+- **四角:** one corner dragged, one correct.
+
+**Screenshots:** −60 before, then after the move and the squeeze.
 
 ## 6. Not in this round
 - Corrections inside a cell (set aside, bowen 1791976739).
 - Undo inside playback.
+- Handle picking by box.
