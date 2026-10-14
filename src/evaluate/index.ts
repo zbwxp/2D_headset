@@ -97,9 +97,10 @@ export interface Geometry {
 }
 
 /**
- * Responded weights for one scalar (stage 3b package 2, docs/stage3b-pkg2-responses.md §2): in the
- * pose's quadrant, `u' = (1 − v)·r_bottom(u) + v·r_top(u)`, `v' = (1 − u)·s_left(v) + u·s_right(v)`,
- * then the bilinear weights of u', v'. Weights may be negative or above 1 (a response may
+ * Responded weights for one scalar (stage 3b package 2, docs/stage3b-pkg2-responses.md §2, inside a cell
+ * docs/cell-blend-checklist.md): on an edge, that edge's response; inside the pose's cell, the Coons patch
+ * (1 − v)·E_bottom(u) + v·E_top(u) + (1 − u)·E_left(v) + u·E_right(v) − bilinear, each E an edge's own blend of
+ * its two views, written as weights of the four views. Weights may be negative or above 1 (a response may
  * extrapolate); only weights exactly 0 are left out, so a view stays exact. Returns undefined for a
  * control with no response on any of the four edges, which then takes the geometric weights (3a).
  */
@@ -129,9 +130,20 @@ function responded(model: Model, pose: Pose): ScalarWeights {
     // A response is always finite (a convex combination of finite knots), so an edge the pose is
     // not on enters with weight 0 and adds exactly 0 (dot 1791690525); a result that still comes
     // out non-finite is refused where the scalar is summed
-    const u2 = (1 - v) * respond(rb, u) + v * respond(rt, u)
-    const v2 = (1 - u) * respond(sl, v) + u * respond(sr, v)
-    return [(1 - u2) * (1 - v2), u2 * (1 - v2), (1 - u2) * v2, u2 * v2].map((weight, i) => ({ view: views[i]!, weight })).filter(w => w.weight !== 0)
+    const b = respond(rb, u), t = respond(rt, u), l = respond(sl, v), r = respond(sr, v)
+    // on an edge or at a view: that edge's own two weights, 1 − r and r — bit for bit what `onEdge` and `correct` use
+    const ws: [number, number, number, number] =
+      v === 0 ? [1 - b, b, 0, 0] : v === 1 ? [0, 0, 1 - t, t] : u === 0 ? [1 - l, 0, l, 0] : u === 1 ? [0, 1 - r, 0, r]
+      // inside: the Coons patch of the four edges' own results (docs/cell-blend-checklist.md; bowen 1791989710) —
+      // each edge applies its response to its own two views, and the cell blends those results, never one edge's
+      // ratio against another edge's span. With no responses it is exactly the bilinear blend.
+      : [
+        (1 - v) * (1 - b) + (1 - u) * (1 - l) - (1 - u) * (1 - v),
+        (1 - v) * b + u * (1 - r) - u * (1 - v),
+        v * (1 - t) + (1 - u) * l - (1 - u) * v,
+        v * t + u * r - u * v,
+      ]
+    return ws.map((weight, i) => ({ view: views[i]!, weight })).filter(w => w.weight !== 0)
   }
 }
 const own = <T>(rec: Readonly<Record<string, T>>, k: string): T | undefined => (Object.hasOwn(rec, k) ? rec[k] : undefined)

@@ -113,12 +113,15 @@ describe('evaluate with responses', () => {
     expect(evaluate(m(1.5), { yaw: 45, pitch: 0 }).points.p!.x).toBe(25)
   })
 
-  it('inside a cell: the u\' / v\' formula; the nine views stay exact; appearance and radii keep the geometric weights', () => {
+  it('inside a cell: the Coons patch of the four edges (docs/cell-blend-checklist.md); the nine views stay exact; appearance keeps the geometric weights', () => {
     const r = { points: { p: { '0,0>90,0': { x: [[0.5, 0.9]] }, '0,45>90,45': { x: [[0.5, 0.2]] }, '0,0>0,45': { x: [[0.4, 0.1]] }, '90,0>90,45': { x: [[0.6, 0.7]] } } }, handles: {} } as Model['responses']
     const m = model(r), pose = { yaw: 30, pitch: 15 }, u = 30 / 90, v = 15 / 45
     const lin = (k: [number, number][], t: number) => { const pts = [[0, 0], ...k, [1, 1]]; for (let i = 1; i < pts.length; i++) if (t <= pts[i]![0]!) { const [p0, v0] = pts[i - 1]!, [p1, v1] = pts[i]!; return v0! + ((t - p0!) * (v1! - v0!)) / (p1! - p0!) } return 1 }
-    const u2 = (1 - v) * lin([[0.5, 0.9]], u) + v * lin([[0.5, 0.2]], u), v2 = (1 - u) * lin([[0.4, 0.1]], v) + u * lin([[0.6, 0.7]], v)
-    const expected = (1 - u2) * (1 - v2) * val(0, 0) + u2 * (1 - v2) * val(90, 0) + (1 - u2) * v2 * val(0, 45) + u2 * v2 * val(90, 45)
+    // each edge's own blend of its two views, then the Coons patch: edges blended, the bilinear corners taken off
+    const F = val(0, 0), Y = val(90, 0), Pv = val(0, 45), C = val(90, 45)
+    const rb = lin([[0.5, 0.9]], u), rt = lin([[0.5, 0.2]], u), sl = lin([[0.4, 0.1]], v), sr = lin([[0.6, 0.7]], v)
+    const Eb = (1 - rb) * F + rb * Y, Et = (1 - rt) * Pv + rt * C, El = (1 - sl) * F + sl * Pv, Er = (1 - sr) * Y + sr * C
+    const expected = (1 - v) * Eb + v * Et + (1 - u) * El + u * Er - ((1 - u) * (1 - v) * F + u * (1 - v) * Y + (1 - u) * v * Pv + u * v * C)
     expect(evaluate(m, pose).points.p!.x).toBeCloseTo(expected, 12)
     for (const vw of views) expect(evaluate(m, { yaw: vw.yaw, pitch: vw.pitch }).points.p).toEqual(vw.points.p)
     const plain = evaluate(model(), pose), withR = evaluate(m, pose)
@@ -406,8 +409,8 @@ describe('extreme finite values (dot 1791690525)', () => {
   it('finite responses that would give a non-finite position are refused, never published as Infinity or NaN', () => {
     const huge = { points: { p: { '0,0>90,0': { x: [[0.5, 1e308]] } } }, handles: {} }
     expect(() => run(huge, { yaw: 45, pitch: 0 })).toThrow(/pose-not-finite: position of p is not a finite number at this pose/)
-    const weights = { points: { p: { '0,0>90,0': { x: [[0.5, 1e200]] }, '0,0>0,45': { x: [[0.5, 1e200]] } } }, handles: {} }
-    expect(() => run(weights, { yaw: 45, pitch: 22.5 })).toThrow(/pose-not-finite/)
+    const cell = { points: { p: { '0,0>90,0': { x: [[0.5, 1e308]] }, '0,45>90,45': { x: [[0.5, 1e308]] } } }, handles: {} }
+    expect(() => run(cell, { yaw: 45, pitch: 22.5 })).toThrow(/pose-not-finite/)
   })
 })
 
