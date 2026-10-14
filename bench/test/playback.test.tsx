@@ -58,6 +58,12 @@ const state = () => ({ file: save(bench().core), undo: bench().core.canUndo, red
 const curve = (view: string, id: string) => bench().core.in(view).geometry().lines.find(l => l.id === id)!.curve
 const d = (c: readonly { x: number; y: number }[]) => `M${c[0]!.x},${c[0]!.y} C${c[1]!.x},${c[1]!.y} ${c[2]!.x},${c[2]!.y} ${c[3]!.x},${c[3]!.y}`
 
+/** Playback at an in-between pose (yaw 20): read only there; at a view A / V edit it (docs/playback-edit-checklist.md §2). */
+async function between(host: HTMLElement) {
+  const el = host.querySelector('[data-testid="yaw-text"]') as HTMLInputElement
+  await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(el, '20'); el.dispatchEvent(new Event('input', { bubbles: true })) })
+}
+
 describe('bench playback', () => {
   it('the sliders draw the pose; at a grid angle the drawing is that view; between views it is atPose', async () => {
     const { svg, k, button, setSlider } = await setup()
@@ -84,7 +90,8 @@ describe('bench playback', () => {
     expect(bench().core.in('view:0,0').snapshot().points.find(p => p.id === `p${k}`)!.position).toEqual({ x: 0, y: 300 * k })
     expect(save(bench().core)).not.toContain(`"x":20,"y":${300 * k + 40}`)
     void before
-    // the canvas takes no press while posing
+    // the canvas takes no press while posing between the views
+    await between(document.body)
     const s = state()
     await act(async () => { svg.dispatchEvent(pe('pointerdown', 0, 300 * k, 1)); window.dispatchEvent(pe('pointermove', 30, 300 * k, 1)); window.dispatchEvent(pe('pointerup', 30, 300 * k, 0)) })
     expect(state()).toEqual(s)
@@ -195,7 +202,7 @@ describe('bench playback', () => {
       bench().refresh()
     })
     expect(svg.outerHTML).toContain('stroke="#06f"')
-    await act(async () => { button('Playback').click() })
+    await act(async () => { button('Playback').click() }); await between(document.body)
     expect(svg.outerHTML).not.toContain('#06f')
     expect(svg.outerHTML).not.toContain('#2a7fff')
     await act(async () => { button('Leave playback').click() })

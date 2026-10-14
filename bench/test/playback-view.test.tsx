@@ -60,7 +60,8 @@ async function setup(opts: { hold?: boolean } = {}) {
   const button = (label: string) => [...host.querySelectorAll('button')].find(b => b.textContent === label)! as HTMLButtonElement
   const input = (id: string) => host.querySelector(`[data-testid="${id}"]`) as HTMLInputElement
   const type = async (id: string, v: string) => { const el = input(id); await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(el, v); el.dispatchEvent(new Event('input', { bubbles: true })) }) }
-  const play = async (yaw: number, pitch: number) => { await act(async () => { button('Playback').click() }); await type('yaw-text', String(yaw)); await type('pitch-text', String(pitch)) }
+  // playback with A (docs/playback-edit-checklist.md §2)
+  const play = async (yaw: number, pitch: number) => { await act(async () => { button('Playback').click() }); await type('yaw-text', String(yaw)); await type('pitch-text', String(pitch)); await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true })) }) }
   const pad = () => { const p = host.querySelector('[data-testid="pose-pad"]') as SVGSVGElement; p.getBoundingClientRect = () => ({ left: 1000, top: 0, width: 200, height: 100, right: 1200, bottom: 100, x: 1000, y: 0, toJSON() {} }) as DOMRect; return p }
   /** Where a pose lands on the pad (left 1000, 200 × 100). */
   const padAt = (yaw: number, pitch: number) => ({ x: 1000 + (yaw + 90) / 180 * 200, y: (45 - pitch) / 90 * 100 })
@@ -162,18 +163,18 @@ describe('the viewport tools in every mode (bowen 1791727452; dot 1791727663)', 
 
   it('a second pointer pressing the pad while a correction drag runs is ignored: the correction goes on and commits (dot 1791731833)', async () => {
     const t = await setup(), q = `q${t.k}`
-    await t.play(45, 0)
+    await t.play(30, 0)
     const start = t.posed(q), at = t.padAt(-90, 45)
     await act(async () => { t.svg.dispatchEvent(pe('pointerdown', start.x, start.y, 1)); window.dispatchEvent(pe('pointermove', start.x + 20, start.y, 1)) })
     await act(async () => { t.pad().dispatchEvent(pe('pointerdown', at.x, at.y, 1, { id: 2 })) })
-    expect(bench().pose()).toEqual({ yaw: 45, pitch: 0 })
+    expect(bench().pose()).toEqual({ yaw: 30, pitch: 0 })
     await act(async () => { window.dispatchEvent(pe('pointerup', start.x + 20, start.y, 0)) })
     expect(bench().log[0]!.calls).toMatch(/^correct\(/)
   })
 
   it('in playback: a Z click zooms, a right-button drag pans, the wheel zooms — the drawing, the undo history and autosave untouched; Z off, a press on the line corrects again', async () => {
     const t = await setup(), q = `q${t.k}`
-    await t.play(45, 0)
+    await t.play(30, 0)
     await act(async () => { await wait(10) })
     const before = t.untouched()
     let box = t.viewBox()

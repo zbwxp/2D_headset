@@ -52,7 +52,8 @@ async function setup(opts: { seed?: boolean } = {}) {
     await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(el, v); el.dispatchEvent(new Event('input', { bubbles: true })) })
   }
   const status = () => host.querySelector('[data-testid="canvas"]')!.previousElementSibling!.textContent!
-  const play = async (yaw: number, pitch: number) => { await act(async () => { button('Playback').click() }); await type('yaw-text', String(yaw)); await type('pitch-text', String(pitch)) }
+  // playback with A (docs/playback-edit-checklist.md §2: A drags points and handles)
+  const play = async (yaw: number, pitch: number) => { await act(async () => { button('Playback').click() }); await type('yaw-text', String(yaw)); await type('pitch-text', String(pitch)); await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true })) }) }
   const posed = (id: string) => { const p = bench().pose()!; return bench().core.atPose(p).snapshot().points.find(x => x.id === id)!.position }
   /** Press at `from`, move by `by` in steps, and optionally release. */
   const drag = async (from: { x: number; y: number }, by: { x: number; y: number }, release = true, id = 1) => {
@@ -71,10 +72,10 @@ async function openFile(host: HTMLElement, text: string) {
 const near = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.abs(a.x - b.x) < 1e-9 * Math.max(1, Math.abs(b.x)) && Math.abs(a.y - b.y) < 1e-9 * Math.max(1, Math.abs(b.y))
 
 describe('a drag on a line commits one correct', () => {
-  it('q dragged at yaw 45 shows its start + displacement there; one correct in the log; one undo step after leaving playback', async () => {
+  it('q dragged at yaw 30 shows its start + displacement there; one correct in the log; one undo step after leaving playback', async () => {
     const t = await setup(), q = `q${t.k}`
-    await t.play(45, 0)
-    expect(t.status()).toContain('on the line view:0,0 → view:90,0 at t = 0.5')
+    await t.play(30, 0)
+    expect(t.status()).toContain('修正点：view:0,0 → view:90,0，t = 0.333')
     const start = t.posed(q), before = save(bench().core)
     await t.drag(start, { x: 20, y: 10 })
     expect(bench().log[0]).toMatchObject({ result: 'ok' })
@@ -88,15 +89,15 @@ describe('a drag on a line commits one correct', () => {
 
   it('a press off the point\'s centre does not make it jump: 6 px off, dragged 20 px → start + 20', async () => {
     const t = await setup(), q = `q${t.k}`
-    await t.play(45, 0)
+    await t.play(30, 0)
     const start = t.posed(q)
     await t.drag({ x: start.x + 6, y: start.y }, { x: 20, y: 0 })
     expect(near(t.posed(q), { x: start.x + 20, y: start.y })).toBe(true)
   })
 
-  it('a move case: p, equal in front and side, dragged at yaw 45 moves the side view', async () => {
+  it('a move case: p, equal in front and side, dragged at yaw 30 moves the side view', async () => {
     const t = await setup(), p = `p${t.k}`
-    await t.play(45, 0)
+    await t.play(30, 0)
     await t.drag(t.posed(p), { x: 0, y: 15 })
     await act(async () => { t.button('Leave playback').click() })
     expect(bench().core.in('view:90,0').snapshot().points.find(x => x.id === p)!.position.y).toBeGreaterThan(300 * t.k)
@@ -104,7 +105,7 @@ describe('a drag on a line commits one correct', () => {
 
   it('an unmoved press commits nothing', async () => {
     const t = await setup()
-    await t.play(45, 0)
+    await t.play(30, 0)
     const before = save(bench().core), start = t.posed(`q${t.k}`)
     await t.drag(start, { x: 1, y: 0 })
     expect(save(bench().core)).toBe(before)
@@ -112,15 +113,16 @@ describe('a drag on a line commits one correct', () => {
 })
 
 describe('where a drag can start', () => {
-  it('at a view and inside a cell a press starts nothing; the status says why', async () => {
+  it('off the correction poses a press starts nothing; the status says where corrections are (bowen 1791976386)', async () => {
     const t = await setup()
-    await t.play(0, 0)
-    expect(t.status()).toContain('at a view · read only')
-    const before = save(bench().core), logged = bench().log.length
-    await t.drag({ x: 100, y: 300 * t.k }, { x: 20, y: 0 })
-    await t.type('yaw-text', '30'); await t.type('pitch-text', '20')
-    expect(t.status()).toContain('inside a cell · read only')
-    await t.drag(t.posed(`q${t.k}`), { x: 20, y: 0 })
+    const before = save(bench().core)
+    await t.play(45, 0)
+    const logged = bench().log.length
+    for (const [yaw, pitch] of [['45', '0'], ['20', '0'], ['30', '20'], ['30', '-30']]) {
+      await t.type('yaw-text', yaw!); await t.type('pitch-text', pitch!)
+      expect(t.status()).toContain('这里只能看；修正点在 yaw ±30 / ±60、pitch 0 / ±45')
+      await t.drag(t.posed(`q${t.k}`), { x: 20, y: 0 })
+    }
     expect([save(bench().core) === before, bench().log.length]).toEqual([true, logged])
   })
 
@@ -131,7 +133,7 @@ describe('where a drag can start', () => {
       bench().core.edit(e => e.line(`h${k}`, { id: `r${k}`, layer: 'layer-1', position: { x: 83, y: 300 * k + 15 } }, { id: `s${k}`, layer: 'layer-1', position: { x: 160, y: 300 * k + 60 } }))
       bench().core.edit(e => e.lineState(`h${k}`, { visible: false }))
     })
-    await t.play(45, 0)
+    await t.play(30, 0)
     const r = t.posed(`r${k}`), q = t.posed(`q${k}`), before = save(bench().core)
     // pressed exactly on r (hidden), 3 px from q: q is dragged by the pointer's displacement, r is not
     expect(Math.hypot(r.x - q.x, r.y - q.y)).toBeLessThan(10)
@@ -153,7 +155,7 @@ describe('the ghost follows the visibility rule (dot 1791697776)', () => {
       bench().core.edit(e => e.line(`hq${k}`, `q${k}`, { id: `hh${k}`, layer: 'layer-1', position: { x: 150, y: 300 * k + 50 } }))
       bench().core.edit(e => e.lineState(`hq${k}`, { visible: false }))
     })
-    await t.play(45, 0)
+    await t.play(30, 0)
     await t.drag(t.posed(`q${k}`), { x: 20, y: 10 }, false)
     const ghosts = [...t.svg.querySelectorAll('[data-ghost]')].map(g => g.getAttribute('data-ghost'))
     expect(ghosts).toEqual([`v${k}`])
@@ -163,7 +165,7 @@ describe('the ghost follows the visibility rule (dot 1791697776)', () => {
 describe('no point marks in playback (bowen 1791908866)', () => {
   it('on a line of the pad the points are not marked, and a press near one still corrects it', async () => {
     const t = await setup(), k = t.k
-    await t.play(45, 0)
+    await t.play(30, 0)
     expect(t.svg.querySelectorAll('[data-pickable]').length).toBe(0)
     const before = save(bench().core)
     await t.drag(t.posed(`q${k}`), { x: 20, y: 10 })
@@ -175,7 +177,7 @@ describe('refusals', () => {
   it('a locked line\'s point: locked in red in the status, a cross on the line, nothing published; the next press clears it', async () => {
     const t = await setup()
     await act(async () => { bench().core.edit(e => e.lineState(`v${t.k}`, { locked: true })) })
-    await t.play(45, 0)
+    await t.play(30, 0)
     const before = save(bench().core)
     await t.drag(t.posed(`q${t.k}`), { x: 20, y: 0 })
     expect(t.status()).toMatch(/^✗ Line v\d+.* is locked/)
@@ -188,10 +190,10 @@ describe('refusals', () => {
 })
 
 describe('the gate, through the App\'s own wrapper (dot 1791696773, 1791696847)', () => {
-  const pose = { yaw: 45, pitch: 0 }
+  const pose = { yaw: 30, pitch: 0 }
   it('correct then a caught forbidden call, and the reverse order: nothing published', async () => {
     const t = await setup(), q = `q${t.k}`
-    await t.play(45, 0)
+    await t.play(30, 0)
     const before = save(bench().core), target = { points: [{ id: q, position: { x: 90, y: 300 * t.k + 3 } }] }
     expect(() => bench().edit(e => { e.correct(pose, target); try { e.move([{ id: q, target: { x: 0, y: 0 } }]) } catch { /* caught */ } })).toThrow(/read-only-playback.*it called move/)
     expect(() => bench().edit(e => { try { e.select([]) } catch { /* caught */ } e.correct(pose, target) })).toThrow(/read-only-playback.*it called select/)
@@ -200,7 +202,7 @@ describe('the gate, through the App\'s own wrapper (dot 1791696773, 1791696847)'
 
   it('a forbidden call whose argument cannot be logged (circular), caught, then correct: nothing published; a correct with an unprintable argument is logged as such and runs (dot 1791697642)', async () => {
     const t = await setup(), q = `q${t.k}`
-    await t.play(45, 0)
+    await t.play(30, 0)
     const before = save(bench().core)
     const cyclic: Record<string, unknown> = { id: q, target: { x: 0, y: 0 } }; cyclic.self = cyclic
     expect(() => bench().edit(e => { try { e.move([cyclic as never]) } catch { /* caught */ } e.correct(pose, { points: [{ id: q, position: { x: 90, y: 300 * t.k + 3 } }] }) })).toThrow(/read-only-playback.*it called move/)
@@ -219,15 +221,15 @@ describe('the gate, through the App\'s own wrapper (dot 1791696773, 1791696847)'
     for (const l of file.document.network.shapes.layers) if (l.points.u) l.points.u = { x: 0, y: 0 } // u onto m in every view
     await openFile(t.host, JSON.stringify(file))
     expect(bench().core.snapshot().points.map(p => p.id).sort()).toEqual(['m', 'n', 'u', 'w'])
-    await t.play(45, 0)
+    await t.play(30, 0)
     const before = save(bench().core)
-    expect(() => bench().edit(() => {})).toThrow(/read-only-playback.*it called correct 0 times/)
+    expect(() => bench().edit(() => {})).toThrow(/read-only-playback.*it called nothing/)
     expect(save(bench().core)).toBe(before)
   })
 
   it('two corrects refused; an async callback with one correct refused by core; exactly one correct published', async () => {
     const t = await setup(), q = `q${t.k}`
-    await t.play(45, 0)
+    await t.play(30, 0)
     const before = save(bench().core), target = { points: [{ id: q, position: { x: 90, y: 300 * t.k + 3 } }] }
     expect(() => bench().edit(e => { e.correct(pose, target); e.correct(pose, target) })).toThrow(/read-only-playback.*correct 2 times/)
     expect(() => bench().edit(async e => { e.correct(pose, target) })).toThrow(/synchronous/)
@@ -251,7 +253,7 @@ describe('cancel flows: nothing written, a late pointerup commits nothing, liste
   ]
   for (const way of ways) it(way.name, async () => {
     const t = await setup()
-    await t.play(45, 0)
+    await t.play(30, 0)
     const start = t.posed(`q${t.k}`), before = save(bench().core)
     const added = vi.spyOn(window, 'addEventListener'), removed = vi.spyOn(window, 'removeEventListener')
     await t.drag(start, { x: 20, y: 10 }, false)
@@ -270,7 +272,7 @@ describe('cancel flows: nothing written, a late pointerup commits nothing, liste
 
   it('another pointer\'s move, up and cancel do not end the drag; its own release then commits', async () => {
     const t = await setup()
-    await t.play(45, 0)
+    await t.play(30, 0)
     const start = t.posed(`q${t.k}`)
     await t.drag(start, { x: 20, y: 0 }, false)
     await act(async () => { for (const ty of ['pointermove', 'pointerup', 'pointercancel']) window.dispatchEvent(pe(ty, 0, 0, 0, { id: 2 })) })
@@ -281,7 +283,7 @@ describe('cancel flows: nothing written, a late pointerup commits nothing, liste
 
   it('unmounting the App during a drag: nothing written, a late pointerup commits nothing', async () => {
     const t = await setup()
-    await t.play(45, 0)
+    await t.play(30, 0)
     const start = t.posed(`q${t.k}`), before = save(bench().core)
     await t.drag(start, { x: 20, y: 0 }, false)
     await act(async () => { t.root.unmount() })
@@ -293,11 +295,11 @@ describe('cancel flows: nothing written, a late pointerup commits nothing, liste
 describe('number fields keep typing apart from the pose (dot 1791696847)', () => {
   it('"", "-", "1e999", "abc" leave the pose and a drag as they are', async () => {
     const t = await setup()
-    await t.play(45, 0)
+    await t.play(30, 0)
     await t.drag(t.posed(`q${t.k}`), { x: 20, y: 0 }, false)
     for (const v of ['', '-', '1e999', 'abc', '91']) {
       await t.type('yaw-text', v)
-      expect([v, bench().pose(), t.svg.querySelector('[data-ghost-point]') !== null]).toEqual([v, { yaw: 45, pitch: 0 }, true])
+      expect([v, bench().pose(), t.svg.querySelector('[data-ghost-point]') !== null]).toEqual([v, { yaw: 30, pitch: 0 }, true])
     }
   })
 })
@@ -305,7 +307,7 @@ describe('number fields keep typing apart from the pose (dot 1791696847)', () =>
 describe('two Apps on the page share the drawing', () => {
   it('a press on a frame drawn before the drawing changed starts nothing and redraws; the next press works (dot 1791697642)', async () => {
     const t = await setup()
-    await t.play(45, 0)
+    await t.play(30, 0)
     const start = t.posed(`q${t.k}`)
     // the shared drawing changes without this App redrawing
     bench().core.edit(e => e.line(`z${t.k}`, { id: `z1${t.k}`, layer: 'layer-1', position: { x: 600, y: 0 } }, { id: `z2${t.k}`, layer: 'layer-1', position: { x: 640, y: 0 } }))
@@ -319,7 +321,7 @@ describe('two Apps on the page share the drawing', () => {
 
   it('the same pointer pressed in the other App cancels this App\'s drag; its late release writes nothing for it', async () => {
     const a = await setup()
-    await a.play(45, 0)
+    await a.play(30, 0)
     const start = a.posed(`q${a.k}`)
     await a.drag(start, { x: 20, y: 0 }, false)
     const b = await setup({ seed: false })
@@ -332,7 +334,7 @@ describe('two Apps on the page share the drawing', () => {
 
   it('the drawing changed during the drag (an edit, then separately an Open in the other App): the release writes nothing and the log says why', async () => {
     const a = await setup()
-    await a.play(45, 0)
+    await a.play(30, 0)
     const start = a.posed(`q${a.k}`)
     await a.drag(start, { x: 20, y: 0 }, false)
     await act(async () => { bench().core.edit(e => e.line(`x${a.k}`, { id: `x1${a.k}`, layer: 'layer-1', position: { x: 500, y: 0 } }, { id: `x2${a.k}`, layer: 'layer-1', position: { x: 520, y: 0 } })) })

@@ -14,7 +14,7 @@ Then:
 - **Corrections:** only at yaw ±30 and ±60 on the rows pitch 0 and ±45. These are 12 poses, all on lines core already corrects (`views.EDGES`; answered 1791970345).
 - **The views** (yaw 0 / ±90 × pitch 0 / ±45): a drag edits that view itself (§2).
 - **Anywhere else:** preview only, at any angle (bowen 1791970497). A press there writes nothing, and the status line says 「这里只能看；修正点在 yaw ±30 / ±60、pitch 0 / ±45」.
-- **Assumption:** pitch ±45 both count; to be confirmed by bowen (asked 1791976469).
+- pitch ±45 both count (bowen 1791976935).
 - **Later, set aside (bowen 1791976739):** corrections inside a cell. The default is the same blend-weight approach as on the lines (v103 stored interior samples as weights), not a displacement. See the experiments 1791972504 / 1791972880 and my answer 1791976763.
 
 What playback is today (stage 3a / 3b, `bench/src/app.tsx`):

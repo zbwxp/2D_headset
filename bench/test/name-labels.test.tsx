@@ -56,6 +56,12 @@ async function setup() {
   return { host, svg, s, name, curve, labels, press, tool, button, layerRow }
 }
 
+/** Playback at an in-between pose (yaw 20): read only there; at a view A / V edit it (docs/playback-edit-checklist.md §2). */
+async function between(host: HTMLElement) {
+  const el = host.querySelector('[data-testid="yaw-text"]') as HTMLInputElement
+  await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(el, '20'); el.dispatchEvent(new Event('input', { bubbles: true })) })
+}
+
 describe('name labels', () => {
   it('A on a line: its name beside it; V on the same, already selected line: the curve\'s name, at its middle line (the 2nd of 4, stored order)', async () => {
     const t = await setup()
@@ -133,7 +139,7 @@ describe('name labels', () => {
   it('no labels in playback', async () => {
     const t = await setup()
     await t.tool('a'); await t.press(150, 0)
-    await act(async () => { t.button('Playback').click() })
+    await act(async () => { t.button('Playback').click() }); await between(t.host)
     expect(t.labels()).toEqual([])
   })
 })

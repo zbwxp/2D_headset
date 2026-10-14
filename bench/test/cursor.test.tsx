@@ -45,6 +45,12 @@ async function setup() {
 }
 const PEN = cursorFor('pen', false), BUCKET = cursorFor('fill', false)
 
+/** Playback at an in-between pose (yaw 20): read only there; at a view A / V edit it (docs/playback-edit-checklist.md §2). */
+async function between(host: HTMLElement) {
+  const el = host.querySelector('[data-testid="yaw-text"]') as HTMLInputElement
+  await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(el, '20'); el.dispatchEvent(new Event('input', { bubbles: true })) })
+}
+
 describe('the canvas cursor', () => {
   it('each tool shows its own: Pen a pen, Fill a bucket, A and V a hand, Z zoom, others the arrow', async () => {
     const t = await setup()
@@ -84,7 +90,7 @@ describe('the canvas cursor', () => {
     await act(async () => { t.button('Leave playback').click() })
     expect(t.cursor()).toContain('data:image/svg+xml')
     await t.tool('v'); await t.press()
-    await act(async () => { t.button('Playback').click() })
+    await act(async () => { t.button('Playback').click() }); await between(t.host)
     expect(t.cursor()).toBe('default')
     await act(async () => { t.button('Leave playback').click() })
     expect(t.cursor()).toBe('grab')

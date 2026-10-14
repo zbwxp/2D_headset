@@ -62,7 +62,74 @@ function withNames(m: string) {
  */
 /** The App's write mode: editing, playback (one correct per edit), or locked (restoring the autosaved drawing: nothing writes). */
 type WriteMode = 'edit' | 'playback' | 'locked'
-function loggedFor(mode: () => WriteMode, afterWrite: () => void = () => {}): (c: Core) => Core {
+/**
+ * What playback lets through besides one `correct` alone (docs/playback-edit-checklist.md §1): the same data at every
+ * angle — a layer's or a fill's visibility — and `uncorrect`; checked on the call's target, not its name only (dot
+ * 1791976669). Undefined when allowed, else why not.
+ */
+function refusedInPlayback(n: string, a: readonly unknown[], atView: boolean): string | undefined {
+  const onlyVisible = (o: unknown) => !!o && typeof o === 'object' && Object.keys(o).every(k => k === 'visible')
+  if (n === 'uncorrect' || n === 'fillVisible') return undefined
+  // at a view, writing that view: what A and V do there in editing — pick, then move points, curves and handles (§2)
+  if (atView && (n === 'select' || n === 'selectGroup' || n === 'translate' || n === 'moveHandle')) return undefined
+  if ((n === 'layerState' || n === 'fillState') && onlyVisible(a[1])) return undefined
+  return `${n} is not allowed during playback (only a correction, deleting one, layer or fill visibility, and at a view moving its points and handles)`
+}
+type Pose = { yaw: number; pitch: number }
+/** The view a pose is exactly at (yaw 0 / ±90 × pitch 0 / ±45), else null. */
+const viewAtPose = (p: Pose | null): string | null =>
+  p && (p.yaw === 0 || Math.abs(p.yaw) === 90) && (p.pitch === 0 || Math.abs(p.pitch) === 45) ? `view:${p.yaw + 0},${p.pitch + 0}` : null
+/** Where a playback drag corrects (bowen 1791976386; docs/playback-edit-checklist.md): yaw ±30 / ±60 on the rows pitch 0 / ±45. */
+const correctionPose = (p: Pose | null): boolean => !!p && [30, 60].includes(Math.abs(p.yaw)) && (p.pitch === 0 || Math.abs(p.pitch) === 45)
+type Model = ReturnType<Core['model']>
+type Knots = readonly (readonly [number, number])[]
+/** The edge key a correction pose lies on, as the model names it (`0,0>90,0`), from correctionEdge's view keys. */
+const modelEdge = (inner: string, outer: string) => `${inner.slice('view:'.length)}>${outer.slice('view:'.length)}`
+/** The distance from p to a cubic, sampled (bench glue: the playback V pick). */
+function curveDistance(c: readonly Vec[], p: Vec): number {
+  let best = Infinity
+  for (let i = 0; i <= 48; i++) {
+    const t = i / 48, u = 1 - t, w = [u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t]
+    const x = w.reduce((s, k, j) => s + k * c[j]!.x, 0), y = w.reduce((s, k, j) => s + k * c[j]!.y, 0)
+    best = Math.min(best, Math.hypot(x - p.x, y - p.y))
+  }
+  return best
+}
+/**
+ * What a playback write changed (docs/playback-edit-checklist.md §3), in plain words: the knots added, changed or removed
+ * per control, edge and axis; every view position or handle that moved; anything else as one raw line (a check, never hidden).
+ */
+function changesBetween(before: Model, after: Model, s: Snapshot): string[] {
+  const out: string[] = []
+  const lineName = (id: string) => s.lines.find(l => l.id === id)?.name || id
+  const edgeName = (k: string) => k.replace('>', ' → ')
+  const knotsDiff = (what: string, a: Record<string, { x?: Knots; y?: Knots }> | undefined, b: Record<string, { x?: Knots; y?: Knots }> | undefined) => {
+    for (const edge of new Set([...Object.keys(a ?? {}), ...Object.keys(b ?? {})])) for (const axis of ['x', 'y'] as const) {
+      const ka = a?.[edge]?.[axis] ?? [], kb = b?.[edge]?.[axis] ?? []
+      const ta = new Map(ka.map(k => [k[0], k[1]])), tb = new Map(kb.map(k => [k[0], k[1]]))
+      for (const [t, v] of tb) if (!ta.has(t)) out.push(`${what} · ${edgeName(edge)} · t ${+t.toFixed(3)} · ${axis} 加修正`)
+        else if (ta.get(t) !== v) out.push(`${what} · ${edgeName(edge)} · t ${+t.toFixed(3)} · ${axis} 修正改了`)
+      for (const t of ta.keys()) if (!tb.has(t)) out.push(`${what} · ${edgeName(edge)} · t ${+t.toFixed(3)} · ${axis} 删除修正拐点`)
+    }
+  }
+  const ra = before.responses ?? { points: {}, handles: {} }, rb = after.responses ?? { points: {}, handles: {} }
+  for (const id of new Set([...Object.keys(ra.points), ...Object.keys(rb.points)])) knotsDiff(`点 ${id}`, ra.points[id], rb.points[id])
+  for (const line of new Set([...Object.keys(ra.handles), ...Object.keys(rb.handles)])) for (const end of ['a', 'b'] as const) knotsDiff(`线 ${lineName(line)} 的 ${end} 端手柄`, ra.handles[line]?.[end], rb.handles[line]?.[end])
+  let rest = false
+  for (const vb of after.views) {
+    const va = before.views.find(v => v.yaw === vb.yaw && v.pitch === vb.pitch)!, name = `视角 ${vb.yaw},${vb.pitch}`
+    for (const [id, p] of Object.entries(vb.points)) { const q = va.points[id]; if (q && (q.x !== p.x || q.y !== p.y)) out.push(`${name} 的点 ${id} 被移动了 (${+(p.x - q.x).toFixed(3)}, ${+(p.y - q.y).toFixed(3)})`) }
+    for (const [id, l] of Object.entries(vb.lines)) for (const h of ['ha', 'hb'] as const) {
+      const q = va.lines[id]?.[h]
+      if (q && (q.x !== l[h].x || q.y !== l[h].y)) out.push(`${name} 的线 ${lineName(id)} 的 ${h === 'ha' ? 'a' : 'b'} 端手柄变了`)
+    }
+    const strip = (v: typeof vb) => JSON.stringify({ ...v, points: Object.keys(v.points), lines: Object.fromEntries(Object.entries(v.lines).map(([k, l]) => [k, l.stroke])) })
+    rest ||= strip(va) !== strip(vb)
+  }
+  if (rest) out.push('（还有别的数据变了：线宽、圆角或结构）')
+  return out.length ? out : ['（没有数据变化）']
+}
+function loggedFor(mode: () => WriteMode, afterWrite: () => void = () => {}, poseView: () => string | null = () => null): (c: Core) => Core {
   const wrappers = new WeakMap<Core, Core>()
   return c => {
     let w = wrappers.get(c)
@@ -73,25 +140,26 @@ function loggedFor(mode: () => WriteMode, afterWrite: () => void = () => {}): (c
           const [view, fn] = (k === 'edit' ? ['view:0,0', args[0]] : args) as [string, (e: Editor) => void]
           const m = mode()
           if (m === 'locked') { log.unshift({ calls: `${k}(…)`, result: '✗ restoring the autosaved drawing' }); throw new Error('restoring: nothing is written until the autosaved drawing is restored') }
-          const playback = m === 'playback'
+          // playback at a view, writing that view: A's and V's editing of it (docs/playback-edit-checklist.md §2)
+          const playback = m === 'playback', atView = playback && view === poseView()
           const calls: string[] = []
-          let corrects = 0, forbidden: string | undefined
+          let corrects = 0, others = 0, forbidden: string | undefined
           const rec = (e: Editor) => new Proxy(e, { get: (x, n) => { const v = Reflect.get(x, n); return typeof v === 'function' ? (...a: unknown[]) => {
             // the gate first, then the log: nothing before the gate may throw (dot 1791697642)
-            if (playback && n !== 'correct') forbidden ??= String(n)
+            const why = playback && n !== 'correct' ? refusedInPlayback(String(n), a, atView) : undefined
+            if (why !== undefined) forbidden ??= String(n)
             calls.push(`${String(n)}(${a.map(short).join(', ')})`)
-            if (playback) {
-              if (n !== 'correct') throw new Error(`read-only-playback: ${String(n)} is not allowed during playback (only one correct)`)
-              corrects++
-            }
+            if (why !== undefined) throw new Error(`read-only-playback: ${why}`)
+            if (playback) { if (n === 'correct') corrects++; else others++ }
             return v.apply(x, a)
           } : v } })
           const head = view === 'view:0,0' ? '' : `[${view}] `
           try {
             t.editIn(view, e => {
               const result: unknown = fn(rec(e))
-              if (playback && (forbidden !== undefined || corrects !== 1)) {
-                throw new Error(`read-only-playback: during playback an edit must call correct exactly once and nothing else (${forbidden !== undefined ? `it called ${forbidden}` : `it called correct ${corrects} times`})`)
+              // an empty edit would still settle the drawing: refused too (dot 1791696847)
+              if (playback && (forbidden !== undefined || corrects + others === 0 || (corrects > 0 && (corrects !== 1 || others > 0)))) {
+                throw new Error(`read-only-playback: during playback an edit calls one correction alone, or only the operations playback allows (${forbidden !== undefined ? `it called ${forbidden}` : corrects + others === 0 ? 'it called nothing' : corrects !== 1 ? `it called correct ${corrects} times` : 'it called other operations beside a correction'})`)
               }
               return result as void
             })
@@ -213,7 +281,11 @@ export function App() {
   // leaving playback; the drag's ghost (the picked point and where it is dragged); the number
   // fields' own text, kept apart from the pose (dot 1791696847)
   const [corrRefusal, setCorrRefusal] = useState<null | { message: string; objects: readonly { kind: string; id: string }[] }>(null)
-  const [corrGhost, setCorrGhost] = useState<null | { id: Id; to: Vec }>(null)
+  const [corrGhost, setCorrGhost] = useState<null | { points: Record<Id, Vec>; handle?: { line: Id; end: 'a' | 'b'; vector: Vec } }>(null)
+  // the line under the resting pointer in playback with A: its handles are marked and pickable (docs/playback-edit-checklist.md §2)
+  const [poseHover, setPoseHover] = useState<Id | null>(null)
+  // what the last playback write changed (§3), shown until the next write or leaving playback
+  const [lastChange, setLastChange] = useState<null | { pose: Pose; lines: string[] }>(null)
   // reference pictures (docs/reference-images-plan.md §7.1): this App's counter, advanced by a view change,
   // entering or leaving playback, an Open and unmounting; a picture read keeps it and writes only if unchanged
   const refGen = useRef(0)
@@ -278,7 +350,7 @@ export function App() {
   // with its drawing and view and dropped by every write, so a click between a write and the next render never uses an
   // old cut (dot 1791907635); interaction asks through env.cut
   const cutRef = useRef<{ core: Core; view: string; lines: Map<string, Area>; fills: Map<string, Area> } | null>(null)
-  const logged = useRef(loggedFor(() => (restoringNow.current ? 'locked' : posing.current ? 'playback' : 'edit'), () => { cutRef.current = null; saver.current?.want() })).current
+  const logged = useRef(loggedFor(() => (restoringNow.current ? 'locked' : posing.current ? 'playback' : 'edit'), () => { cutRef.current = null; saver.current?.want() }, () => (posing.current ? viewAtPose(poseRef.current) : null))).current
   const svg = useRef<SVGSVGElement>(null)
   // one screen pixel in document units, from the canvas's real size (the viewBox is fitted, so the
   // larger ratio wins); the old fixed 900-pixel width made picking about half as wide as meant
@@ -303,12 +375,14 @@ export function App() {
   // lines whose front differs from the angle baseline (stage 2): marked on the canvas
   const pending = core.pendingLines()
   // while posing, the drawing is the pose (Core.atPose: read only, drawn through the same reads as a view)
-  const posed = (() => { try { return pose ? core.atPose(pose) : null } catch (err) { return err as Error } })()
+  // at a view (docs/playback-edit-checklist.md §2) playback edits that view: it is drawn and edited as the view itself
+  const poseView = viewAtPose(pose), inBetween = !!pose && !poseView
+  const posed = (() => { try { return inBetween ? core.atPose(pose!) : null } catch (err) { return err as Error } })()
   // the drawing this frame shows, bound with it during playback: a press on a frame drawn before
   // another App changed the shared drawing must not start a correction (dot 1791697642)
   const frame = useRef<{ core: Core; text: string } | null>(null)
   frame.current = pose || moveRef ? { core, text: save(core) } : null
-  const reader = posed && !(posed instanceof Error) ? posed : core.in(shown)
+  const reader = posed && !(posed instanceof Error) ? posed : core.in(poseView ?? shown)
   const s = reader.snapshot(), g = reader.geometry(), zones = reader.zones()
   // the canvas's one selected line or point: the properties panel shows it (J1b)
   const canvasSubject = s.selection.length === 1 && (s.selection[0]!.kind === 'line' || s.selection[0]!.kind === 'point') ? { kind: s.selection[0]!.kind, id: s.selection[0]!.id } : null
@@ -326,8 +400,9 @@ export function App() {
   const drawLayer = s.layers.some(l => l.id === layer) ? layer : s.layers[s.layers.length - 1]?.id ?? ''
   // the selected layers that still exist, always with the current one
   const selLayers = [...new Set([...layers.filter(id => s.layers.some(l => l.id === id)), ...(drawLayer ? [drawLayer] : [])])]
-  const env = useRef({ layer: drawLayer, layers: selLayers, px, view: shown, masks: masksOn && inkOn })
-  env.current = { layer: drawLayer, layers: selLayers, px, view: shown, masks: masksOn && inkOn }
+  const editView = poseView ?? shown // playback at a view edits that view (§2)
+  const env = useRef({ layer: drawLayer, layers: selLayers, px, view: editView, masks: masksOn && inkOn })
+  env.current = { layer: drawLayer, layers: selLayers, px, view: editView, masks: masksOn && inkOn }
   const ix = useRef(createInteraction({ core: () => logged(core), view: () => env.current.view, newId: nid, layer: () => env.current.layer || undefined, layers: () => env.current.layers, pixel: () => env.current.px,
     cut: (t, at, reach) => {
       if (!env.current.masks) return false
@@ -487,16 +562,16 @@ export function App() {
   // what a press on the canvas does, named for the cursor table in the same order as the canvas routes
   // the press: Zoom (a viewport tool) in every mode; else restoring takes none, playback drags the pose,
   // Move picture moves the picture, otherwise the tool; those three show the arrow (dot 1791710244, 1791727663)
-  const boxShown = !pose && !restoring && !moveRef && !!pv.selectionBox
+  const boxShown = !inBetween && !restoring && !moveRef && !!pv.selectionBox
   const boxHot = boxShown ? pv.selectionBox?.hot ?? null : null
   // the resting pointer asked again — after every render (a tool, view, selection, pan or zoom change) and on Shift / Option
   const rehover = useRef(() => {})
   rehover.current = () => {
     const h = hoverAt.current
-    if (h && !gesture.current && !pose && !restoring && !moveRef && !zoomTool) ix.pointerHover(toDoc(h), h.mods)
+    if (h && !gesture.current && !inBetween && !restoring && !moveRef && !zoomTool) ix.pointerHover(toDoc(h), h.mods)
   }
   useEffect(() => { rehover.current() })
-  const pressTakenBy = zoomTool ? 'Z' : restoring ? 'restoring' : pose ? 'playback' : moveRef ? 'movePicture' : boxHot ? `box:${boxHot}` : ix.tool
+  const pressTakenBy = zoomTool ? 'Z' : restoring ? 'restoring' : inBetween || (pose && ix.tool !== 'A' && ix.tool !== 'V') ? 'playback' : moveRef ? 'movePicture' : boxHot ? `box:${boxHot}` : ix.tool
   const note = (what: string) => { log.unshift({ calls: what, result: 'ok (diagnostic)' }); log.length = Math.min(log.length, 50) }
   const BUTTON_BIT = [1, 4, 2] // button 0 → buttons bit 1 (left), 1 → 4 (middle), 2 → 2 (right)
   const CLICK = 2 // screen px a press may move and still be a click (v1: 7205381 DrawingRoom zoom)
@@ -665,6 +740,37 @@ export function App() {
   }
   /** The selection's arrows (with V / A): interaction runs them; the bench gives the run the one gesture slot. */
   keyHooks.current.afterArrow = () => { if (ix.moving() === 'keys') holdKeys() }
+  type PlaybackPick = { kind: 'points'; starts: Record<Id, Vec> } | { kind: 'handle'; line: Id; end: 'a' | 'b'; tip: Vec; point: Vec }
+  /** The nearest visible line within the line reach, in this frame's geometry (V's press, A's hover). */
+  const shownLineAt = (at: Vec): Id | null => {
+    const ids = new Set(shownLines.map(l => l.id))
+    const hit = g.lines.filter(G => ids.has(G.id)).map(G => ({ id: G.id, d: curveDistance(G.curve, at) })).filter(x => x.d <= REACH.line * px).sort((a, b) => a.d - b.d)[0]
+    return hit?.id ?? null
+  }
+  /**
+   * What a playback press takes (docs/playback-edit-checklist.md §2): with A, a handle of the hovered line, else a visible
+   * line's end point; with V, the nearest visible line's whole curve (its group, else the line), all its end points.
+   */
+  const playbackPick = (at: Vec): PlaybackPick | null => {
+    if (ix.tool === 'A') {
+      // the nearest within reach: a visible line's end point, or a handle of the hovered line; a tie goes to the point
+      // (a handle of zero length sits on its point)
+      const cands: { d: number; rank: number; pick: PlaybackPick }[] = s.points.filter(p => shownEnds.has(p.id))
+        .map(p => ({ d: Math.hypot(p.position.x - at.x, p.position.y - at.y), rank: 0, pick: { kind: 'points', starts: { [p.id]: p.position } } as PlaybackPick }))
+        .filter(x => x.d <= REACH.point * px)
+      const hl = poseHover ? shownLines.find(l => l.id === poseHover) : undefined
+      if (hl) for (const end of ['a', 'b'] as const) {
+        const point = pos(end === 'a' ? hl.a : hl.b), tip = add(point, end === 'a' ? hl.ha : hl.hb), d = Math.hypot(tip.x - at.x, tip.y - at.y)
+        if (d <= REACH.handle * px) cands.push({ d, rank: 1, pick: { kind: 'handle', line: hl.id, end, tip, point } })
+      }
+      return cands.sort((a, b) => a.d - b.d || a.rank - b.rank)[0]?.pick ?? null
+    }
+    const line = shownLineAt(at)
+    if (!line) return null
+    const ids = s.groups.find(gr => gr.lines.includes(line))?.lines ?? [line]
+    const ends = new Set(ids.flatMap(id => { const l = s.lines.find(x => x.id === id)!; return [l.a, l.b] }))
+    return { kind: 'points', starts: Object.fromEntries([...ends].map(id => [id, pos(id)])) }
+  }
   const onPoseDown = (e: React.PointerEvent) => {
     endOpenField()
     endPoseRun()
@@ -673,25 +779,30 @@ export function App() {
       gesture.current.cancel('a new press of the same pointer')
     }
     setCorrRefusal(null)
-    if (e.button !== 0 || !pose || !posed || posed instanceof Error || !('edge' in correctionEdge(pose))) return
+    if (e.button !== 0 || !pose || !posed || posed instanceof Error || !correctionPose(pose) || (ix.tool !== 'A' && ix.tool !== 'V')) return
     const shownFrom = frame.current
     if (!shownFrom || shownFrom.core !== core || shownFrom.text !== save(core)) { note('playback press ignored: the drawing changed since this frame was drawn; redrawn'); bump(); return }
     // picked from this frame (the one just checked as current), by the frame's one visibility rule:
     // a point only if a visible line ends at it (a hidden layer is its lines hidden; dot 1791696828)
     const at = toDoc(e)
-    const hit = s.points.filter(p => shownEnds.has(p.id)).map(p => ({ p, d: Math.hypot(p.position.x - at.x, p.position.y - at.y) }))
-      .filter(x => x.d <= REACH.point * px).sort((a, b) => a.d - b.d)[0]
-    if (!hit) return
-    const bound = { core: shownFrom.core, text: shownFrom.text, pose: { ...pose }, id: hit.p.id, start: hit.p.position, from: at }
+    const pick = playbackPick(at)
+    if (!pick) return
+    const bound = { core: shownFrom.core, text: shownFrom.text, pose: { ...pose }, pick, from: at }
     const id = e.pointerId, pressed = P(e.clientX, e.clientY)
     let moved = false, done = false
-    const target = (ev: PointerEvent) => { const now = toDoc(ev); return P(bound.start.x + now.x - bound.from.x, bound.start.y + now.y - bound.from.y) }
+    const offset = (ev: PointerEvent) => { const now = toDoc(ev); return P(now.x - bound.from.x, now.y - bound.from.y) }
+    const shifted = (o: Vec): Record<Id, Vec> => (pick.kind === 'points' ? Object.fromEntries(Object.entries(pick.starts).map(([k, v]) => [k, P(v.x + o.x, v.y + o.y)])) : {})
+    const ghostAt = (o: Vec) => (pick.kind === 'points' ? { points: shifted(o) } : { points: {}, handle: { line: pick.line, end: pick.end, vector: P(pick.tip.x + o.x - pick.point.x, pick.tip.y + o.y - pick.point.y) } })
+    const targetsAt = (o: Vec) => {
+      const g = ghostAt(o)
+      return g.handle ? { handles: [g.handle] } : { points: Object.entries(g.points).map(([pid, position]) => ({ id: pid, position })) }
+    }
     const travel = (ev: PointerEvent) => { moved ||= Math.hypot(ev.clientX - pressed.x, ev.clientY - pressed.y) > CLICK }
     const move = (ev: PointerEvent) => {
       if (ev.pointerId !== id) return
       if ((ev.buttons & 1) === 0) { release(ev); return }
       travel(ev)
-      if (moved) setCorrGhost({ id: bound.id, to: target(ev) })
+      if (moved) setCorrGhost(ghostAt(offset(ev)))
     }
     const release = (ev: PointerEvent) => {
       if (ev.pointerId !== id) return
@@ -699,7 +810,8 @@ export function App() {
       stop()
       if (!moved) return
       if (core !== bound.core || save(core) !== bound.text) { note('playback drag cancelled: the drawing changed during the drag'); bump(); return }
-      try { logged(core).edit(x => x.correct(bound.pose, { points: [{ id: bound.id, position: target(ev) }] })) }
+      const before = core.model()
+      try { logged(core).edit(x => x.correct(bound.pose, targetsAt(offset(ev)))); setLastChange({ pose: bound.pose, lines: changesBetween(before, core.model(), core.snapshot()) }) }
       catch (err) { setCorrRefusal({ message: (err as Error).message, objects: err instanceof Refusal ? err.objects : [] }) }
       bump()
     }
@@ -721,6 +833,9 @@ export function App() {
     window.addEventListener('pointerdown', onOtherDown, true)
   }
   useEffect(() => () => gesture.current?.cancel('unmounting'), []) // unmounting ends any gesture
+  // playback moving onto or off a view changes the view interaction edits (§2): what it holds for one view ends, as a view change does
+  const lastEditView = useRef(editView)
+  useEffect(() => { if (lastEditView.current !== editView) { lastEditView.current = editView; ix.viewChanged() } })
   /** A view change ends any gesture and what interaction holds for one view (step 7); not an edit. */
   const chooseView = (k: string) => {
     gesture.current?.cancel('a view change')
@@ -739,7 +854,7 @@ export function App() {
     const [yaw, pitch] = shown.slice('view:'.length).split(',').map(Number)
     setPose({ yaw: yaw!, pitch: pitch! }); setCorrRefusal(null)
   }
-  const stopPose = () => { gesture.current?.cancel('leaving playback'); refGen.current++; posing.current = false; setPose(null); setCorrRefusal(null) }
+  const stopPose = () => { gesture.current?.cancel('leaving playback'); refGen.current++; posing.current = false; setPose(null); setCorrRefusal(null); setLastChange(null); setPoseHover(null) }
   /** A valid pose change ends a playback drag first: a target belongs to one pose (dot 1791696847). */
   /**
    * The one update of a pose that takes effect (dot 1791727663, 1791727680): the pose and both number fields
@@ -855,6 +970,8 @@ export function App() {
         keyHooks.current.poseArrow?.(e)
         return
       }
+      // playback: A and V choose how a drag corrects (docs/playback-edit-checklist.md §2); no other tool key
+      if (posing.current && /^[av]$/i.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); chooseTool(e.key.toUpperCase() as Tool); return }
       if (posing.current) return
       if (keyHooks.current.nudge?.(e)) return
       if (isArrow(e.key) && gesture.current && gesture.current.id !== KEYS) { e.preventDefault(); return } // a drag runs: one session at a time
@@ -924,9 +1041,31 @@ export function App() {
   // where the pose lies for a correction, by core's own rule (correctionEdge; dot 1791696958)
   const where = pose ? correctionEdge(pose) : null
   const onLine = !!where && 'edge' in where
+  // §2, §3: where a playback drag corrects; A's marks there (none with Z); the controls corrected at exactly this pose
+  const atCorrection = !!pose && correctionPose(pose) && !!where && 'edge' in where
+  const playbackMarks = atCorrection && !zoomTool && ix.tool === 'A'
+  const correctedHere = (() => {
+    const out = { points: new Set<Id>(), handles: new Set<string>(), list: [] as { control: { kind: 'point'; id: Id } | { kind: 'handle'; line: Id; end: 'a' | 'b' }; label: string; axes: string }[] }
+    if (!atCorrection || !where || !('edge' in where)) return out
+    const r = core.model().responses, key = modelEdge(where.inner, where.outer), t = where.t
+    const axesAt = (c?: Record<string, { x?: Knots; y?: Knots }>) => (['x', 'y'] as const).filter(ax => c?.[key]?.[ax]?.some(k => k[0] === t))
+    for (const [id, c] of Object.entries(r?.points ?? {})) { const ax = axesAt(c); if (ax.length) { out.points.add(id); out.list.push({ control: { kind: 'point', id }, label: `点 ${id}`, axes: ax.join('、') }) } }
+    for (const [line, h] of Object.entries(r?.handles ?? {})) for (const end of ['a', 'b'] as const) {
+      const ax = axesAt(h[end]); if (ax.length) { out.handles.add(`${line}:${end}`); out.list.push({ control: { kind: 'handle', line, end }, label: `线 ${s.lines.find(l => l.id === line)?.name || line} 的 ${end} 端手柄`, axes: ax.join('、') }) }
+    }
+    return out
+  })()
+  /** 「删除修正拐点」 (§4): one uncorrect, its change shown as a drag's is. */
+  const removeCorrection = (control: (typeof correctedHere.list)[number]['control']) => {
+    if (!pose) return
+    const before = core.model(), at = { ...pose }
+    try { logged(core).edit(x => x.uncorrect(at, control)); setCorrRefusal(null); setLastChange({ pose: at, lines: changesBetween(before, core.model(), core.snapshot()) }) }
+    catch (err) { setCorrRefusal({ message: (err as Error).message, objects: err instanceof Refusal ? err.objects : [] }) }
+    bump()
+  }
   const brokenHere = core.in(shown).references().filter(r => refBroken.some(x => x.core === core && x.id === r.id && x.src === r.src)).map(r => r.id)
   const status = pose ? (corrRefusal ? '✗ ' + withNames(corrRefusal.message)
-    : `playback yaw ${pose.yaw}, pitch ${pose.pitch} · ${!where ? '' : 'edge' in where ? `on the line ${where.inner} → ${where.outer} at t = ${+where.t.toFixed(3)} · drag a point to correct` : where.code === 'correction-at-view' ? 'at a view · read only (edit the view itself)' : where.code === 'correction-off-edge' ? 'inside a cell · read only (this round corrects on lines only)' : '✗ ' + where.message}${posed instanceof Error ? ' · ✗ ' + posed.message : ''}`)
+    : `playback yaw ${pose.yaw}, pitch ${pose.pitch} · ${atCorrection && where && 'edge' in where ? `修正点：${where.inner} → ${where.outer}，t = ${+where.t.toFixed(3)} · A 拖点或手柄，V 拖整条曲线` : viewAtPose(pose) ? `视角 ${viewAtPose(pose)} · A / V 直接改这个视角` : '这里只能看；修正点在 yaw ±30 / ±60、pitch 0 / ±45'}${posed instanceof Error ? ' · ✗ ' + posed.message : ''}`)
     : pv.refusal ? '✗ ' + withNames(pv.refusal.message)
     : brokenHere.length ? `✗ reference picture ${brokenHere.join(', ')} could not be drawn (the drawing is unaffected)`
     : `view ${shown} · tool ${ix.tool} · layer ${drawLayer} · selection ${sel.map(u => u.kind[0] + ':' + ('id' in u ? u.id : u.line + '.' + u.end)).join(' ') || '—'}${pv.pick ? ' · first pick ' + pv.pick.id : ''}${pv.cut.length ? ' · cut pending (paste moves, Esc cancels)' : ''}${pv.mirrorSource.length ? ' · mirror source ' + pv.mirrorSource.length : ''}`
@@ -958,6 +1097,17 @@ export function App() {
               }}
               onChange={p => changePose(p, 'pad')}
               onEnd={cancel => { if (gesture.current?.cancel === cancel) gesture.current = null }} />
+            {/* §3: the corrections at exactly this pose, each removable; what the last playback write changed */}
+            {atCorrection && <div data-testid="corrections-here" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <b>本角度的修正（{correctedHere.list.length}）</b>
+              {correctedHere.list.map(c => <div key={c.label} data-correction={c.control.kind === 'point' ? c.control.id : `${c.control.line}:${c.control.end}`} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                <span style={{ flex: 1 }}>{c.label} · {c.axes}</span><button onClick={() => removeCorrection(c.control)}>删除修正拐点</button></div>)}
+              {correctedHere.list.length > 0 && <div style={{ color: '#888' }}>删除只去掉这个角度的拐点；当时被挪动的视角不会复原（要复原请离开 playback 后撤销）</div>}
+            </div>}
+            {lastChange && <div data-testid="last-change" style={{ color: '#333', background: '#f6f6f0', padding: 3 }}>
+              <b>刚才改了什么</b>（yaw {lastChange.pose.yaw}, pitch {lastChange.pose.pitch}）
+              {lastChange.lines.map((l, i) => <div key={i}>{l}</div>)}
+            </div>}
           </> : <button onClick={startPose}>Playback</button>}
         </div>
         {/* viewport tools change only what the canvas shows: enabled in every mode (bowen 1791727452) */}
@@ -1169,11 +1319,17 @@ export function App() {
         {/* one line always, and the column never widened by it (minWidth 0): a status that wrapped would resize the canvas between a press and its release and move the press (a click on a curve with long ids nudged it) */}
         <div data-testid="status" title={status} style={{ padding: '4px 8px', borderBottom: '1px solid #ccc', height: 18, lineHeight: '18px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: (pose ? corrRefusal : pv.refusal) ? '#c00' : '#333' }}>{status}</div>
         <svg ref={svg} style={{ flex: 1, background: '#fafafa', touchAction: 'none', cursor: cursorFor(pressTakenBy, pressed) }} data-testid="canvas" viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
-          onPointerDown={e => (viewportPress(e) ? onDown(e) : restoring ? undefined : pose ? onPoseDown(e) : moveRef ? onRefDown(e) : onDown(e))}
+          onPointerDown={e => (viewportPress(e) ? onDown(e) : restoring ? undefined : inBetween ? onPoseDown(e) : poseView ? (ix.tool === 'A' || ix.tool === 'V' ? onDown(e) : undefined) : moveRef ? onRefDown(e) : onDown(e))}
           // hovering tells interaction what the pointer is over on the selection box (the cursor follows; selection-box plan §6)
           // the pointer's place is kept on every move and release over the canvas, a drag's too (a pan ends where the pointer
           // is, dot 1791737940); the hover is asked only with no button and no gesture — and after every render
-          onPointerMove={e => { hoverAt.current = { clientX: e.clientX, clientY: e.clientY, mods: mods(e) }; if (e.buttons === 0) rehover.current() }}
+          onPointerMove={e => {
+            hoverAt.current = { clientX: e.clientX, clientY: e.clientY, mods: mods(e) }
+            if (e.buttons !== 0) return
+            rehover.current()
+            // playback with A at a correction pose: the line under the pointer shows its handles (§2)
+            if (playbackMarks) { const h = shownLineAt(toDoc(e)); if (h !== poseHover) setPoseHover(h) }
+          }}
           onPointerUp={e => { hoverAt.current = { clientX: e.clientX, clientY: e.clientY, mods: mods(e) } }} onPointerLeave={() => { hoverAt.current = null; ix.pointerHover(null) }} onWheel={onWheel}
           // the right click itself is the unmoved right press (onDown); a right press during a left
           // drag comes only as this event, and cancels that drag (one level)
@@ -1191,7 +1347,7 @@ export function App() {
             const paintOf = (id: string) => {
               const l = line(id), on = selLines.includes(l.id), picked = pv.pick?.kind === 'line' && pv.pick.id === l.id
               // while posing, no edit marks: neither selection nor picks (dot 1791686247)
-              return pose ? (l.state.locked ? '#933' : '#111') : cutLines.has(l.id) ? '#bbb' : picked ? '#f80' : pv.mirrorSource.includes(l.id) ? '#a3c' : on ? '#06f' : l.state.locked ? '#933' : '#111'
+              return inBetween ? (l.state.locked ? '#933' : '#111') : cutLines.has(l.id) ? '#bbb' : picked ? '#f80' : pv.mirrorSource.includes(l.id) ? '#a3c' : on ? '#06f' : l.state.locked ? '#933' : '#111'
             }
             const loopsD = (loops: readonly (readonly { x: number; y: number }[])[]) => loops.map(q => 'M' + q.map(v => `${v.x} ${v.y}`).join(' L') + ' Z').join(' ')
             const defectMark = (key: string, d: string, why: string | undefined) => why !== undefined &&
@@ -1246,9 +1402,9 @@ export function App() {
                   data-masked={masksOf.has(`fill:${f.id}`) ? '' : undefined} fillRule="nonzero"
                   d={masksOf.has(`fill:${f.id}`) ? loopsD(maskApply(maskArea(f.parts.map(p => p.curve as unknown as [Vec, Vec, Vec, Vec])), masksOf.get(`fill:${f.id}`)!)) : f.parts.map((p, i) => (i ? path(p.curve).replace(/^M[^C]*/, '') : path(p.curve))).join(' ') + ' Z'}
                   fill={f.color} opacity={cutLines.size && s.loops.find(l => l.id === f.id)?.route.every(u => cutLines.has(u.line)) ? 0.35 : 1}
-                  stroke={!pose && isSel({ kind: 'fill', id: f.id }) ? '#06f' : 'none'} strokeWidth={2 * px} />)}
+                  stroke={!inBetween && isSel({ kind: 'fill', id: f.id }) ? '#06f' : 'none'} strokeWidth={2 * px} />)}
                 {/* the selection reads at a glance (bowen 1791558186): a wide blue halo under each selected line */}
-                {!pose && g.lines.filter(G => rank.get(G.id) === i && selLines.includes(G.id)).map(G => <path key={'halo' + G.id} d={path(G.curve)} fill="none" stroke="#2a7fff" strokeOpacity={0.3}
+                {!inBetween && g.lines.filter(G => rank.get(G.id) === i && selLines.includes(G.id)).map(G => <path key={'halo' + G.id} d={path(G.curve)} fill="none" stroke="#2a7fff" strokeOpacity={0.3}
                   strokeWidth={Math.max(line(G.id).stroke.width, line(G.id).stroke.widthB ?? 0) + 8 * px} strokeLinecap="round" />)}
                 {arcsAlone.filter(p => groupOfPiece(p) === i).map(pieceEl)}
                 {g.lines.filter(G => rank.get(G.id) === i).map(lineEl)}
@@ -1257,31 +1413,40 @@ export function App() {
             </>
           })()}
           {/* the selection box (bowen 1791558733): solid blue = wholly inside (dragged right), dashed green = touching (dragged left) */}
-          {!pose && pv.box && <rect x={Math.min(pv.box.from.x, pv.box.to.x)} y={Math.min(pv.box.from.y, pv.box.to.y)} width={Math.abs(pv.box.to.x - pv.box.from.x)} height={Math.abs(pv.box.to.y - pv.box.from.y)}
+          {!inBetween && pv.box && <rect x={Math.min(pv.box.from.x, pv.box.to.x)} y={Math.min(pv.box.from.y, pv.box.to.y)} width={Math.abs(pv.box.to.x - pv.box.from.x)} height={Math.abs(pv.box.to.y - pv.box.from.y)}
             fill={pv.box.whole ? 'rgba(42,127,255,0.08)' : 'rgba(40,170,90,0.08)'} stroke={pv.box.whole ? '#2a7fff' : '#28aa5a'} strokeWidth={px}
             strokeDasharray={pv.box.whole ? undefined : `${5 * px} ${3 * px}`} />}
           {/* the selection reads at a glance (bowen 1791558186): a wide blue halo under each selected line (drawn with its curve), and a dashed box around it all —
               one box, one extent (dot 1791737043, 1791737260): where the selection box is drawn (V / A) it is that box; elsewhere
               (another tool, Move picture) the same frame — core's bounds of what a transform moves — without handles */}
-          {!pose && !boxShown && (() => {
+          {!inBetween && !boxShown && (() => {
             const units = sel.filter(u => u.kind === 'line' || u.kind === 'point' || u.kind === 'handle'), b = units.length ? core.in(shown).selectionBounds(units) : null
             return b && <rect data-selection-outline="" x={b.min.x} y={b.min.y} width={b.max.x - b.min.x} height={b.max.y - b.min.y}
               fill="none" stroke="#2a7fff" strokeWidth={px} strokeDasharray={`${3 * px} ${2 * px}`} pointerEvents="none" />
           })()}
           {/* the pending mark (stage 2): an orange dot on each line whose front differs from the baseline — on the selected
               layers only: nothing is drawn on a layer that is not selected (bowen 1791899291, 1791553331) */}
-          {!pose && g.lines.filter(G => pending.includes(G.id) && selLayers.includes(s.points.find(p => p.id === line(G.id).a)?.layer ?? '')).map(G => { const m = mid(G.curve); return <circle key={'pending' + G.id} data-pending={G.id} cx={m.x} cy={m.y} r={4 * px} fill="#f80" stroke="#fff" strokeWidth={px} /> })}
+          {!inBetween && g.lines.filter(G => pending.includes(G.id) && selLayers.includes(s.points.find(p => p.id === line(G.id).a)?.layer ?? '')).map(G => { const m = mid(G.curve); return <circle key={'pending' + G.id} data-pending={G.id} cx={m.x} cy={m.y} r={4 * px} fill="#f80" stroke="#fff" strokeWidth={px} /> })}
           {/* playback on a line: the drag's ghost at start + displacement (stage 3b package 5); the points are not marked
               (bowen 1791908866) — a press near one still picks it */}
-          {pose && corrGhost && shownLines.filter(l => l.a === corrGhost.id || l.b === corrGhost.id).map(l => {
-            const mv = (id: Id) => (id === corrGhost.id ? corrGhost.to : pos(id)), a = mv(l.a), b = mv(l.b)
-            return <path key={'cg' + l.id} data-ghost={l.id} d={path([a, add(a, l.ha), add(b, l.hb), b])} fill="none" stroke="#06f" strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />
+          {pose && corrGhost && shownLines.filter(l => l.a in corrGhost.points || l.b in corrGhost.points || corrGhost.handle?.line === l.id).map(l => {
+            const mv = (id: Id) => corrGhost.points[id] ?? pos(id), a = mv(l.a), b = mv(l.b), h = corrGhost.handle?.line === l.id ? corrGhost.handle : undefined
+            return <path key={'cg' + l.id} data-ghost={l.id} d={path([a, add(a, h?.end === 'a' ? h.vector : l.ha), add(b, h?.end === 'b' ? h.vector : l.hb), b])} fill="none" stroke="#06f" strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />
           })}
-          {pose && corrGhost && <circle data-ghost-point={corrGhost.id} cx={corrGhost.to.x} cy={corrGhost.to.y} r={4 * px} fill="#06f" />}
-          {!pose && ghostLines.map((c, i) => <path key={'g' + i} data-drag-ghost={i} d={path(c)} fill="none" stroke="#06f" strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />)}
+          {pose && corrGhost && Object.entries(corrGhost.points).map(([gid, to]) => <circle key={'gp' + gid} data-ghost-point={gid} cx={to.x} cy={to.y} r={4 * px} fill="#06f" />)}
+          {/* playback with A at a correction pose (§2, §3): the visible lines' end points, the hovered line's handles, a ring on a point corrected here */}
+          {pose && playbackMarks && shownLines.filter(l => l.id === poseHover).flatMap(l => (['a', 'b'] as const).map(end => {
+            const point = pos(end === 'a' ? l.a : l.b), tip = add(point, end === 'a' ? l.ha : l.hb), here = correctedHere.handles.has(`${l.id}:${end}`)
+            return <g key={'ph' + l.id + end} data-pose-handle={`${l.id}:${end}`}><line x1={point.x} y1={point.y} x2={tip.x} y2={tip.y} stroke="#888" strokeWidth={px} />
+              <rect x={tip.x - 3 * px} y={tip.y - 3 * px} width={6 * px} height={6 * px} fill={here ? '#f80' : '#fff'} stroke="#06f" strokeWidth={px} /></g>
+          }))}
+          {pose && playbackMarks && [...shownEnds].map(pid => { const p = pos(pid), here = correctedHere.points.has(pid)
+            return <g key={'pm' + pid} data-pose-point={pid}>{here && <circle data-corrected-here={pid} cx={p.x} cy={p.y} r={6.5 * px} fill="none" stroke="#f80" strokeWidth={1.5 * px} />}
+              <circle cx={p.x} cy={p.y} r={3 * px} fill="#fff" stroke="#06f" strokeWidth={px} /></g> })}
+          {!inBetween && ghostLines.map((c, i) => <path key={'g' + i} data-drag-ghost={i} d={path(c)} fill="none" stroke="#06f" strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />)}
           {/* the selection box (docs/selection-box-plan.md): not in playback, while restoring or with Move picture — nor hit there */}
-          {!pose && !restoring && !moveRef && pv.transform && pv.transform.lines.map(l => <path key={'t' + l.id} data-transform-ghost={l.id} d={path(l.curve)} fill="none" stroke={pv.transform!.refused ? '#c00' : '#06f'} strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />)}
-          {!pose && !restoring && !moveRef && pv.transform && pv.transform.arcs.map(a => <path key={'ta' + a.key} data-transform-ghost-arc={a.key} d={path(a.curve)} fill="none" stroke="#06f" strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />)}
+          {!inBetween && !restoring && !moveRef && pv.transform && pv.transform.lines.map(l => <path key={'t' + l.id} data-transform-ghost={l.id} d={path(l.curve)} fill="none" stroke={pv.transform!.refused ? '#c00' : '#06f'} strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />)}
+          {!inBetween && !restoring && !moveRef && pv.transform && pv.transform.arcs.map(a => <path key={'ta' + a.key} data-transform-ghost-arc={a.key} d={path(a.curve)} fill="none" stroke="#06f" strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />)}
           {boxShown && pv.selectionBox && (() => {
             const b = pv.transform?.box ?? pv.selectionBox, top = pv.selectionBox.handles.find(h => h.id === 'rotate')
             return <g data-selection-box="" pointerEvents="none">
@@ -1293,7 +1458,7 @@ export function App() {
             </g>
           })()}
           {/* the 四角 / 曲边 frame, drawn from the same data interaction hits (v103 DeformCageOverlay, its sizes in screen pixels) */}
-          {!pose && !restoring && pv.deform && (() => {
+          {!inBetween && !restoring && pv.deform && (() => {
             const f = pv.deform.frame, c = '#a35ac0', poly = (ps: readonly Vec[]) => ps.map((p, i) => `${i ? 'L' : 'M'}${p.x} ${p.y}`).join(' ')
             return <g data-testid="deform-frame" pointerEvents="none">
               {pv.deform.lines?.map(l => <path key={'dg' + l.id} data-deform-ghost={l.id} d={path(l.curve)} fill="none" stroke={pv.deform!.refused ? '#c00' : c} strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />)}
@@ -1308,21 +1473,21 @@ export function App() {
               {f.corners.map((q, i) => <rect key={'c' + i} data-deform-corner={i} x={q.x - 6 * px} y={q.y - 6 * px} width={12 * px} height={12 * px} fill="#fff" stroke={c} strokeWidth={2 * px} />)}
             </g>
           })()}
-          {!pose && pv.handles.map(({ line: id, end }) => {
+          {!inBetween && pv.handles.map(({ line: id, end }) => {
             const l = line(id), p = pos(l[end]), h = add(p, end === 'a' ? l.ha : l.hb), on = isSel({ kind: 'handle', line: id, end })
             return <g key={id + end}>
               <line x1={p.x} y1={p.y} x2={h.x} y2={h.y} stroke="#888" strokeWidth={px} />
               <rect x={h.x - 3 * px} y={h.y - 3 * px} width={6 * px} height={6 * px} fill={on ? '#06f' : '#fff'} stroke="#555" strokeWidth={px} />
             </g>
           })}
-          {!pose && s.points.filter(p => pvPoints.has(p.id)).map(p => {
+          {!inBetween && s.points.filter(p => pvPoints.has(p.id)).map(p => {
             const on = isSel({ kind: 'point', id: p.id }), picked = pv.pick?.kind === 'point' && pv.pick.id === p.id
             return <circle key={p.id} cx={p.position.x} cy={p.position.y} r={(p.links.length ? 5 : 3.5) * px}
               fill={picked ? '#f80' : on ? '#06f' : p.links.length ? '#fc0' : '#fff'} stroke="#333" strokeWidth={px} />
           })}
-          {!pose && pv.pen && 'at' in pv.pen && <circle cx={pv.pen.at.x} cy={pv.pen.at.y} r={3 * px} fill="#f80" />}
+          {!inBetween && pv.pen && 'at' in pv.pen && <circle cx={pv.pen.at.x} cy={pv.pen.at.y} r={3 * px} fill="#f80" />}
           {/* the selected lines' or curves' names (name-labels/): the scoped selection, never taking a press, not in playback */}
-          {!pose && labelsFor(g.lines.map(G => ({ id: G.id, name: line(G.id).name, mid: middleOf(G.curve) })), s.groups.map(gr => ({ id: gr.id, name: gr.name, lines: gr.lines })), selLines, labelKind).map(lb =>
+          {!inBetween && labelsFor(g.lines.map(G => ({ id: G.id, name: line(G.id).name, mid: middleOf(G.curve) })), s.groups.map(gr => ({ id: gr.id, name: gr.name, lines: gr.lines })), selLines, labelKind).map(lb =>
             <text key={lb.key} data-label={lb.key} x={lb.at.x + 6 * px} y={lb.at.y - 6 * px} fontSize={12 * px} fill="#123" stroke="#fff" strokeWidth={3 * px} paintOrder="stroke" pointerEvents="none" style={{ userSelect: 'none' }}>{lb.text}</text>)}
           {refusalAt.map((p, i) => <g key={'x' + i} stroke="#d00" strokeWidth={2.5 * px}>
             <line x1={p.x - 6 * px} y1={p.y - 6 * px} x2={p.x + 6 * px} y2={p.y + 6 * px} /><line x1={p.x - 6 * px} y1={p.y + 6 * px} x2={p.x + 6 * px} y2={p.y - 6 * px} />

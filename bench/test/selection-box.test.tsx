@@ -37,11 +37,17 @@ async function setup() {
   return { host, svg, k, Y, pos, button }
 }
 
+/** Playback at an in-between pose (yaw 20): read only there; at a view A / V edit it (docs/playback-edit-checklist.md §2). */
+async function between(host: HTMLElement) {
+  const el = host.querySelector('[data-testid="yaw-text"]') as HTMLInputElement
+  await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(el, '20'); el.dispatchEvent(new Event('input', { bubbles: true })) })
+}
+
 describe('the selection box in the bench', () => {
   it('drawn with V and a selection; not in playback; not with Move picture', async () => {
     const t = await setup()
     expect(t.host.querySelectorAll('[data-selection-box] [data-box-handle]').length).toBe(9)
-    await act(async () => { t.button('Playback').click() })
+    await act(async () => { t.button('Playback').click() }); await between(t.host)
     expect(t.host.querySelector('[data-selection-box]')).toBeNull()
     await act(async () => { t.button('Leave playback').click() })
     await act(async () => { (t.host.querySelector('[data-testid="move-picture"]') as HTMLInputElement).click() })
