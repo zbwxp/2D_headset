@@ -42,7 +42,8 @@
   - in the left order it goes directly above the same layer, else on top.
 - **A layer removed:** removed from both orders.
 - **New: `resetLeftOrder()`.** Drops the left order, so yaw < 0 stacks like yaw ≥ 0 again. One undo step.
-- **Playback** does not reorder layers: the gate refuses `reorderLayer`, as today.
+- **Playback** does not reorder layers: the gate refuses `reorderLayer`, as today. **It also refuses `resetLeftOrder`, and the button is disabled in playback** (dot 1791997825).
+- **Hit-testing stays as it is:** by kind, then distance; it never promised the visually top layer. It is not widened into another picking rule here (dot 1791997825).
 
 ## 4. Bench
 - **The layers panel** shows the order of the view (or pose) on screen. Its drag reorders that order.
@@ -59,10 +60,13 @@
 - `resetLeftOrder` and undo;
 - save / open round trip (archive 13);
 - a v12 file opens and saves as 13;
-- a bad `leftOrder` (missing, extra, repeated id) is refused.
+- a bad `leftOrder` is refused: a missing, extra, repeated or unknown layer id, or not a list (dot 1791997825);
+- a v12 file upgraded to 13 draws exactly as before;
+- views −90, `atPose` and `previewAt` at yaw < 0 give the same `layers` and `groups` order, and reading writes nothing.
 
 **Bench:**
 - with 侧脸 above 左眼 for yaw ≥ 0 and below it for yaw < 0, the canvas stacks them differently in views +90 and −90 and at playback ±30;
-- the panel shows each view's order and its note.
+- the panel shows each view's order and its note;
+- a panel drag interrupted by a view change is dropped: nothing is written to the other side (dot 1791997825).
 
 **Screenshot:** a pose at +60 and at −60 with the two stackings.
