@@ -228,3 +228,29 @@ describe('review fix (dot 1791978817)', () => {
     expect(save(bench().core)).toBe(before)
   })
 })
+
+describe('every show / hide switch of the panels works in playback (bowen 1791979917)', () => {
+  it('the all-layers eye and fill switch, a layer\'s eye, a curve\'s eye and a line\'s eye each write; their locks are refused', async () => {
+    const t = await setup()
+    await t.play(20, 0)
+    const click = async (title: string) => {
+      const el = [...t.host.querySelectorAll('svg > title')].find(x => x.textContent === title)?.parentElement
+      expect([title, !!el]).toEqual([title, true])
+      const n0 = bench().log.length
+      await act(async () => { el!.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+      return bench().log.slice(0, bench().log.length - n0)
+    }
+    for (const title of ['隐藏全部图层的填充', '显示全部图层的填充', '隐藏全部图层（Option 点某个图层的眼睛：只显示它）', '显示全部图层']) {
+      const rows = await click(title)
+      expect([title, rows.every(r => r.result === 'ok')]).toEqual([title, true])
+    }
+    const lockRows = await click('锁定图层')
+    expect(lockRows.some(r => /not allowed during playback/.test(r.result))).toBe(true)
+    // the curve's and the line's eyes (rows inside a layer) call groupState and lineState
+    const v = `v${t.k}`, group = bench().core.snapshot().groups.find(g => g.lines.includes(v))!.id
+    await act(async () => { bench().edit(e => e.groupState(group, { visible: false })) })
+    await act(async () => { bench().edit(e => e.lineState(v, { visible: true })) })
+    expect(bench().log.slice(0, 2).map(r => r.result)).toEqual(['ok', 'ok'])
+    expect(() => bench().edit(e => e.lineState(v, { locked: true }))).toThrow(/lineState is not allowed/)
+  })
+})

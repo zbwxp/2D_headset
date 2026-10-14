@@ -72,12 +72,13 @@ function refusedInPlayback(n: string, a: readonly unknown[], atView: boolean, pl
   if (n === 'uncorrect' || n === 'fillVisible') return undefined
   // at a view, writing that view: what A and V do there in editing — pick, then move points, curves and handles (§2)
   if (atView && (n === 'select' || n === 'selectGroup' || n === 'translate' || n === 'moveHandle')) return undefined
-  if ((n === 'layerState' || n === 'fillState') && onlyVisible(a[1])) return undefined
+  // every show / hide switch of the panels: a layer's lines or fills, a curve, a line, a fill (bowen 1791979917: layerFills was missed)
+  if (['layerState', 'layerFills', 'groupState', 'lineState', 'fillState'].includes(n) && onlyVisible(a[1])) return undefined
   // playback's own pictures (§5): placed at `playback`, changed or removed only if they are playback's; the library takes new pictures
   if (n === 'placeReference' && (a[0] as { view?: unknown } | null)?.view === 'playback') return undefined
   if ((n === 'setReference' || n === 'removeReference') && playbackRef(a[0])) return undefined
   if (n === 'addAsset') return undefined
-  return `${n} is not allowed during playback (only a correction, deleting one, layer or fill visibility, playback's own pictures, and at a view moving its points and handles)`
+  return `${n} is not allowed during playback (only a correction, deleting one, showing or hiding, playback's own pictures, and at a view moving its points and handles)`
 }
 type Pose = { yaw: number; pitch: number }
 /** The view a pose is exactly at (yaw 0 / ±90 × pitch 0 / ±45), else null. */
