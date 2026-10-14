@@ -149,6 +149,25 @@ describe('explicit targets (graph row 3)', () => {
     expect(d.snapshot().lines.find(l => l.id === 'w')!.a).toBe('a')
   })
 
+  it('cut then paste moves the curve with its corrections (same ids); a second paste is a new copy without corrections (docs/correction-cleanup-checklist.md §1, dot 1791995359)', () => {
+    const { ix, core } = setup(), d = core()
+    d.editIn('view:90,0', e => e.move([{ id: 'b', target: P(150, 30) }]))
+    d.edit(e => e.correct({ yaw: 30, pitch: 0 }, { points: [{ id: 'b', position: P(110, 5) }] }))
+    const knots = () => JSON.parse(save(d)).document.animation.points as Record<string, unknown>
+    const before = knots().b
+    expect(before).toBeDefined()
+    ix.setTool('V'); ix.pointerDown(P(50, 0)); ix.pointerUp(P(50, 0))
+    ix.cut()
+    ix.paste()
+    expect(knots().b).toEqual(before) // moved, the same point keeps its corrections
+    const ids = new Set(d.snapshot().points.map(p => p.id))
+    ix.paste()
+    const added = d.snapshot().points.map(p => p.id).filter(id => !ids.has(id))
+    expect(added.length).toBeGreaterThan(0)
+    for (const id of added) expect(knots()[id]).toBeUndefined()
+    expect(knots().b).toEqual(before)
+  })
+
   it('9. pending cut: copy ends it; a refused paste keeps it; a retry after unlocking moves it; a drawing change ends it', () => {
     const { ix, core, setLayer, open } = setup(), d = core()
     ix.setTool('V'); ix.pointerDown(P(50, 0)); ix.pointerUp(P(50, 0))

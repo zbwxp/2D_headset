@@ -138,6 +138,8 @@ const CASES: Case[] = [
   { op: 'correct', args: () => [{ yaw: 45, pitch: 0 }, { points: [{ id: 'a', position: P(0, 2) }] }], note: 'the side view moves' },
   // the knots that correction wrote, removed again (docs/playback-edit-checklist.md §4)
   { op: 'uncorrect', args: () => [{ yaw: 45, pitch: 0 }, { kind: 'point', id: 'b' }], setup: d => d.edit(e => e.correct({ yaw: 45, pitch: 0 }, { points: [{ id: 'b', position: P(10.4, 0.7) }] })) },
+  // every knot of b, on every edge (docs/correction-cleanup-checklist.md §2)
+  { op: 'clearCorrections', args: () => [[{ kind: 'point', id: 'b' }]], setup: d => d.edit(e => e.correct({ yaw: 45, pitch: 0 }, { points: [{ id: 'b', position: P(10.4, 0.7) }] })) },
   // the corner's own stroke differs too, so a broadcast from either view writes the other
   { op: 'broadcastStroke', args: () => [sel('ab')], setup: d => d.editIn('view:90,45', e => e.lineStroke('ab', { width: 7, profile: 'uniform' })) },
   { op: 'deleteSelection', args: () => [sel('xy')] },
@@ -264,7 +266,7 @@ describe('the declarations against what each operation really does (front and a 
 describe('responses: the operations that declare animation write it (stage 3b package 2)', () => {
   it('each operation declaring animation writes it in its case, and no other operation does', () => {
     const declaring = Object.entries(EFFECTS).filter(([, e]) => e.shared.includes('animation')).map(([op]) => op).sort()
-    expect(declaring).toEqual(['bind', 'copyLayer', 'correct', 'deleteLayer', 'deleteLine', 'deleteSelection', 'link', 'paste', 'unbind', 'uncorrect'])
+    expect(declaring).toEqual(['bind', 'clearCorrections', 'correct', 'deleteLayer', 'deleteLine', 'deleteSelection', 'link', 'unbind', 'uncorrect'])
     for (const op of declaring) {
       const c = CASES.find(x => x.op === op)!
       expect([op, written(run(c, FRONT).seen).shared.includes('animation')]).toEqual([op, true])
@@ -280,7 +282,7 @@ describe('the merged commit is today\'s, operation by operation (no behaviour ch
     return m
   }
   it('select, selectGroup, broadcastStroke and fit skip settling; broadcastShape and draftCorners settle the non-front views; everything else, and an empty edit, settles fully', () => {
-    const today: Record<string, string> = { placeReference: 'keeps', setReference: 'keeps', removeReference: 'keeps', addAsset: 'keeps', renameAsset: 'keeps', removeAsset: 'keeps', mask: 'keeps', removeMask: 'keeps', uncorrect: 'keeps', select: 'keeps', selectGroup: 'keeps', broadcastStroke: 'keeps', fit: 'keeps', correct: 'views', broadcastShape: 'views', draftCorners: 'views' }
+    const today: Record<string, string> = { placeReference: 'keeps', setReference: 'keeps', removeReference: 'keeps', addAsset: 'keeps', renameAsset: 'keeps', removeAsset: 'keeps', mask: 'keeps', removeMask: 'keeps', uncorrect: 'keeps', clearCorrections: 'keeps', select: 'keeps', selectGroup: 'keeps', broadcastStroke: 'keeps', fit: 'keeps', correct: 'views', broadcastShape: 'views', draftCorners: 'views' }
     for (const c of CASES) for (const layer of c.views ?? [FRONT]) {
       const d = fixture()
       c.setup?.(d)

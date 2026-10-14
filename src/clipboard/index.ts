@@ -1,8 +1,8 @@
 // clipboard — copy and paste (graph rows "Copy (layer, lines, groups)" and "Cut, paste /
 // copy"; docs/clipboard-plan.md). A clip is plain data, outside the document and its
 // history: lines with their end points, the joins, end strokes and fills inside the range,
-// the names, and the responses of exactly its points and lines (stage 3b package 2). Endpoint
-// links and mirror pairs are never part of it. Pasting writes the
+// the names. Corrections (responses) are not copied (bowen 1791993536; docs/correction-cleanup-checklist.md §1):
+// a ratio means a position only between the views it was made on. Endpoint links and mirror pairs are never part of it. Pasting writes the
 // clip through each module's own insert, with new ids.
 import * as net from '../network'
 import * as groups from '../groups'
@@ -24,7 +24,7 @@ export interface Clip {
   names: { lines: [Id, string][]; groups: { name: string; lines: Id[] }[] }
   /** The masks whose target and every source are in the clip; absent in a clip made before masks (inserts none). */
   masks?: masks.Mask[]
-  /** The responses of the clip's points and lines; absent in a clip made before stage 3b (inserts none). */
+  /** Responses of a clip made before docs/correction-cleanup-checklist.md: still checked on paste, never written. */
   animation?: animation.ResponsesData
 }
 
@@ -42,7 +42,6 @@ export function extract(d: Parts, lines: readonly Id[]): Clip {
     fills: fills.rangeData(d.fills, lineSet),
     masks: masks.rangeData(d.masks, lineSet, new Set(fills.rangeData(d.fills, lineSet).map(f => f.id))),
     names: names.rangeData(d.names, d.groups, d.network, ids),
-    animation: animation.extract(d.animation, pointSet, lineSet),
   })
 }
 
@@ -191,5 +190,5 @@ export function attach(d: Parts, clip: Clip, map: net.CopyMap, idOf: (old: Id) =
   // after the fills, with their old → new ids (dot 1791903786)
   if (clip.masks) masks.insert(d.masks, clip.masks, map.lines, fillMap, idOf)
   names.copyFrom(d.names, d.network, d.groups, map.lines, clip.names)
-  if (clip.animation) animation.insert(d.animation, clip.animation, map)
+  // corrections are never pasted: the copy blends linearly until corrected (bowen 1791993536)
 }

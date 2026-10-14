@@ -291,35 +291,40 @@ describe('refusals: split and link', () => {
 describe('the clip and the file', () => {
   const doc = () => edited(base(), d => { pointR(d, 'b', E_FS, { x: [[0.5, 0.8]] }); put(d.animation.handles, 'bc', { a: { [E_FS]: { y: [[0.5, 0.1]] } } }) })
 
-  it('paste carries responses to the new ids; a partial copy only what was copied; a clip survives JSON', () => {
+  it('paste carries no responses: the copy blends linearly until corrected (bowen 1791993536; docs/correction-cleanup-checklist.md §1)', () => {
     const d = doc()
     const clip = JSON.parse(JSON.stringify(d.copy(['bc'])))
+    expect(Object.hasOwn(clip, 'animation')).toBe(false)
     d.edit(e => e.paste(clip, 'L', P(0, 100), 'p'))
     const r = responses(d)
-    expect([r.points['p/b'], (r.handles as Record<string, unknown>)['p/bc']]).toEqual([r.points.b, (r.handles as Record<string, unknown>).bc])
-    const part = d.copy(['ab'])
-    expect(part.animation).toEqual({ points: { b: r.points.b }, handles: {} })
+    expect([r.points['p/b'], (r.handles as Record<string, unknown>)['p/bc']]).toEqual([undefined, undefined])
+    expect([r.points.b, (r.handles as Record<string, unknown>).bc]).not.toEqual([undefined, undefined]) // the original keeps its own
   })
 
-  it('copying a layer carries responses, including one a point inherited earlier in the same edit', () => {
+  it('copying a layer carries no responses either', () => {
     const d = doc()
     d.edit(e => { e.unbind('b', ['bc'], 'b2'); e.copyLayer('L', 'L2') })
     const r = responses(d)
-    expect([r.points['L2/b2'], r.points['L2/b']]).toEqual([r.points.b, r.points.b])
+    expect([r.points['L2/b2'], r.points['L2/b']]).toEqual([undefined, undefined])
+    expect(r.points.b).toBeDefined()
   })
 
-  it('a clip without the part pastes no responses; a clip whose part is bad refuses the paste; a clip id named constructor is carried', () => {
+  it('a clip made before still holding responses: checked (a bad one refuses the paste), never written; ids named constructor are fine', () => {
     const d = doc()
-    const old = d.copy(['bc']) as unknown as Record<string, unknown>
-    delete old.animation
-    d.edit(e => e.paste(old as never, 'L', P(0, 100), 'p'))
+    const withPart = (f: (a: Record<string, Record<string, unknown>>) => void) => {
+      const c = JSON.parse(JSON.stringify(d.copy(['bc'])))
+      c.animation = { points: {}, handles: {} }
+      f(c.animation)
+      return c
+    }
+    const good = withPart(a => { put(a.points!, 'b', { [E_FS]: { x: [[0.5, 0.8]] } }) })
+    d.edit(e => e.paste(good, 'L', P(0, 100), 'p'))
     expect(Object.keys(responses(d).points).filter(k => k.startsWith('p/'))).toEqual([])
-    const bad = (f: (a: Record<string, Record<string, unknown>>) => void) => { const c = JSON.parse(JSON.stringify(d.copy(['bc']))); f(c.animation); return c }
     for (const [clip, why] of [
-      [bad(a => { put(a.points!, 'nowhere', { [E_FS]: { x: [[0.5, 0.5]] } }) }), /clip-invalid: clip responses: no point "nowhere"/],
-      [bad(a => { put(a.points!, 'b', { 'view:0,0>view:90,45': { x: [[0.5, 0.5]] } }) }), /is not an edge between neighbouring views/],
-      [bad(a => { put(a.points!, 'b', { [E_FS]: { x: [[0.7, 0.5], [0.6, 0.5]] } }) }), /knot progress must increase strictly inside/],
-      [bad(a => { put(a.points!, 'constructor', { [E_FS]: { x: [[0.5, 0.5]] } }) }), /no point "constructor"/],
+      [withPart(a => { put(a.points!, 'nowhere', { [E_FS]: { x: [[0.5, 0.5]] } }) }), /clip-invalid: clip responses: no point "nowhere"/],
+      [withPart(a => { put(a.points!, 'b', { 'view:0,0>view:90,45': { x: [[0.5, 0.5]] } }) }), /is not an edge between neighbouring views/],
+      [withPart(a => { put(a.points!, 'b', { [E_FS]: { x: [[0.7, 0.5], [0.6, 0.5]] } }) }), /knot progress must increase strictly inside/],
+      [withPart(a => { put(a.points!, 'constructor', { [E_FS]: { x: [[0.5, 0.5]] } }) }), /no point "constructor"/],
     ] as const) {
       let err: unknown
       try { d.edit(e => e.paste(clip, 'L', P(0, 200), 'q')) } catch (x) { err = x }
@@ -331,7 +336,8 @@ describe('the clip and the file', () => {
     const cc = edited(c, doc2 => pointR(doc2, 'constructor', E_FS, { x: [[0.5, 0.5]] }))
     const lnClip = cc.copy(['ln'])
     cc.edit(e => e.paste(lnClip, 'L', P(0, 50), 'k'))
-    expect(responses(cc).points['k/constructor']).toEqual(responses(cc).points.constructor)
+    expect(responses(cc).points['k/constructor']).toBeUndefined()
+    expect(responses(cc).points.constructor).toBeDefined()
   })
 
   it('open refuses a bad response: unknown id or edge, knot order, outside (0, 1), not finite, more than 256 knots', () => {
@@ -353,15 +359,15 @@ describe('bad response data: missing is linear, present but broken is refused, a
     expect(() => edited(base(), doc => { doc.animation.points = [] as never })).toThrow(/open-failed: animation: points and handles must be objects/)
     expect(() => edited(base(), doc => { doc.animation.handles = [] as never })).toThrow(/points and handles must be objects/)
     const d = base(), clip = d.copy(['ab']) as unknown as { animation: Record<string, unknown> }
-    clip.animation.points = []
+    clip.animation = { points: [], handles: {} } // a clip made before corrections stopped being copied
     let err: unknown
     try { d.edit(e => e.paste(clip as never, 'L', P(0, 50), 'p')) } catch (x) { err = x }
     expect((err as Refusal).code).toBe('clip-invalid')
   })
 
   it('a sparse knot list (an empty slot) is refused in a clip, not skipped; a null knot in a file likewise', () => {
-    const d = base(), clip = d.copy(['ab']) as unknown as { animation: { points: Record<string, unknown> } }
-    clip.animation.points = { b: { [E_FS]: { x: new Array(1) } } }
+    const d = base(), clip = d.copy(['ab']) as unknown as { animation: { points: Record<string, unknown>; handles: Record<string, unknown> } }
+    clip.animation = { points: { b: { [E_FS]: { x: new Array(1) } } }, handles: {} }
     let err: unknown
     try { d.edit(e => e.paste(clip as never, 'L', P(0, 50), 'p')) } catch (x) { err = x }
     expect((err as Refusal).code).toBe('clip-invalid')

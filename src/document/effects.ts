@@ -67,9 +67,10 @@ export const EFFECTS: Record<string, Effect> = {
   renameGroup: full({ reads: 'draft', shared: ['names'] }),
   layerType: full({ reads: 'draft', shared: ['meta'] }),
   reorderLayer: full({ reads: 'draft', shared: ['structure'] }),
-  copyLayer: full({ reads: 'settled-trial', shapes: 'all-views', records: true, shared: [...STRUCTURAL_RESPONSES, 'meta'] }),
+  // copies carry no corrections (docs/correction-cleanup-checklist.md §1)
+  copyLayer: full({ reads: 'settled-trial', shapes: 'all-views', records: true, shared: [...STRUCTURAL, 'meta'] }),
   // paste selects what it pasted (its nested select)
-  paste: full({ reads: 'draft', shapes: 'all-views', records: true, shared: [...STRUCTURAL_RESPONSES, 'selection'] }),
+  paste: full({ reads: 'draft', shapes: 'all-views', records: true, shared: [...STRUCTURAL, 'selection'] }),
   deleteLayer: full({ reads: 'draft', shapes: 'all-views', records: true, shared: [...STRUCTURAL_RESPONSES, 'meta'] }),
   // states
   lineState: full({ reads: 'draft', shared: ['structure'] }),
@@ -141,6 +142,8 @@ export const EFFECTS: Record<string, Effect> = {
   correct: { reads: 'settled-trial', intents: 'front-neighbours', shapes: 'front-neighbours', records: false, shared: ['animation'], autoStructure: false, settle: 'non-front-positions', alone: true, companion: false },
   // a correction's knots removed (docs/playback-edit-checklist.md §4): responses only, nothing settles
   uncorrect: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['animation'], autoStructure: false, settle: 'none', alone: false, companion: false },
+  // every knot of some controls (docs/correction-cleanup-checklist.md §2): responses only, nothing settles
+  clearCorrections: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['animation'], autoStructure: false, settle: 'none', alone: false, companion: false },
   broadcastStroke: { reads: 'draft', intents: 'none', shapes: 'others', records: false, shared: [], autoStructure: false, settle: 'none', alone: false, companion: true },
   // mirror (front only, so the edited view is the front). Inside the operation apply copies the
   // source's geometry, strokes, end strokes and line states onto the target in the front; sets or

@@ -526,6 +526,10 @@ export class Editor {
   uncorrect(pose: evaluate.Pose, control: animation.Control) {
     animation.uncorrect(this.s.animation, this.s.network, this.s.links, pose, control)
   }
+  /** Every correction of these controls, all edges and axes (docs/correction-cleanup-checklist.md §2); moved views stay. */
+  clearCorrections(controls: readonly animation.Control[]) {
+    animation.clearCorrections(this.s.animation, this.s.network, this.s.links, controls)
+  }
   /** Reference pictures (docs/reference-images-plan.md): place, change or remove one; never settles. */
   placeReference(image: reference.ReferenceInput) { reference.place(this.s.reference, image) }
   setReference(id: Id, props: reference.ReferenceProps) { reference.set(this.s.reference, id, props) }

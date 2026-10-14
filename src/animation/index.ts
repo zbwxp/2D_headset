@@ -648,6 +648,38 @@ export function uncorrect(a: ResponsesState, n: net.NetworkState, l: links.Links
   }
   if (!removed) throw new net.Refusal('uncorrect-none', `uncorrect-none: ${nameOf(control)} has no correction on ${edge.key} at progress ${t}`, objectsOf(control))
 }
+/**
+ * `clearCorrections(controls)` (docs/correction-cleanup-checklist.md §2; bowen 1791993161): every knot of these
+ * controls, on every edge and both axes, removed at once; a point stands for its link component (linked points hold
+ * identical response sets). As `uncorrect`, a view that a correction moved stays where it is; locks are not consulted.
+ * Refused with `correction-bad-target` for an unknown control, `uncorrect-none` when none of them has a knot.
+ */
+export function clearCorrections(a: ResponsesState, n: net.NetworkState, l: links.LinksState, controls: readonly Control[]) {
+  const bad = (why: string): never => { throw new net.Refusal('correction-bad-target', `correction-bad-target: ${why}`) }
+  if (!Array.isArray(controls)) bad('controls must be a list')
+  const s = R(a), points = new Set<Id>(), handles: { line: Id; end: 'a' | 'b' }[] = []
+  for (const c of controls) {
+    if (!c || typeof c !== 'object') bad('no control')
+    if (c.kind === 'point') {
+      if (typeof c.id !== 'string' || !net.hasPoint(n, c.id)) bad(`no point ${JSON.stringify(c.id)}`)
+      for (const id of component(l, c.id)) points.add(id)
+    } else if (c.kind === 'handle') {
+      if (typeof c.line !== 'string' || !net.hasLine(n, c.line)) bad(`no line ${JSON.stringify(c.line)}`)
+      if (c.end !== 'a' && c.end !== 'b') bad(`line ${c.line} has no end ${JSON.stringify(c.end)}`)
+      handles.push({ line: c.line, end: c.end })
+    } else bad(`unknown control kind ${JSON.stringify((c as { kind: unknown }).kind)}`)
+  }
+  let removed = false
+  for (const id of points) if (own(s.points, id)) { delete s.points[id]; removed = true }
+  for (const h of handles) {
+    const rec = own(s.handles, h.line)
+    if (!rec || !own(rec, h.end)) continue
+    delete rec[h.end]
+    removed = true
+    if (!Object.keys(rec).length) delete s.handles[h.line]
+  }
+  if (!removed) throw new net.Refusal('uncorrect-none', 'uncorrect-none: none of these has a correction')
+}
 /** The knot at `t` removed; an emptied axis, edge or control record goes too (the data stays in normal form). */
 function dropKnot(s: RStore, c: Control, edge: string, axis: 'x' | 'y', t: number) {
   const holder: Rec<Rec<{ x?: Knot[]; y?: Knot[] }>> | undefined = c.kind === 'point' ? s.points : own(s.handles, c.line) as Rec<Rec<{ x?: Knot[]; y?: Knot[] }>> | undefined
