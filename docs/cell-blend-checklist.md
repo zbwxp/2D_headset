@@ -45,7 +45,10 @@
 - weights may be negative or above 1, and only exact zeros are skipped;
 - refusals (`model-incomplete`, `pose-not-finite`) are as today.
 
-**Continuity:** neighbouring cells share their edges, and S on an edge equals that edge's E. So S is continuous across cell borders, 0° included.
+**Continuity:**
+- neighbouring cells share their edges, and S on an edge equals that edge's E;
+- so S is continuous **in position** across cell borders, 0° included;
+- smoothness of speed across an edge is not promised (dot 1791989928).
 
 **What it does not promise** (dot 1791989488):
 - it stops one edge's ratio being used against another edge's span;
@@ -61,6 +64,7 @@
 - **Exactness:** at the nine views the result is the view; on each of the 12 edges it is `onEdge` at progress t (several t, several knot sets, negative values).
 - **No responses:** equal to 3a everywhere.
 - **Only one edge's knots** (e.g. the top): on that edge, the knots apply; on the opposite edge, linear. Inside, the result is the Coons value, checked against the formula written out.
+- **All four edges corrected, with different knots on x and y** (dot 1791989928): each axis equals its own expanded Coons formula at several poses.
 - **Continuity** across u = 0, v = 0 and the cell borders, with responses on the shared edges.
 - **The cause, reproduced:**
   - a model with a −0.82 span on the top edge and a knot of −4 at u = 1/3;

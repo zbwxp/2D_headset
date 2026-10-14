@@ -52,9 +52,8 @@ Knot = [progress, value]
 
 - **The model** gains `responses: AnimationState`, a copy, from `Core.model()`.
 - **Per control and axis**, in the quadrant of the pose with u, v as in 3a:
-  - `u' = (1 − v)·r_bottom(u) + v·r_top(u)`;
-  - `v' = (1 − u)·s_left(v) + u·s_right(v)`;
-  - then 3a's bilinear formula with u', v' for that scalar.
+  - *Replaced inside a cell* by docs/cell-blend-checklist.md (bowen 1791989710, dot 1791989928). The Coons patch of the four edges' own blends: (1 − v)·E_bottom(u) + v·E_top(u) + (1 − u)·E_left(v) + u·E_right(v) − bilinear. On an edge it is that edge's response, unchanged.
+  - Formerly: `u' = (1 − v)·r_bottom(u) + v·r_top(u)`, `v' = (1 − u)·s_left(v) + u·s_right(v)`, then 3a's bilinear formula with u', v'. That used one edge's ratio against another edge's span (161.json, dot 1791989029).
   - bottom / top are the yaw edges at pitch 0 and at the quadrant's pitch; left / right are the pitch edges at yaw 0 and at the quadrant's yaw.
 - **A control with no response on any of its four edges** takes 3a's code path, so its numbers are bit-for-bit those of 3a.
 - **Exactness:** at a view, u and v are 0 or 1 and each r is pinned there, so the view comes back exactly. On an edge (v = 0 or u = 0) the formula is exactly that edge's response. Neighbouring cells share their edges, so the result is continuous; responses may extrapolate; nothing promises a good-looking shape (dot 1791687563).
