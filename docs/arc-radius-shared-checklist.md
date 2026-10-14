@@ -38,16 +38,29 @@ If bowen wants these shared too, it is the same change applied to them; not in t
   - every arc row has a finite radius above zero;
   - no other row has one;
   - no shape layer has a radius.
-- **`legacy.fromV11`** (disposable, as the other legacy steps; bowen 1791907735): every arc row takes the front view's (`view:0,0`) radius for its key, and every shape layer's `radius` is removed.
-  - A v11 file always has the front's value: v11's reader refused an arc row without a radius in any layer.
-  - So the step needs no fallback. A v11 file missing the front's value would not have opened in v11 either.
+- **`legacy.fromV11`** (disposable, as the other legacy steps; bowen 1791907735), in two steps (dot 1791985599):
+  1. **First, v11's own radius checks, on every shape layer:**
+     - every arc row has a radius in every layer;
+     - no radius belongs to anything but an arc row;
+     - every radius is a finite number above zero.
+     A file that fails is refused as v11 would have refused it. The values of the other views are no longer used, but invalid old data is not dropped to make a file open.
+  2. **Then:** every arc row takes the front view's (`view:0,0`) radius for its key, and every shape layer's `radius` is removed.
+  - A missing or invalid front value is refused, never filled with a default (no 10).
 - Older files go through the existing chain and then `fromV11`.
 
 ## 5. Effects
-The join entries in `document/effects.ts` stop writing view layers for radii:
-- an arc set writes `joins` (shared) only;
-- a remove drops the row.
+Only the declarations caused by the radius go (dot 1791985599). Everything else stays:
+- a smooth join still turns handles in every view;
+- `removeJoin` still clears every view's zone.
 The effects test lists them so.
+
+## 5b. Playback: changing an arc's radius at 30° (dot 1791985670)
+- **Today:** the playback gate refuses `join`, so the panel cannot change a radius at 30°.
+- **The gate lets through an edit made only of `join` calls that change the radius of an existing arc.** For each call:
+  - the row at that point and those two lines exists and is an arc;
+  - the call's mode is `arc`.
+- **Still refused:** a new join, a mode change, anything else.
+- Since the radius is one value, the change is the same at every view and pose.
 
 ## 6. Evidence
 **core:**
@@ -63,7 +76,15 @@ The effects test lists them so.
   - v12 files with a radius in a layer, or a missing / extra row radius, are refused.
 - **`arc-needs-owner`:** no longer refused (the test that expected it changes).
 
-**bench (5199, 211.json or a new file):**
+**bench:**
+- at yaw 30 in playback, the panel's r changes an existing arc: one `join` call; the nine views and the pose all read the new radius (dot 1791985670). A new join or a mode change at 30° is refused.
+
+**bowen's 145.json (dot 1791985599):**
+- list its arcs' radii per view as stored (v11);
+- after opening: every view and the poses between read the front's value;
+- a screenshot of the front and of yaw 30.
+
+**bench (5199):**
 - an arc's r changed in view 90,0; the front and playback at yaw 30 show the same arc;
 - a screenshot of the front and of yaw 30 after the change.
 
