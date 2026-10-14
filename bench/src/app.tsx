@@ -3,7 +3,7 @@
 // "Interaction", doc 22); one-shot panel commands call core's public operations and then
 // tell interaction (doc 22 §3.5). Uses core's public entry only.
 import { useEffect, useReducer, useRef, useState } from 'react'
-import { Core, save, open, correctionEdge, Refusal, type Vec, type Snapshot, type Editor, type ReferenceImage, type ReferenceProps, type ReferenceSlot, type AssetUse } from '../../src'
+import { Core, save, open, correctionEdge, Refusal, type Vec, type Snapshot, type Editor, type PoseReader, type ReferenceImage, type ReferenceProps, type ReferenceSlot, type AssetUse } from '../../src'
 import { createInteraction, REACH, type Tool, type Preview } from '../../interaction'
 import { createAutosave, indexedDbStore, type Autosave, type Store } from '../../autosave'
 import eyeFixture from '../../test/fixtures/v2-right-eye.json'
@@ -13,6 +13,11 @@ import { cursorFor } from '../../cursor'
 import { PosePad } from '../../pose-pad'
 import { labelsFor, middleOf, type Kind as LabelKind } from '../../name-labels'
 import { createMover, isArrow, type Target } from '../../move'
+// playback batches reuse editing's pure pieces (docs/playback-tools-checklist.md §2)
+import { followHandles } from '../../interaction/flows/follow'
+import { handlesOf, hitBox, opAt, startHandleDrag, type BoxOp, type Bounds } from '../../interaction/flows/selection-box'
+import { frameOf, dragFrame, FRAME, type FrameControl } from '../../interaction/flows/deform'
+import { deformPlan, deformField, rectQuad, neutralBend, type PlanLine, type Quad, type Bend, type Rect } from '../../deform'
 import { Slider } from '../../slider'
 import { createInkCache } from '../../ink'
 import { apply as maskApply, area as maskArea, contains as maskContains, distance as maskDistance, type Area, type Relation as MaskRelation } from '../../visibility'
@@ -86,6 +91,60 @@ const viewAtPose = (p: Pose | null): string | null =>
   p && (p.yaw === 0 || Math.abs(p.yaw) === 90) && (p.pitch === 0 || Math.abs(p.pitch) === 45) ? `view:${p.yaw + 0},${p.pitch + 0}` : null
 /** Where a playback drag corrects (bowen 1791976386; docs/playback-edit-checklist.md): yaw ±30 / ±60 on the rows pitch 0 / ±45. */
 const correctionPose = (p: Pose | null): boolean => !!p && [30, 60].includes(Math.abs(p.yaw)) && (p.pitch === 0 || Math.abs(p.pitch) === 45)
+/** A playback write's targets: the existing `correct`'s (docs/playback-tools-checklist.md §2). */
+type Targets = { points: { id: Id; position: Vec }[]; handles: { line: Id; end: 'a' | 'b'; vector: Vec }[] }
+/** The picked points' box at a pose, from the posed snapshot's points (null for fewer than two distinct places). */
+function boundsOf(s: Snapshot, ids: readonly Id[]): Bounds | null {
+  const ps = s.points.filter(p => ids.includes(p.id)).map(p => p.position)
+  if (ps.length < 2) return null
+  const min = P(Math.min(...ps.map(p => p.x)), Math.min(...ps.map(p => p.y))), max = P(Math.max(...ps.map(p => p.x)), Math.max(...ps.map(p => p.y)))
+  return min.x === max.x && min.y === max.y ? null : { min, max }
+}
+/** A box op (scale or rotate) on the picked points and on the handles at their ends (§2): the pose's stored values in, targets out. */
+function boxTargets(s: Snapshot, ids: readonly Id[], op: BoxOp): Targets {
+  const lin = (v: Vec): Vec => {
+    if (op.kind === 'scale') return P(v.x * op.sx, v.y * op.sy)
+    const c = Math.cos(op.angle), n = Math.sin(op.angle)
+    return P(v.x * c - v.y * n, v.x * n + v.y * c)
+  }
+  const origin = op.kind === 'scale' ? op.anchor : op.centre, picked = new Set(ids)
+  return {
+    points: s.points.filter(p => picked.has(p.id)).map(p => { const d = lin(P(p.position.x - origin.x, p.position.y - origin.y)); return { id: p.id, position: P(origin.x + d.x, origin.y + d.y) } }),
+    handles: s.lines.flatMap(l => (['a', 'b'] as const).filter(end => picked.has(l[end])).map(end => ({ line: l.id, end, vector: lin(end === 'a' ? l.ha : l.hb) }))),
+  }
+}
+/** A move of the picked points by `o` (§2): their lines' other handles follow their chords when 手柄跟随 is on (`followHandles`). */
+function moveTargets(s: Snapshot, ids: readonly Id[], o: Vec, follow: boolean): Targets {
+  const picked = new Set(ids)
+  return {
+    points: s.points.filter(p => picked.has(p.id)).map(p => ({ id: p.id, position: P(p.position.x + o.x, p.position.y + o.y) })),
+    handles: follow ? followHandles(s, ids.map(id => ({ kind: 'point' as const, id })), o).map(f => ({ line: f.line, end: f.end, vector: f.offset })) : [],
+  }
+}
+/**
+ * 四角 / 曲边 on the playback selection (docs/playback-tools-checklist.md §2): the lines with both ends picked, their curves
+ * rebuilt from the posed snapshot's end points and ha / hb (as `planLines`, never `geometry()`; dot 1791981083), frozen with
+ * the frame's rect (padded as editing's: 5 % of the larger side, at least 0.01).
+ */
+function deformStart(s: Snapshot, ids: readonly Id[]): null | { lines: PlanLine[]; rect: Rect } {
+  const picked = new Set(ids), at = new Map(s.points.map(p => [p.id, p.position]))
+  const lines: PlanLine[] = s.lines.filter(l => picked.has(l.a) && picked.has(l.b)).map(l => {
+    const a = at.get(l.a)!, b = at.get(l.b)!
+    return { id: l.id, a: l.a, b: l.b, curve: [a, P(a.x + l.ha.x, a.y + l.ha.y), P(b.x + l.hb.x, b.y + l.hb.y), b] }
+  })
+  if (!lines.length) return null
+  const xs = lines.flatMap(l => l.curve.map(v => v.x)), ys = lines.flatMap(l => l.curve.map(v => v.y))
+  const min = { x: Math.min(...xs), y: Math.min(...ys) }, max = { x: Math.max(...xs), y: Math.max(...ys) }
+  const pad = Math.max(0.01, Math.max(max.x - min.x, max.y - min.y) * 0.05)
+  if (max.x - min.x < pad) { min.x -= pad; max.x += pad }
+  if (max.y - min.y < pad) { min.y -= pad; max.y += pad }
+  return { lines, rect: { min, max } }
+}
+/** The deform's targets for a frame (§2): `deformPlan`'s point targets and handle offsets, as the existing correct takes them. */
+function deformTargets(lines: readonly PlanLine[], rect: Rect, quad: Quad, bend: Bend): Targets {
+  const plan = deformPlan(lines, deformField(rect, quad, bend))
+  return { points: plan.points.map(q => ({ id: q.id, position: q.target })), handles: plan.handles.map(h => ({ line: h.line, end: h.end, vector: h.offset })) }
+}
 type Model = ReturnType<Core['model']>
 type Knots = readonly (readonly [number, number])[]
 /** The edge key a correction pose lies on, as the model names it (`0,0>90,0`), from correctionEdge's view keys. */
@@ -288,7 +347,13 @@ export function App() {
   // leaving playback; the drag's ghost (the picked point and where it is dragged); the number
   // fields' own text, kept apart from the pose (dot 1791696847)
   const [corrRefusal, setCorrRefusal] = useState<null | { message: string; objects: readonly { kind: string; id: string }[] }>(null)
-  const [corrGhost, setCorrGhost] = useState<null | { points: Record<Id, Vec>; handle?: { line: Id; end: 'a' | 'b'; vector: Vec } }>(null)
+  // playback batches (docs/playback-tools-checklist.md): the playback selection (point ids, bound to the drawing), the
+  // drag's ghost (what the previewed correct changes at the pose), the selection box being dragged
+  const [pbSel, setPbSel] = useState<{ core: Core; ids: Id[] }>({ core, ids: [] })
+  const [batchGhost, setBatchGhost] = useState<null | { lines: { id: Id; curve: readonly Vec[] }[]; arcs: { key: string; curve: readonly Vec[] }[]; points: { id: Id; position: Vec }[] }>(null)
+  const [pbBox, setPbBox] = useState<null | { from: Vec; to: Vec }>(null)
+  // 四角 / 曲边 on the playback selection: frozen at its start (drawing, pose, picked points), the frame kept across its writes
+  const [pbDeform, setPbDeform] = useState<null | { core: Core; key: string; lines: PlanLine[]; rect: Rect; quad: Quad; bend: Bend }>(null)
   // the line under the resting pointer in playback with A: its handles are marked and pickable (docs/playback-edit-checklist.md §2)
   const [poseHover, setPoseHover] = useState<Id | null>(null)
   // what the last playback write changed (§3), shown until the next write or leaving playback
@@ -321,7 +386,7 @@ export function App() {
   const [canvasPicks, setCanvasPicks] = useState(0)
   const inkCache = useRef(createInkCache())
   const [activeRef, setActiveRef] = useState<null | RefBind>(null)
-  const keyHooks = useRef<{ nudge?: (e: KeyboardEvent) => boolean; afterArrow?: () => void; poseArrow?: (e: KeyboardEvent) => void }>({})
+  const keyHooks = useRef<{ nudge?: (e: KeyboardEvent) => boolean; afterArrow?: () => void; poseArrow?: (e: KeyboardEvent) => void; selArrow?: (e: KeyboardEvent) => boolean }>({})
   // moving by keyboard (docs/move-plan.md): the picture's sessions run here, the selection's in interaction;
   // a key run holds the one gesture slot as `KEYS`, so a canvas press meanwhile is ignored and every cancel path ends it
   const KEYS = -1
@@ -336,18 +401,20 @@ export function App() {
    * a `move/` key run whose steps — 1°, Shift 10°, Option / Ctrl 0.1° — each move the pose as it is now.
    */
   const poseMover = useRef(createMover()).current
+  /** The playback selection's arrows (docs/playback-tools-checklist.md §2): a key run, one correct at its end. */
+  const selMover = useRef(createMover()).current
   const POSE_STEPS = { step: 1, long: 10, short: 0.1 }
   const holdKeys = () => {
     if (gesture.current) return
     const cancel = (why: string) => {
       if (gesture.current?.cancel === cancel) gesture.current = null
-      if (ix.moving() === 'keys') ix.cancel(); else if (picMover.running) picMover.cancel(); else poseMover.cancel()
+      if (ix.moving() === 'keys') ix.cancel(); else if (picMover.running) picMover.cancel(); else if (selMover.running) selMover.cancel(); else poseMover.cancel()
       note(`key move cancelled by ${why}`); bump()
     }
     gesture.current = { id: KEYS, right: false, cancel }
   }
   // after every render: a key run that has ended (committed, or ended inside interaction by an undo or a selection change) gives the slot back
-  useEffect(() => { if (gesture.current?.id === KEYS && ix.moving() !== 'keys' && picMover.running !== 'keys' && poseMover.running !== 'keys') gesture.current = null })
+  useEffect(() => { if (gesture.current?.id === KEYS && ix.moving() !== 'keys' && picMover.running !== 'keys' && poseMover.running !== 'keys' && selMover.running !== 'keys') gesture.current = null })
   /** A press during a pose key run is not ignored: it ends the run (the pose stays) and acts (dot 1791769205). */
   const endPoseRun = () => { if (gesture.current?.id === KEYS && poseMover.running === 'keys') gesture.current.cancel('a press') }
   // this App's read-only flag and its own logged wrapper: another App mounting, posing or
@@ -556,7 +623,7 @@ export function App() {
     finally { bump() }
   }
   /** The panel changed the selected layers; the selection elsewhere simply goes inert (docs/layer-scope-plan.md §3). */
-  const selectLayers = (ids: Id[], current: Id) => { if (isKeyRun(gesture.current)) gesture.current!.cancel('a layer scope change'); setLayers(ids); setLayer(current) }
+  const selectLayers = (ids: Id[], current: Id) => { if (isKeyRun(gesture.current)) gesture.current!.cancel('a layer scope change'); setLayers(ids); setLayer(current); setPbSel(v => (v.ids.length ? { core, ids: [] } : v)) }
   const toDoc = (e: { clientX: number; clientY: number }) => {
     const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(svg.current!.getScreenCTM()!.inverse())
     return P(p.x, p.y)
@@ -799,6 +866,12 @@ export function App() {
     const ends = new Set(ids.flatMap(id => { const l = s.lines.find(x => x.id === id)!; return [l.a, l.b] }))
     return { kind: 'points', starts: Object.fromEntries([...ends].map(id => [id, pos(id)])) }
   }
+  /**
+   * A press at a correction pose (docs/playback-tools-checklist.md §1–§4): the playback selection's box handles scale or
+   * rotate it, its inside moves it; else A / V pick (Shift toggles into the selection) and drag; on nothing, a box selects
+   * by editing's rules. Every drag computes `correct` targets from the pose's stored values; each frame previews the very
+   * correct through `core.previewAt`; the release writes it once, unless the preview was refused or anything changed.
+   */
   const onPoseDown = (e: React.PointerEvent) => {
     endOpenField()
     endPoseRun()
@@ -807,39 +880,105 @@ export function App() {
       gesture.current.cancel('a new press of the same pointer')
     }
     setCorrRefusal(null)
-    if (e.button !== 0 || !pose || !posed || posed instanceof Error || !correctionPose(pose) || (ix.tool !== 'A' && ix.tool !== 'V')) return
+    if (e.button !== 0 || !pose || !posed || posed instanceof Error || !correctionPose(pose) || (ix.tool !== 'A' && ix.tool !== 'V' && ix.tool !== 'deform')) return
     const shownFrom = frame.current
     if (!shownFrom || shownFrom.core !== core || shownFrom.text !== save(core)) { note('playback press ignored: the drawing changed since this frame was drawn; redrawn'); bump(); return }
-    // picked from this frame (the one just checked as current), by the frame's one visibility rule:
-    // a point only if a visible line ends at it (a hidden layer is its lines hidden; dot 1791696828)
-    const at = toDoc(e)
-    const pick = playbackPick(at)
-    if (!pick) return
-    const bound = { core: shownFrom.core, text: shownFrom.text, pose: { ...pose }, pick, from: at }
-    const id = e.pointerId, pressed = P(e.clientX, e.clientY)
-    let moved = false, done = false
-    const offset = (ev: PointerEvent) => { const now = toDoc(ev); return P(now.x - bound.from.x, now.y - bound.from.y) }
-    const shifted = (o: Vec): Record<Id, Vec> => (pick.kind === 'points' ? Object.fromEntries(Object.entries(pick.starts).map(([k, v]) => [k, P(v.x + o.x, v.y + o.y)])) : {})
-    const ghostAt = (o: Vec) => (pick.kind === 'points' ? { points: shifted(o) } : { points: {}, handle: { line: pick.line, end: pick.end, vector: P(pick.tip.x + o.x - pick.point.x, pick.tip.y + o.y - pick.point.y) } })
-    const targetsAt = (o: Vec) => {
-      const g = ghostAt(o)
-      return g.handle ? { handles: [g.handle] } : { points: Object.entries(g.points).map(([pid, position]) => ({ id: pid, position })) }
+    const at = toDoc(e), snap = s, geo = g, poseNow = { ...pose }
+    // 四角 / 曲边 (§2): a press on the frame's corner, handle or midpoint drags it, as editing's deform; the targets from the frozen curves
+    let frameNext: null | { quad: Quad; bend: Bend } = null
+    const dfm = ix.tool === 'deform' ? pbDeform : null
+    if (ix.tool === 'deform') {
+      if (!dfm) return
+      const f = frameOf(dfm.rect, dfm.quad, dfm.bend), r = FRAME.reach * px
+      const near = <T extends { at: Vec }>(xs: T[]) => xs.map(x => ({ x, d: Math.hypot(x.at.x - at.x, x.at.y - at.y) })).filter(c => c.d <= r).sort((p, q) => p.d - q.d)[0]?.x
+      const c = near(f.corners.map((q, i) => ({ i, at: q }))), h = c ? undefined : near(f.handles), m = c || h ? undefined : near(f.midpoints)
+      const control: FrameControl | null = c ? { corner: c.i } : h ? { edge: h.edge, handle: h.handle } : m ? { edge: m.edge, handle: 2 } : null
+      if (!control) return
+      startBatch(e, at, snap, geo, poseNow, shownFrom, now => { frameNext = dragFrame(dfm.rect, dfm.quad, dfm.bend, control, at, now); return deformTargets(dfm.lines, dfm.rect, frameNext.quad, frameNext.bend) },
+        () => { const n = frameNext; if (n) setPbDeform(v => (v === dfm ? { ...dfm, quad: n.quad, bend: n.bend } : v)) })
+      return
     }
+    const sel = pbSel.core === core ? pbSel.ids : [], bounds = boundsOf(snap, sel)
+    const hit = bounds ? hitBox(bounds, at, px) : null
+    // what this press does: a target function of the pointer, or a box selection
+    let targetsOf: ((now: Vec, m: { alt?: boolean; shift?: boolean }) => Targets) | null = null
+    if (hit && hit !== 'inside') { const d = startHandleDrag(hit, bounds!, at, px); targetsOf = (now, m) => boxTargets(snap, sel, opAt(d, now, m)) }
+    else if (hit === 'inside') targetsOf = now => moveTargets(snap, sel, P(now.x - at.x, now.y - at.y), opts.follow)
+    else {
+      const pick = playbackPick(at)
+      if (pick?.kind === 'handle') targetsOf = now => ({ points: [], handles: [{ line: pick.line, end: pick.end, vector: P(pick.tip.x + now.x - at.x - pick.point.x, pick.tip.y + now.y - at.y - pick.point.y) }] })
+      else if (pick) {
+        const ids = Object.keys(pick.starts)
+        if (e.shiftKey) { // Shift toggles them in the selection; no drag
+          const on = ids.every(id => sel.includes(id))
+          setPbSel({ core, ids: on ? sel.filter(id => !ids.includes(id)) : [...new Set([...sel, ...ids])] }); return
+        }
+        const take = ids.every(id => sel.includes(id)) ? sel : ids
+        if (take !== sel) setPbSel({ core, ids: take })
+        targetsOf = now => moveTargets(snap, take, P(now.x - at.x, now.y - at.y), opts.follow)
+      }
+    }
+    startBatch(e, at, snap, geo, poseNow, shownFrom, targetsOf, null, sel)
+  }
+  /** A playback batch gesture (§2–§4): a drag whose targets `targetsOf` gives, previewed by the release's own correct; or, with none, a box selection. */
+  function startBatch(e: React.PointerEvent, at: Vec, snap: Snapshot, geo: ReturnType<PoseReader['geometry']>, poseNow: Pose, shownFrom: { core: Core; text: string },
+    targetsOf: ((now: Vec, m: { alt?: boolean; shift?: boolean }) => Targets) | null, onWritten: (() => void) | null, sel: readonly Id[] = []) {
+    const id = e.pointerId, pressed = P(e.clientX, e.clientY), tool = ix.tool
+    const posedNow = posed as PoseReader
+    let moved = false, done = false, last: { targets: Targets; refused: boolean } | null = null
     const travel = (ev: PointerEvent) => { moved ||= Math.hypot(ev.clientX - pressed.x, ev.clientY - pressed.y) > CLICK }
+    const modsOf = (ev: PointerEvent) => ({ alt: ev.altKey, shift: ev.shiftKey })
+    /** One preview frame: the release's correct tried on a draft and read at the pose; the ghost is what differs. */
+    const preview = (ev: PointerEvent) => {
+      const targets = targetsOf!(toDoc(ev), modsOf(ev))
+      try {
+        const r = core.previewAt(poseNow, x => x.correct(poseNow, targets))
+        if (!r) { last = { targets, refused: true }; setBatchGhost(null); return }
+        const gg = r.geometry(), was = new Map(geo.lines.map(l => [l.id, JSON.stringify(l.curve)])), wasArc = new Map(geo.arcs.map(a => [a.key, JSON.stringify(a.curve)]))
+        last = { targets, refused: false }
+        setCorrRefusal(null)
+        // the frame's one visibility rule (dot 1791697776): only visible lines have a ghost
+        const shown = new Set(shownLines.map(l => l.id))
+        setBatchGhost({ lines: gg.lines.filter(l => shown.has(l.id) && was.get(l.id) !== JSON.stringify(l.curve)).map(l => ({ id: l.id, curve: l.curve })), arcs: gg.arcs.filter(a => wasArc.get(a.key) !== JSON.stringify(a.curve)).map(a => ({ key: a.key, curve: a.curve })), points: targets.points })
+      } catch (err) {
+        last = { targets, refused: true }
+        setBatchGhost(null)
+        setCorrRefusal({ message: (err as Error).message, objects: err instanceof Refusal ? err.objects : [] })
+      }
+    }
     const move = (ev: PointerEvent) => {
       if (ev.pointerId !== id) return
       if ((ev.buttons & 1) === 0) { release(ev); return }
       travel(ev)
-      if (moved) setCorrGhost(ghostAt(offset(ev)))
+      if (!moved) return
+      if (targetsOf) preview(ev)
+      else setPbBox({ from: at, to: toDoc(ev) })
     }
     const release = (ev: PointerEvent) => {
       if (ev.pointerId !== id) return
       travel(ev)
       stop()
+      if (!targetsOf) { // a box selection, by editing's rules (dot 1791981083): right = wholly inside, left = touched; Shift adds, Alt removes
+        if (!moved) { if (!ev.shiftKey) setPbSel({ core, ids: [] }); return }
+        const to = toDoc(ev), layerOf = new Map(snap.points.map(q => [q.id, q.layer]))
+        const lines = posedNow.linesInRect(at, to, to.x >= at.x)
+          .map(lid => snap.lines.find(l => l.id === lid)!).filter(l => l.state.visible && selLayers.includes(layerOf.get(l.a) ?? ''))
+        const whole = tool === 'V' ? lines.flatMap(l => snap.groups.find(gr => gr.lines.includes(l.id))?.lines ?? [l.id]) : lines.map(l => l.id)
+        const ids = [...new Set(whole.flatMap(lid => { const l = snap.lines.find(x => x.id === lid)!; return [l.a, l.b] }))]
+        setPbSel({ core, ids: ev.altKey ? sel.filter(x => !ids.includes(x)) : ev.shiftKey ? [...new Set([...sel, ...ids])] : ids })
+        return
+      }
       if (!moved) return
-      if (core !== bound.core || save(core) !== bound.text) { note('playback drag cancelled: the drawing changed during the drag'); bump(); return }
-      try { logged(core).edit(x => x.correct(bound.pose, targetsAt(offset(ev)))) }
+      if (core !== shownFrom.core || save(core) !== shownFrom.text) { note('playback drag cancelled: the drawing changed during the drag'); bump(); return }
+      const p0 = poseRef.current
+      if (!p0 || p0.yaw !== poseNow.yaw || p0.pitch !== poseNow.pitch) { note('playback drag cancelled: the pose changed during the drag'); bump(); return }
+      preview(ev) // the release's own frame
+      setBatchGhost(null) // the ghost ends with the drag
+      if (!last || last.refused) { bump(); return } // a refused preview writes nothing; its reason stays in the status line
+      const targets = last.targets
+      try { logged(core).edit(x => x.correct(poseNow, targets)); onWritten?.() }
       catch (err) { setCorrRefusal({ message: (err as Error).message, objects: err instanceof Refusal ? err.objects : [] }) }
+      setPbSel(v => ({ ...v, core })) // the same points stay picked through the write (dot 1791980846)
       bump()
     }
     const cancelWith = (why: string) => { if (done) return; stop(); note(`playback drag cancelled by ${why}`); bump() }
@@ -852,7 +991,7 @@ export function App() {
       done = true
       for (const [t, f] of listeners) window.removeEventListener(t, f as EventListener)
       window.removeEventListener('pointerdown', onOtherDown, true)
-      setCorrGhost(null)
+      setBatchGhost(null); setPbBox(null)
       if (gesture.current?.cancel === cancelWith) gesture.current = null
     }
     gesture.current = { id, right: false, cancel: cancelWith }
@@ -882,7 +1021,7 @@ export function App() {
     const [yaw, pitch] = shown.slice('view:'.length).split(',').map(Number)
     setPose({ yaw: yaw!, pitch: pitch! }); setCorrRefusal(null)
   }
-  const stopPose = () => { gesture.current?.cancel('leaving playback'); refGen.current++; posing.current = false; changeBase.current = null; setPose(null); setCorrRefusal(null); setLastChange(null); setPoseHover(null) }
+  const stopPose = () => { gesture.current?.cancel('leaving playback'); refGen.current++; posing.current = false; changeBase.current = null; setPose(null); setCorrRefusal(null); setLastChange(null); setPoseHover(null); setPbSel({ core, ids: [] }) }
   /** A valid pose change ends a playback drag first: a target belongs to one pose (dot 1791696847). */
   /**
    * The one update of a pose that takes effect (dot 1791727663, 1791727680): the pose and both number fields
@@ -894,6 +1033,7 @@ export function App() {
     // the pad's and the keys' own steps never end their own gesture; any other source ends a running one
     if (source !== 'pad' && source !== 'keys' && source !== 'slider') gesture.current?.cancel('a pose change')
     setCorrRefusal(null); setPose(next)
+    setPbSel(v => (v.ids.length ? { core, ids: [] } : v)) // a pose change clears the playback selection (§1)
   }
   const LIMITS = { yaw: 90, pitch: 45 } as const
   /**
@@ -927,6 +1067,38 @@ export function App() {
       commit: () => {},
       cancel: () => {},
     }
+  }
+  keyHooks.current.selArrow = (e: KeyboardEvent) => {
+    const p0 = poseRef.current
+    if (!p0 || !correctionPose(p0) || pbSel.core !== core || !pbSel.ids.length) return false // no selection: the arrows turn the pose
+    const ids = pbSel.ids, poseNow = { ...p0 }, start = core
+    const target = (): Target => {
+      const snap = core.atPose(poseNow).snapshot(), was = core.atPose(poseNow).geometry()
+      const tried = (o: Vec) => { const targets = moveTargets(snap, ids, o, opts.follow); return { targets, reader: core.previewAt(poseNow, x => x.correct(poseNow, targets)) } }
+      return {
+        begin: () => true,
+        preview: o => {
+          try {
+            const { reader } = tried(o), gg = reader?.geometry()
+            const wl = new Map(was.lines.map(l => [l.id, JSON.stringify(l.curve)]))
+            const shown = new Set(core.atPose(poseNow).snapshot().lines.filter(l => l.state.visible).map(l => l.id))
+            setBatchGhost(gg ? { lines: gg.lines.filter(l => shown.has(l.id) && wl.get(l.id) !== JSON.stringify(l.curve)).map(l => ({ id: l.id, curve: l.curve })), arcs: [], points: tried(o).targets.points } : null)
+          } catch (err) { setBatchGhost(null); setCorrRefusal({ message: (err as Error).message, objects: err instanceof Refusal ? err.objects : [] }) }
+        },
+        commit: o => {
+          setBatchGhost(null)
+          const p1 = poseRef.current
+          if (core !== start || !p1 || p1.yaw !== poseNow.yaw || p1.pitch !== poseNow.pitch) { note('selection nudge dropped: the drawing or the pose changed'); bump(); return }
+          try { const { targets } = tried(o); logged(core).edit(x => x.correct(poseNow, targets)) }
+          catch (err) { setCorrRefusal({ message: (err as Error).message, objects: err instanceof Refusal ? err.objects : [] }) }
+          bump()
+        },
+        cancel: () => setBatchGhost(null),
+      }
+    }
+    selMover.keyDown(target, { key: e.key, repeat: e.repeat, shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey }, PICTURE_STEPS)
+    if (selMover.running === 'keys') holdKeys()
+    return true
   }
   keyHooks.current.poseArrow = (e: KeyboardEvent) => {
     poseMover.keyDown(poseTarget, { key: e.key, repeat: e.repeat, shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey }, POSE_STEPS)
@@ -973,6 +1145,8 @@ export function App() {
       // Esc first: it cancels a gesture even in playback and with a field focused (dot 1791696958)
       if (e.key === 'Escape' && gesture.current) { gesture.current.cancel('Esc'); e.preventDefault(); return }
       if (e.key === 'Escape' && applyFromOn.current) { setApplyFrom(false); e.preventDefault(); return }
+      // playback: Esc clears the playback selection (docs/playback-tools-checklist.md §1)
+      if (e.key === 'Escape' && posing.current) setPbSel(v => (v.ids.length ? { core, ids: [] } : v))
       // only a field that takes typing keeps its keys (dot 1791544530), an input method its own (dot 1791727663);
       // a focused button never blocks a shortcut (bowen 1791556992: after clicking Flip or Zoom, V / A / ⌘Z still work)
       const t = e.target as HTMLElement
@@ -997,7 +1171,7 @@ export function App() {
       if (posing.current && isArrow(e.key) && !e.metaKey) { // every ⌘ combination keeps its own (⌘ + Ctrl too; dot 1791770081)
         e.preventDefault()
         if (gesture.current && gesture.current.id !== KEYS) return // a drag runs: ignored, and its repeats never start a run
-        keyHooks.current.poseArrow?.(e)
+        if (!keyHooks.current.selArrow?.(e)) keyHooks.current.poseArrow?.(e)
         return
       }
       // playback: A and V choose how a drag corrects (docs/playback-edit-checklist.md §2); no other tool key
@@ -1012,7 +1186,7 @@ export function App() {
     // a key release ends a key run wherever focus is: no typing check here (dot 1791733489)
     const up = (e: KeyboardEvent) => {
       if ((e.key === 'Shift' || e.key === 'Alt') && hoverAt.current) { hoverAt.current.mods = mods(e); rehover.current() }
-      if (!isArrow(e.key)) return; ix.keyUp(e.key); picMover.keyUp(e.key); poseMover.keyUp(e.key) }
+      if (!isArrow(e.key)) return; ix.keyUp(e.key); picMover.keyUp(e.key); poseMover.keyUp(e.key); selMover.keyUp(e.key) }
     // a key run ends on leaving the window, and when focus moves inside the page to a field or a slider
     const blur = () => { if (isKeyRun(gesture.current)) gesture.current!.cancel('leaving the window') }
     const focus = (e: FocusEvent) => {
@@ -1072,6 +1246,18 @@ export function App() {
   const onLine = !!where && 'edge' in where
   // §2, §3: where a playback drag corrects; A's marks there (none with Z); the controls corrected at exactly this pose
   const atCorrection = !!pose && correctionPose(pose) && !!where && 'edge' in where
+  // the playback selection as drawn: only while it belongs to this drawing; its box from the pose's points (§1)
+  const pbIds = atCorrection && pbSel.core === core ? pbSel.ids : [], pbBounds = pbIds.length ? boundsOf(s, pbIds) : null
+  // 四角 / 曲边 on the playback selection (§2): started for this drawing, pose and selection; kept through its own writes; ended otherwise
+  const deformKey = pose ? `${pose.yaw},${pose.pitch}|${pbIds.join(',')}` : ''
+  const deformOn = atCorrection && ix.tool === 'deform' && pbIds.length > 0
+  useEffect(() => {
+    if (!deformOn) { if (pbDeform) setPbDeform(null); return }
+    if (pbDeform && pbDeform.core === core && pbDeform.key === deformKey) return
+    const st = deformStart(s, pbIds)
+    setPbDeform(st ? { core, key: deformKey, ...st, quad: rectQuad(st.rect), bend: neutralBend() } : null)
+  })
+  const pbFrame = deformOn && pbDeform && pbDeform.core === core && pbDeform.key === deformKey ? frameOf(pbDeform.rect, pbDeform.quad, pbDeform.bend) : null
   const playbackMarks = atCorrection && !zoomTool && ix.tool === 'A'
   const correctedHere = (() => {
     const out = { points: new Set<Id>(), handles: new Set<string>(), list: [] as { control: { kind: 'point'; id: Id } | { kind: 'handle'; line: Id; end: 'a' | 'b' }; label: string; axes: string }[] }
@@ -1126,6 +1312,13 @@ export function App() {
               }}
               onChange={p => changePose(p, 'pad')}
               onEnd={cancel => { if (gesture.current?.cancel === cancel) gesture.current = null }} />
+            {/* the batch tools at a correction pose (docs/playback-tools-checklist.md §2) */}
+            {atCorrection && <div data-testid="playback-tools" style={{ display: 'flex', flexWrap: 'wrap', gap: 3, alignItems: 'center' }}>
+              {TOOLS.filter(([tl]) => tl === 'V' || tl === 'A' || tl === 'deform').map(([tl, label]) => { const on = !zoomTool && ix.tool === tl
+                return <button key={tl} style={{ fontWeight: on ? 700 : 400, background: on ? '#cde' : undefined }} onClick={() => chooseTool(tl)}>{label}</button> })}
+              <label><input type="checkbox" checked={opts.follow} onChange={e => ix.setOptions({ follow: e.target.checked })} /> 手柄跟随</label>
+              <span style={{ color: '#666' }}>{pbIds.length ? `已选 ${pbIds.length} 个点` : '框选或点选要改的点'}{ix.tool === 'deform' && pbIds.length && !pbFrame ? ' · 选中的点要连成线才有四角框' : ''}</span>
+            </div>}
             {/* §3: the corrections at exactly this pose, each removable; what the last playback write changed */}
             {atCorrection && <div data-testid="corrections-here" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <b>本角度的修正（{correctedHere.list.length}）</b>
@@ -1464,11 +1657,28 @@ export function App() {
           {!inBetween && g.lines.filter(G => pending.includes(G.id) && selLayers.includes(s.points.find(p => p.id === line(G.id).a)?.layer ?? '')).map(G => { const m = mid(G.curve); return <circle key={'pending' + G.id} data-pending={G.id} cx={m.x} cy={m.y} r={4 * px} fill="#f80" stroke="#fff" strokeWidth={px} /> })}
           {/* playback on a line: the drag's ghost at start + displacement (stage 3b package 5); the points are not marked
               (bowen 1791908866) — a press near one still picks it */}
-          {pose && corrGhost && shownLines.filter(l => l.a in corrGhost.points || l.b in corrGhost.points || corrGhost.handle?.line === l.id).map(l => {
-            const mv = (id: Id) => corrGhost.points[id] ?? pos(id), a = mv(l.a), b = mv(l.b), h = corrGhost.handle?.line === l.id ? corrGhost.handle : undefined
-            return <path key={'cg' + l.id} data-ghost={l.id} d={path([a, add(a, h?.end === 'a' ? h.vector : l.ha), add(b, h?.end === 'b' ? h.vector : l.hb), b])} fill="none" stroke="#06f" strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />
-          })}
-          {pose && corrGhost && Object.entries(corrGhost.points).map(([gid, to]) => <circle key={'gp' + gid} data-ghost-point={gid} cx={to.x} cy={to.y} r={4 * px} fill="#06f" />)}
+          {/* playback batches (docs/playback-tools-checklist.md §1, §3): the drag's previewed correct, the box being dragged, the selection and its box */}
+          {pose && batchGhost && batchGhost.lines.map(l => <path key={'bg' + l.id} data-ghost={l.id} d={path(l.curve)} fill="none" stroke="#06f" strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />)}
+          {pose && batchGhost && batchGhost.points.map(q => <circle key={'gp' + q.id} data-ghost-point={q.id} cx={q.position.x} cy={q.position.y} r={4 * px} fill="#06f" />)}
+          {pose && batchGhost && batchGhost.arcs.map(a => <path key={'ba' + a.key} data-ghost-arc={a.key} d={path(a.curve)} fill="none" stroke="#06f" strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />)}
+          {pose && pbBox && <rect data-pb-box="" x={Math.min(pbBox.from.x, pbBox.to.x)} y={Math.min(pbBox.from.y, pbBox.to.y)} width={Math.abs(pbBox.to.x - pbBox.from.x)} height={Math.abs(pbBox.to.y - pbBox.from.y)}
+            fill="rgba(0,102,255,0.06)" stroke="#06f" strokeDasharray={pbBox.to.x >= pbBox.from.x ? undefined : `${3 * px} ${3 * px}`} strokeWidth={px} />}
+          {atCorrection && !batchGhost && pbIds.map(pid => { const p = s.points.find(q => q.id === pid); return p ? <circle key={'ps' + pid} data-pb-selected={pid} cx={p.position.x} cy={p.position.y} r={3.5 * px} fill="#06f" stroke="#fff" strokeWidth={px} /> : null })}
+          {pbFrame && (() => {
+            const f = pbFrame, c = '#a35ac0', poly = (ps: readonly Vec[]) => ps.map((p, i) => `${i ? 'L' : 'M'}${p.x} ${p.y}`).join(' ')
+            return <g data-testid="pb-deform-frame" pointerEvents="none">
+              {f.grid.map((gr, i) => <path key={'gr' + i} d={poly(gr)} fill="none" stroke={c} strokeDasharray={`${4 * px} ${4 * px}`} opacity={0.4} strokeWidth={px} />)}
+              {f.edges.map((ed, i) => <path key={'ed' + i} d={poly(ed)} fill="none" stroke={c} strokeWidth={1.5 * px} />)}
+              {f.handles.map(h => <g key={'h' + h.edge + h.handle}><line x1={h.anchor.x} y1={h.anchor.y} x2={h.at.x} y2={h.at.y} stroke={c} opacity={0.65} strokeWidth={px} />
+                <circle data-pb-deform-handle={`${h.edge}:${h.handle}`} cx={h.at.x} cy={h.at.y} r={4.5 * px} fill="#fff" stroke={c} strokeWidth={1.5 * px} /></g>)}
+              {f.midpoints.map(m => <path key={'m' + m.edge} d={`M${m.at.x} ${m.at.y - 5 * px} l${5 * px} ${5 * px} ${-5 * px} ${5 * px} ${-5 * px} ${-5 * px} Z`} fill={c} stroke="#fff" strokeWidth={px} />)}
+              {f.corners.map((q, i) => <rect key={'c' + i} data-pb-deform-corner={i} x={q.x - 6 * px} y={q.y - 6 * px} width={12 * px} height={12 * px} fill="#fff" stroke={c} strokeWidth={2 * px} />)}
+            </g>
+          })()}
+          {atCorrection && !batchGhost && !pbFrame && pbBounds && <g data-pb-selection-box="">
+            <rect x={pbBounds.min.x} y={pbBounds.min.y} width={pbBounds.max.x - pbBounds.min.x} height={pbBounds.max.y - pbBounds.min.y} fill="none" stroke="#06f" strokeWidth={px} />
+            {handlesOf(pbBounds, px).map(h => <rect key={h.id} data-pb-handle={h.id} x={h.at.x - 3.5 * px} y={h.at.y - 3.5 * px} width={7 * px} height={7 * px} fill="#fff" stroke="#06f" strokeWidth={px} />)}
+          </g>}
           {/* playback with A at a correction pose (§2, §3): the visible lines' end points, the hovered line's handles, a ring on a point corrected here */}
           {pose && playbackMarks && hoverLine && [hoverLine].flatMap(l => (['a', 'b'] as const).map(end => {
             const point = pos(end === 'a' ? l.a : l.b), tip = add(point, end === 'a' ? l.ha : l.hb), here = correctedHere.handles.has(`${l.id}:${end}`)
