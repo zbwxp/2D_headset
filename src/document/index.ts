@@ -980,7 +980,7 @@ export function importState(data: unknown): Core {
   }
 }
 
-/** The views of a state as `evaluate` input: per view its angle, positions, handle vectors, strokes, arc radii and end strokes. */
+/** The views of a state as `evaluate` input: per view its angle, positions, handle vectors, strokes, zones and end strokes. */
 function modelOf(s: State): evaluate.Model {
   // responses with edge keys as evaluate names them (`yaw,pitch>yaw,pitch`), copied
   const edgeKey = (k: string) => { const e = views.EDGES.find(x => x.key === k)!; const a = views.angle(e.inner), b = views.angle(e.outer); return `${a.yaw},${a.pitch}>${b.yaw},${b.pitch}` }
@@ -998,7 +998,6 @@ function modelOf(s: State): evaluate.Model {
         ...views.angle(k),
         points: Object.fromEntries(net.points(n).map(p => [p.id, p.position])),
         lines: Object.fromEntries(net.lines(n).map(l => [l.id, { ha: l.ha, hb: l.hb, stroke: l.stroke }])),
-        radii: Object.fromEntries(joins.rows(s.joins, n).flatMap(r => (r.radius === undefined ? [] : [[joins.rowKey(r.point, r.lines[0], r.lines[1]), r.radius]]))),
         // every join's effective zone in this view — the manual value, else the automatic one from this view's widths —
         // so playback blends real lengths and never an absent one as 0 (dot 1791812073, bowen 1791811981)
         zones: Object.fromEntries(joins.rows(s.joins, n).map(r => {
@@ -1029,7 +1028,7 @@ function posedState(s: State, posed: evaluate.Posed): { state: State; layer: str
   for (const [id, l] of Object.entries(posed.lines)) net.setLineStroke(n, id, l.stroke)
   for (const r of joins.rows(c.joins, n)) {
     const key = joins.rowKey(r.point, r.lines[0], r.lines[1])
-    if (r.mode === 'arc') joins.setRadiusHere(c.joins, n, r.point, r.lines[0], r.lines[1], Object.hasOwn(posed.radii, key) ? posed.radii[key]! : NaN)
+    // an arc's radius is its row's, the same at every pose: nothing to write
     // a posed zone equal to the automatic length of the posed widths reads as automatic, so a view is reproduced exactly
     const z = Object.hasOwn(posed.zones, key) ? posed.zones[key]! : undefined
     const at = (id: Id) => net.widthAt(posed.lines[id]!.stroke, net.line(n, id).a === r.point ? 'a' : 'b')

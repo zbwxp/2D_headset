@@ -1,6 +1,7 @@
 // Masks (显隐) in the drawing — docs/mask-p2-checklist.md §5: make / remove / refusals, the lock rule, reference upkeep
 // (split, delete, clear, a loop broken, a fill switched off), copy / paste / copy layer, the archive (v10, v9, bad files).
 import { describe, it, expect } from 'vitest'
+import { radiiPerView } from './old-files'
 import { Core, save, open } from '../src'
 
 const P = (x: number, y = 0) => ({ x, y })
@@ -158,14 +159,14 @@ describe('copy, paste, copy layer', () => {
 })
 
 describe('the archive', () => {
-  it('version 10 keeps the masks; a version 9 file opens with none', () => {
+  it('the current version keeps the masks; a version 9 file opens with none', () => {
     const d = scene(), sq = loopOf(d, 'ab')
     d.edit(e => e.mask('m1', [sq], line('xy'), 'inverse'))
     const text = save(d)
-    expect(JSON.parse(text).version).toBe(11)
+    expect(JSON.parse(text).version).toBe(12)
     expect(masks(open(text))).toEqual(masks(d))
     expect(save(open(text))).toBe(text)
-    const v9 = JSON.parse(text); v9.version = 9; delete v9.document.masks
+    const v9 = radiiPerView(JSON.parse(text)); v9.version = 9; delete v9.document.masks
     expect(masks(open(JSON.stringify(v9)))).toEqual([])
   })
 

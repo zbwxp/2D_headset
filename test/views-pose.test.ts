@@ -9,7 +9,7 @@ const P = (x: number, y = 0): Vec => ({ x, y })
 const FRONT = 'view:0,0'
 const angle = (k: string) => { const [yaw, pitch] = k.slice(5).split(',').map(Number); return { yaw: yaw!, pitch: pitch! } }
 
-/** A square a b c d with a fill, an arc join at b whose radius differs per view, shapes that differ per view, an end stroke at the front only. */
+/** A square a b c d with a fill, an arc join at b (one radius, set last in the last view: bowen 1791985326), shapes that differ per view, an end stroke at the front only. */
 function doc() {
   const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })
   d.edit(e => {
@@ -36,7 +36,7 @@ function doc() {
 function oracle(d: Core, pose: { yaw: number; pitch: number }) {
   const posed = evaluate(d.model(), pose)
   const file = JSON.parse(save(d))
-  const front = (file.document.network.shapes.layers as { key: string; points: unknown; lines: unknown; radius: unknown; zone?: unknown; end?: unknown }[]).find(l => l.key === FRONT)!
+  const front = (file.document.network.shapes.layers as { key: string; points: unknown; lines: unknown; zone?: unknown; end?: unknown }[]).find(l => l.key === FRONT)!
   front.points = posed.points
   // the posed strokes as stored: the profile on each line, the widths on the points (bowen 1791820396)
   const ends = new Map((file.document.network.lines as { id: string; a: string; b: string }[]).map(l => [l.id, l] as const))
@@ -46,7 +46,6 @@ function oracle(d: Core, pose: { yaw: number; pitch: number }) {
     const l = [...ends.values()].find(x => x.a === p || x.b === p)
     return [p, l ? widthAt(l.id, p) : 1]
   }))
-  front.radius = posed.radii
   // a posed zone equal to the automatic length of the posed widths stays automatic (J1)
   front.zone = Object.fromEntries(Object.entries(posed.zones).filter(([k, z]) => {
     const [p, l0, l1] = JSON.parse(k) as [string, string, string], w0 = widthAt(l0, p), w1 = widthAt(l1, p)
@@ -159,29 +158,6 @@ describe('atPose: read only', () => {
     const r = d.atPose({ yaw: 10, pitch: 10 })
     // linesInRect: a read for playback's box (docs/playback-tools-checklist.md §1)
     expect(Object.getOwnPropertyNames(Object.getPrototypeOf(r)).sort()).toEqual(['constructor', 'geometry', 'linesInRect', 'snapshot', 'zones'])
-  })
-})
-
-describe('joins.setRadiusHere (the scratch layer\'s radius writer)', () => {
-  it('writes the bound layer only; refuses a missing row, a row that is not an arc, a radius that is not positive', async () => {
-    const joins = await import('../src/joins')
-    const net = await import('../src/network')
-    const d = doc()
-    const file = JSON.parse(save(d))
-    const before = (k: string) => (file.document.network.shapes.layers as { key: string; radius: Record<string, number> }[]).find(l => l.key === k)!.radius
-    // through the public read: change one view's radius by hand on a private state is not exposed, so check the function on a copy
-    const s = (d as unknown as { state: { network: unknown; joins: unknown } }).state
-    const c = structuredClone(s)
-    const n = net.of(c.network as never, 'view:90,0')
-    joins.setRadiusHere(c.joins as never, n, 'b', 'bc', 'ab', 7)
-    const read = (k: string) => joins.rows(c.joins as never, net.of(c.network as never, k)).find(r => r.point === 'b')!.radius
-    expect(read('view:90,0')).toBe(7)
-    for (const k of d.views().filter(k => k !== 'view:90,0')) expect(read(k)).toBe(Object.values(before(k))[0])
-    expect(() => joins.setRadiusHere(c.joins as never, n, 'c', 'bc', 'cd', 1)).toThrow(/No arc join at c/)
-    expect(() => joins.setRadiusHere(c.joins as never, n, 'b', 'ab', 'bc', 0)).toThrow(/positive radius/)
-    expect(() => joins.setRadiusHere(c.joins as never, n, 'b', 'ab', 'bc', NaN)).toThrow(/positive radius/)
-    joins.setJoin(c.joins as never, n, 'b', 'ab', 'bc', { mode: 'cusp' })
-    expect(() => joins.setRadiusHere(c.joins as never, n, 'b', 'ab', 'bc', 1)).toThrow(/No arc join at b/)
   })
 })
 

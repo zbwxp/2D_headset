@@ -8,7 +8,7 @@ import { Core, save, open, type Vec } from '../src'
 
 const P = (x: number, y = 0): Vec => ({ x, y })
 const SIDE = 'view:90,0'
-type Layer = { key: string; kind: string; copyNew?: boolean; points: Record<string, Vec>; lines: Record<string, { ha: Vec; hb: Vec; stroke: { width: number } }>; radius: Record<string, number> }
+type Layer = { key: string; kind: string; copyNew?: boolean; points: Record<string, Vec>; lines: Record<string, { ha: Vec; hb: Vec; stroke: { width: number } }>; radius?: Record<string, number> }
 const layerOf = (d: Core, key: string): Layer => (JSON.parse(save(d)).document.network.shapes.layers as Layer[]).find(l => l.key === key)!
 const base = (d: Core) => layerOf(d, 'base:angle')
 const front = (d: Core) => layerOf(d, 'view:0,0')
@@ -58,11 +58,12 @@ describe('the angle baseline record layer', () => {
     expect(front(d).points.m).not.toEqual(P(5))
   })
 
-  it('a new arc gives the baseline the same radius, as views without one get', () => {
+  it('a new arc: its one radius is the row\'s; the baseline layer holds none (bowen 1791985326)', () => {
     const d = doc()
     d.edit(e => e.line('bc', 'b', { id: 'c', layer: 'L', position: P(10, 10) }))
     d.editIn(SIDE, e => e.join('b', 'ab', 'bc', { mode: 'arc', radius: 3 }))
-    expect(Object.values(base(d).radius)).toEqual([3])
+    expect(base(d).radius).toBeUndefined()
+    expect(JSON.parse(save(d)).document.joins.rows).toEqual([{ point: 'b', lines: ['ab', 'bc'], mode: 'arc', radius: 3 }])
   })
 
   it('paste: the clip\'s baseline is carried as is (a pending change comes along)', () => {

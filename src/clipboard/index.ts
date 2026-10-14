@@ -18,7 +18,7 @@ type Id = net.Id
 
 export interface Clip {
   network: net.LinesData
-  /** Join modes once; every shape layer's radii and end strokes (step 4). */
+  /** Join modes and arc radii once; every shape layer's zones and end strokes (step 4). */
   joins: joins.RangeData
   fills: fills.FillData[]
   names: { lines: [Id, string][]; groups: { name: string; lines: Id[] }[] }
@@ -96,17 +96,16 @@ export function check(v: unknown): Clip {
     const row = { point: d.str(R.point, `clip join ${i} point`), lines: [d.str(ls[0], `clip join ${i} line`), d.str(ls[1], `clip join ${i} line`)] as [Id, Id], mode: d.str(R.mode, `clip join ${i} mode`) as joins.JoinMode }
     if (row.mode !== 'bound' && row.mode !== 'smooth' && row.mode !== 'cusp' && row.mode !== 'arc') throw new Error(`Unknown join mode ${String(row.mode)}`)
     if (ls.length !== 2 || !pointIds.has(row.point) || !lineIds.has(row.lines[0]) || !lineIds.has(row.lines[1])) d.fail(`clip join ${i} points outside the clip`)
-    return row
+    // an arc's radius is one per join, in the row (bowen 1791985326); other joins have none
+    if (row.mode !== 'arc') { if (Object.hasOwn(R, 'radius')) d.fail(`clip join ${i} is not an arc but has a radius`); return row }
+    const radius = d.num(R.radius, `clip join ${i} radius`)
+    if (!(radius > 0)) d.fail(`clip join ${i} has a radius that is not above zero`)
+    return { ...row, radius }
   })
-  // every shape layer of the copy carries its own radii and end strokes (dot 1791654154)
+  // every shape layer of the copy carries its own zones and end strokes (dot 1791654154)
   const joinLayers = d.arr(jo.layers, 'clip join layers').map((x, i) => {
     const L = d.obj(x, `clip join layer ${i}`), key = d.str(L.key, `clip join layer ${i} key`)
-    const radii = d.arr(L.radii, `clip radii in ${key}`).map((y, k) => {
-      const R = d.obj(y, `clip radius ${k} in ${key}`), ls = d.arr(R.lines, `clip radius ${k} lines in ${key}`)
-      const r = { point: d.str(R.point, `clip radius ${k} point in ${key}`), lines: [d.str(ls[0], `clip radius ${k} line in ${key}`), d.str(ls[1], `clip radius ${k} line in ${key}`)] as [Id, Id], radius: d.num(R.radius, `clip radius ${k} in ${key}`) }
-      if (!rows.some(row => row.mode === 'arc' && row.point === r.point && row.lines[0] === r.lines[0] && row.lines[1] === r.lines[1])) d.fail(`clip radius ${k} in ${key} belongs to no arc join of the clip`)
-      return r
-    })
+    if (Object.hasOwn(L, 'radii')) d.fail(`clip join layer ${key} holds radii per view (a clip from before one radius per join)`)
     const zones = d.arr(L.zones, `clip zones in ${key}`).map((y, k) => {
       const Z = d.obj(y, `clip zone ${k} in ${key}`), ls = d.arr(Z.lines, `clip zone ${k} lines in ${key}`)
       const z = { point: d.str(Z.point, `clip zone ${k} point in ${key}`), lines: [d.str(ls[0], `clip zone ${k} line in ${key}`), d.str(ls[1], `clip zone ${k} line in ${key}`)] as [Id, Id], zone: d.num(Z.zone, `clip zone ${k} in ${key}`) }
@@ -118,7 +117,7 @@ export function check(v: unknown): Clip {
       if (!pointIds.has(point)) d.fail(`clip end stroke ${k} in ${key} points outside the clip`)
       return { point, stroke: d.obj(E.stroke, `clip end stroke ${k} stroke in ${key}`) as joins.EndStroke }
     })
-    return { key, radii, zones, endStrokes }
+    return { key, zones, endStrokes }
   })
   if (JSON.stringify(joinLayers.map(L => L.key).sort()) !== JSON.stringify(layers.map(L => L.key).sort())) d.fail("the clip's join layers do not match its shape layers")
   const fillsData = d.arr(o.fills, 'clip fills').map((x, i) => {

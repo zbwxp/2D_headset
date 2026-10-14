@@ -170,7 +170,7 @@ export function mirrorApply(s: ApplyState, d: Doc, ch: net.Changes, source: read
     return { id: tp, target }
   })
   const lineData = srcLines.map(id => ({ id, line: net.line(rn, id), to: m.lines.get(id)! }))
-  // radii and end strokes are per view: an apply (front only) reads and writes the front's (step 4)
+  // end strokes are per view: an apply (front only) reads and writes the front's (step 4); an arc's radius is its row's
   const endData = [...m.points].map(([sp, tp]) => ({ tp, stroke: joins.endStroke(d.joins, n, sp) }))
   const joinRows = [...m.points].map(([sp, tp]) => ({
     tp,
@@ -202,7 +202,7 @@ export function mirrorApply(s: ApplyState, d: Doc, ch: net.Changes, source: read
     else joins.clearEndStroke(d.joins, n, tp)
   }
   for (const { tp, old, add: rows } of joinRows) {
-    // a row that stays keeps the other views' radii; only rows really gone are removed (dot 1791654260)
+    // a row that stays keeps its place and zones; only rows really gone are removed (dot 1791654260)
     const next = rows.map(r => ({ r, l0: m.lines.get(r.lines[0])!.to, l1: m.lines.get(r.lines[1])!.to }))
     const stays = new Set(next.map(x => joins.rowKey(tp, x.l0, x.l1)))
     for (const r of old) if (!stays.has(joins.rowKey(tp, r.lines[0], r.lines[1]))) joins.removeJoin(d.joins, n, tp, r.lines[0], r.lines[1])

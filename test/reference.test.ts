@@ -1,6 +1,7 @@
 // Reference pictures (docs/reference-images-plan.md; dot 1791701244): a module in the one document
 // state, its edits never settle the drawing, checked at placing and at open.
 import { describe, it, expect } from 'vitest'
+import { radiiPerView } from './old-files'
 import { Core, save, open, Refusal, type ReferenceImage, type ReferenceInput } from '../src'
 
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
@@ -84,7 +85,7 @@ describe('reference pictures', () => {
     expect(open(text).in('view:0,0').references()).toEqual(d.in('view:0,0').references())
     const bad = JSON.parse(text); bad.document.reference.library[0].src = 'data:image/png;base64,/9j/4AAQSkZJRgABAQAAAQABAAD='
     expect(() => open(JSON.stringify(bad))).toThrow(/open-failed: reference: reference-bad-image/)
-    expect(() => open(text.replace('"version":11', '"version":4'))).toThrow(/unsupported version 4/)
+    expect(() => open(text.replace('"version":12', '"version":4'))).toThrow(/unsupported version 4/)
     const pasted = doc()
     pasted.edit(e => e.paste(d.copy(['ab']), 'L', { x: 100, y: 0 }, 'p'))
     expect(pasted.in('view:0,0').references()).toEqual([])
@@ -166,17 +167,17 @@ describe('playback pictures (docs/playback-edit-checklist.md §5; bowen 17919702
     expect(d.playbackReferences()[0]!.x).toBe(7)
   })
 
-  it('saved as version 11 and opened again; a version 10 file opens as it is (bowen 1791976935)', () => {
+  it('saved as version 12 and opened again; a version 10 file opens as it is (bowen 1791976935)', () => {
     const d = doc()
     d.edit(e => { e.placeReference(img('pb', { view: 'playback' })); e.placeReference(img('v', { view: 'view:0,0' })) })
     const text = save(d)
-    expect(JSON.parse(text).version).toBe(11)
+    expect(JSON.parse(text).version).toBe(12)
     const back = open(text)
     expect(back.playbackReferences()).toEqual(d.playbackReferences())
     expect(back.in('view:0,0').references()).toEqual(d.in('view:0,0').references())
     const old = doc()
     old.edit(e => e.placeReference(img('v', { view: 'view:0,0' })))
-    const v10 = save(old).replace('"version":11', '"version":10')
+    const v10 = JSON.stringify({ ...radiiPerView(JSON.parse(save(old))), version: 10 })
     expect(save(open(v10))).toBe(save(old))
   })
 })

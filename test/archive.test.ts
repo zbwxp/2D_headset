@@ -85,9 +85,8 @@ describe('save and open', () => {
     const variant = (f: (rows: any[]) => void) => { const x = JSON.parse(good); f(x.document.joins.rows); return JSON.stringify(x) }
     expect(() => open(variant(r => { r[0].lines = ['bc', 'ab'] }))).toThrow(/not in their stored form/)
     expect(() => open(variant(r => { r.push({ ...r[0], lines: ['bc', 'ab'] }) }))).toThrow(/not in their stored form/)
-    // radii are per view (step 4): a missing one in any view is refused
-    const noRadius = JSON.parse(good); const L = noRadius.document.network.shapes.layers[3]; for (const k of Object.keys(L.radius)) delete L.radius[k]
-    expect(() => open(JSON.stringify(noRadius))).toThrow(/has no radius in view:/)
+    // one radius per arc row (bowen 1791985326): a missing one is refused
+    expect(() => open(variant(r => { delete r[0].radius }))).toThrow(/arc join 0 has no radius/)
   })
 
   it('1e. a split that renames a line inside link joins keeps their stored order: saved and opened equal (dot 1791512672)', () => {
@@ -128,12 +127,12 @@ describe('save and open', () => {
     const cases: [string, string, RegExp][] = [
       ['not JSON', '{oops', /not JSON/],
       ['another format', JSON.stringify({ format: 'something', version: 1, document: {} }), /not a headset v3 drawing/],
-      ['another version', good.replace('"version":11', '"version":12'), /unsupported version 12/],
+      ['another version', good.replace('"version":12', '"version":13'), /unsupported version 13/],
       // format versions (docs/archive-plan.md): 1 single view (bowen 1791651929); 2 stage 1, no angle baseline (dot 1791680650); 3 stage 2, no responses (stage 3b)
-      ['a version 1 file', good.replace('"version":11', '"version":1'), /unsupported version 1/],
-      ['a version 2 file (stage 1)', good.replace('"version":11', '"version":2'), /unsupported version 2/],
-      ['a version 3 file (stage 2)', good.replace('"version":11', '"version":3'), /unsupported version 3/],
-      ['a version 4 file (stage 3b, no reference pictures)', good.replace('"version":11', '"version":4'), /unsupported version 4/],
+      ['a version 1 file', good.replace('"version":12', '"version":1'), /unsupported version 1/],
+      ['a version 2 file (stage 1)', good.replace('"version":12', '"version":2'), /unsupported version 2/],
+      ['a version 3 file (stage 2)', good.replace('"version":12', '"version":3'), /unsupported version 3/],
+      ['a version 4 file (stage 3b, no reference pictures)', good.replace('"version":12', '"version":4'), /unsupported version 4/],
       ['a missing part', edit(doc => { delete doc.links }), /missing links/],
       ['a line pointing to a missing point', edit(doc => { doc.network.lines[0].a = 'nowhere' }), /open-failed/],
       ['a point id used twice', edit(doc => { doc.network.points.push({ ...doc.network.points[0] }) }), /open-failed/],
@@ -168,11 +167,12 @@ describe('save and open', () => {
       ['a join of a line with itself', edit(doc => { doc.joins.rows[0].lines[1] = doc.joins.rows[0].lines[0] }), /uses one line twice/],
       ['an end stroke on a missing point', edit(doc => { doc.network.shapes.layers[2].end.gone = { taper: 1 } }), /end stroke in view:[-\d,]+ is on a missing point gone/],
       // restore writes through the normal writers and must give the stored form back (dot 1791512476)
-      // radii and end strokes are per view (step 4, dot 1791654260)
-      ['an arc join without a radius in one view', edit(doc => { const L = doc.network.shapes.layers[5]; delete L.radius[Object.keys(L.radius)[0]!] }), /has no radius in view:/],
-      ['a radius that belongs to no arc join', edit(doc => { const r = doc.joins.rows.find((x: any) => x.mode === 'smooth'); r.mode = 'cusp'; doc.network.shapes.layers[0].radius[JSON.stringify([r.point, ...r.lines])] = 3 }), /belongs to no arc join/],
-      ['a radius that is not above zero', edit(doc => { const L = doc.network.shapes.layers[1]; L.radius[Object.keys(L.radius)[0]!] = 0 }), /is not above zero/],
-      ['a join row carrying a radius (radii live in the views)', edit(doc => { doc.joins.rows[0].radius = 3 }), /carries an extra value/],
+      // an arc's radius is one per join row (bowen 1791985326); end strokes are per view (step 4, dot 1791654260)
+      ['an arc join without a radius', edit(doc => { delete doc.joins.rows.find((x: any) => x.mode === 'arc').radius }), /arc join \d+ has no radius/],
+      ['a radius on a join that is not an arc', edit(doc => { doc.joins.rows.find((x: any) => x.mode === 'smooth').radius = 3 }), /is not an arc but has a radius/],
+      ['a radius that is not above zero', edit(doc => { doc.joins.rows.find((x: any) => x.mode === 'arc').radius = 0 }), /radius that is not above zero/],
+      ['a shape layer holding radii (version 11 and before)', edit(doc => { doc.network.shapes.layers[1].radius = {} }), /holds arc radii/],
+      ['a join row carrying an unknown value', edit(doc => { doc.joins.rows[0].width = 3 }), /carries an extra value/],
       ['a join with its line pair reversed', edit(doc => { const r = doc.joins.rows[0]; r.lines = [r.lines[1], r.lines[0]] }), /not in their stored form/],
       ['one join stored in both orders', edit(doc => { const r = doc.joins.rows[0]; doc.joins.rows.push({ ...r, lines: [r.lines[1], r.lines[0]] }) }), /not in their stored form/],
       ['a link pair reversed', edit(doc => { const p = doc.links.pairs[0]; doc.links.pairs[0] = { a: p.b, b: p.a } }), /links are not in their stored form/],

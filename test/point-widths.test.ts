@@ -1,6 +1,7 @@
 // Widths belong to points (docs/point-widths-checklist.md, bowen 1791820396): one width per point per view, shared by
 // every line ending there; a line reads `width` at its a end and `widthB` at its b end (absent when equal).
 import { describe, it, expect } from 'vitest'
+import { radiiPerView } from './old-files'
 import { Core, save, open, type Vec } from '../src'
 import { sk } from './sketch'
 
@@ -38,18 +39,18 @@ describe('widths belong to points', () => {
     d.undo()
     expect(width(d, 'p')).toBe(1)
   })
-  it('saved and opened unchanged (version 10)', () => {
+  it('saved and opened unchanged (version 12)', () => {
     const d = pair()
     d.edit(e => e.pointWidth('p', 6))
     const text = save(d)
-    expect(JSON.parse(text).version).toBe(11)
+    expect(JSON.parse(text).version).toBe(12)
     expect(width(open(text), 'p')).toBe(6)
     expect(save(open(text))).toBe(text)
   })
   it('a version 8 file (widths on lines) opens converted: each point takes the largest width its lines had there', () => {
     const d = pair()
     d.edit(e => e.pointWidth('a', 3))
-    const v9 = JSON.parse(save(d))
+    const v9 = radiiPerView(JSON.parse(save(d)))
     // the same drawing as version 8 wrote it, with l0 ending 2 wide at p and l1 starting 5 wide there
     const lines = v9.document.network.lines as { id: string; a: string; b: string }[]
     for (const L of v9.document.network.shapes.layers) {
@@ -61,11 +62,11 @@ describe('widths belong to points', () => {
     const back = open(JSON.stringify(v9))
     expect(['a', 'p', 'c'].map(id => width(back, id))).toEqual([3, 5, 1])
     expect(back.in('view:90,0').snapshot().points.map(p => p.width)).toEqual([1, 1, 1])
-    expect(JSON.parse(save(back)).version).toBe(11)
+    expect(JSON.parse(save(back)).version).toBe(12)
   })
   it('a version 8 file with a bad old width is refused, not opened with another width (dot 1791821589)', () => {
     const d = pair()
-    const v9 = JSON.parse(save(d)), lines = v9.document.network.lines as { id: string; a: string; b: string }[]
+    const v9 = radiiPerView(JSON.parse(save(d))), lines = v9.document.network.lines as { id: string; a: string; b: string }[]
     for (const L of v9.document.network.shapes.layers) { for (const l of lines) L.lines[l.id].stroke = { width: 1, profile: 'uniform' }; delete L.widths }
     v9.version = 8
     const front = v9.document.network.shapes.layers.find((L: { key: string }) => L.key === 'view:0,0')

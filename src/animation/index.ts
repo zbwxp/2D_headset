@@ -1,7 +1,7 @@
 // animation — angle and expression making (docs/architecture-multiview.md package 4;
 // docs/stage2-plan.md). Stage 2, package 1: the angle baseline record layer. It owns the
 // meaning of `base:angle` and the role rules that differ from views: a new line's new
-// points and handles, a new arc's radius and a paste take the drawn (front) values there
+// points and handles and a paste take the drawn (front) values there
 // (declared as copyNew on the layer); split, delete, bind and unbind follow the
 // kind-independent rules (step 2). Package 2: broadcast, fit and the pending mark.
 import * as net from '../network'

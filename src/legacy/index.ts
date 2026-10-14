@@ -1,7 +1,7 @@
 // legacy — opening drawings saved in older formats (bowen 1791820592, dot 1791820713): this one module turns a version
-// 5–10 document into version 11; the archive's normal reader then takes it. Nothing else in the program knows an old
+// 5–11 document into version 12; the archive's normal reader then takes it. Nothing else in the program knows an old
 // format. For a release that drops old files: delete this folder and its one call in src/archive/index.ts.
-// The conversions, each approved by bowen: 5 → 6 (1791726456), 6 → 7 (1791808493), 7 / 8 → 9 (1791820592); 9 → 10 (1791907933) only adds an empty mask list (docs/mask-p2-checklist.md §3); 10 → 11 (1791976935) changes nothing (11 only allows playback pictures).
+// The conversions, each approved by bowen: 5 → 6 (1791726456), 6 → 7 (1791808493), 7 / 8 → 9 (1791820592); 9 → 10 (1791907933) only adds an empty mask list (docs/mask-p2-checklist.md §3); 10 → 11 (1791976935) changes nothing (11 only allows playback pictures); 11 → 12 (1791985326) keeps one arc radius per join, the front's.
 import * as net from '../network'
 import * as reference from '../reference'
 
@@ -17,13 +17,55 @@ export function fromV10(doc: unknown): unknown {
   return doc
 }
 
-/** An old document as version 11, or a refusal for a version that cannot be read. */
+/**
+ * A version 11 drawing as version 12 (docs/arc-radius-shared-checklist.md §4; bowen 1791985326): an arc's radius
+ * becomes one value of its join row, the front view's (`view:0,0`). First every shape layer's radii are checked as
+ * the version 11 reader checked them — every arc row has one in every layer, none belongs to anything else, each a
+ * finite number above zero — so invalid old data refuses the file instead of being dropped (dot 1791985599); a
+ * missing front value is refused, never defaulted. Then the layers' radii go. Malformed structure is left as it is,
+ * to be refused by importState as for any file.
+ */
+export function fromV11(doc: unknown): unknown {
+  if (!doc || typeof doc !== 'object') return doc
+  const d = doc as { network?: { shapes?: { layers?: unknown } }; joins?: { rows?: unknown } }
+  const nw = d.network, jo = d.joins
+  if (!nw || !nw.shapes || !Array.isArray(nw.shapes.layers) || !jo || !Array.isArray(jo.rows)) return doc
+  const fail = (why: string): never => { throw new Error(`open-failed: ${why}`) }
+  const rows = jo.rows as Record<string, unknown>[]
+  const keyOf = (r: Record<string, unknown>) => JSON.stringify([r.point, ...(Array.isArray(r.lines) ? r.lines : [])])
+  // a version 11 row held no radius (v11 refused it as an extra value): one there is not taken over the front's
+  rows.forEach((r, i) => { if (r && typeof r === 'object' && Object.hasOwn(r, 'radius')) fail(`join ${i} carries an extra value`) })
+  const arcKeys = new Set(rows.filter(r => r && typeof r === 'object' && r.mode === 'arc').map(keyOf))
+  const layers = nw.shapes.layers as Record<string, unknown>[]
+  for (const L of layers) {
+    if (!L || typeof L !== 'object') continue // refused by the reader as for any file
+    const R = L.radius
+    if (!R || typeof R !== 'object' || Array.isArray(R)) fail(`shape layer ${String(L.key)} radius is not an object`)
+    const own = R as Record<string, unknown>
+    for (const k of arcKeys) if (!Object.hasOwn(own, k)) fail(`arc join ${k} has no radius in ${String(L.key)}`)
+    for (const [k, v] of Object.entries(own)) {
+      if (!arcKeys.has(k)) fail(`radius ${k} in ${String(L.key)} belongs to no arc join`)
+      if (typeof v !== 'number' || !Number.isFinite(v) || !(v > 0)) fail(`radius ${k} in ${String(L.key)} is not a finite number above zero`)
+    }
+  }
+  const front = layers.find(L => L && typeof L === 'object' && L.key === 'view:0,0')
+  if (arcKeys.size && !front) fail('there is no front view (view:0,0) to take the arc radii from')
+  const frontRadius = (front?.radius ?? {}) as Record<string, number>
+  return {
+    ...d,
+    network: { ...nw, shapes: { ...nw.shapes, layers: layers.map(L => { if (!L || typeof L !== 'object') return L; const { radius: _, ...rest } = L; return rest }) } },
+    joins: { ...jo, rows: rows.map(r => (r && typeof r === 'object' && r.mode === 'arc' ? { ...r, radius: frontRadius[keyOf(r)] } : r)) },
+  }
+}
+
+/** An old document as version 12, or a refusal for a version that cannot be read. */
 export function upgrade(version: unknown, doc: unknown): unknown {
-  if (version === 5) return fromV10(fromV9(fromV8(fromV6(fromV5(doc)))))
-  if (version === 6) return fromV10(fromV9(fromV8(fromV6(doc))))
-  if (version === 7 || version === 8) return fromV10(fromV9(fromV8(doc)))
-  if (version === 9) return fromV10(fromV9(doc))
-  if (version === 10) return fromV10(doc)
+  if (version === 5) return fromV11(fromV10(fromV9(fromV8(fromV6(fromV5(doc))))))
+  if (version === 6) return fromV11(fromV10(fromV9(fromV8(fromV6(doc)))))
+  if (version === 7 || version === 8) return fromV11(fromV10(fromV9(fromV8(doc))))
+  if (version === 9) return fromV11(fromV10(fromV9(doc)))
+  if (version === 10) return fromV11(fromV10(doc))
+  if (version === 11) return fromV11(doc)
   throw new Error(`open-failed: unsupported version ${String(version)}`)
 }
 

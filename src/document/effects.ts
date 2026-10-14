@@ -86,7 +86,8 @@ export const EFFECTS: Record<string, Effect> = {
   deleteLine: full({ reads: 'draft', shapes: 'all-views', records: true, shared: STRUCTURAL_RESPONSES }),
   bind: full({ reads: 'draft', intents: 'edited', shapes: 'all-views', records: true, shared: STRUCTURAL_RESPONSES }),
   unbind: full({ reads: 'settled-trial', intents: 'edited', shapes: 'all-views', records: true, shared: STRUCTURAL_RESPONSES }),
-  // joins: a smooth join holds its first-clicked handle in every view; an arc gives views without a radius one
+  // joins: a smooth join holds its first-clicked handle in every view (an arc's radius is shared: no view written for it);
+  // a removed join drops its zone from every view
   join: full({ reads: 'draft', intents: 'all-views', shapes: 'all-views', records: true, shared: ['joins'] }),
   removeJoin: full({ reads: 'draft', shapes: 'all-views', records: true, shared: ['joins'] }),
   // the order of a point's join list: shared by every view, no shape written
@@ -143,8 +144,7 @@ export const EFFECTS: Record<string, Effect> = {
   broadcastStroke: { reads: 'draft', intents: 'none', shapes: 'others', records: false, shared: [], autoStructure: false, settle: 'none', alone: false, companion: true },
   // mirror (front only, so the edited view is the front). Inside the operation apply copies the
   // source's geometry, strokes, end strokes and line states onto the target in the front; sets or
-  // removes the target's joins (an arc set gives every view and the baseline a radius, one removed
-  // drops it from all of them); copies or removes link joins; fills or clears the target's loops
+  // removes the target's joins (an arc's radius goes with its shared row); copies or removes link joins; fills or clears the target's loops
   // (src/apply/index.ts mirrorApply; dot 1791688672)
   mirrorApply: full({ reads: 'settled-trial', intents: 'edited', shapes: 'all-views', records: true, shared: ['structure', 'joins', 'links', 'fills', 'apply'] }),
   mirrorLink: full({ reads: 'settled-trial', intents: 'edited', shapes: 'all-views', records: true, shared: ['structure', 'joins', 'links', 'fills', 'apply'] }),

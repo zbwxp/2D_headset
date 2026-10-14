@@ -26,9 +26,11 @@ export const FORMAT = 'headset-v3-drawing'
  * - 10: plus masks (`masks`, 显隐; docs/mask-p2-checklist.md); read as it is when opened (an 11 file without playback
  *   pictures), approved by bowen 1791976935.
  * - 11: a reference picture's `view` may be `playback` (docs/playback-edit-checklist.md §5); a 10 reader refuses it
- *   (dot 1791976669).
+ *   (dot 1791976669); converted to 12 when opened, each arc taking the front's radius (bowen 1791985326).
+ * - 12: an arc's radius is one value of its join row, in every view; shape layers hold none
+ *   (docs/arc-radius-shared-checklist.md).
  */
-export const VERSION = 11
+export const VERSION = 12
 
 export function save(core: Core): string {
   return JSON.stringify({ format: FORMAT, version: VERSION, document: exportState(core) })
