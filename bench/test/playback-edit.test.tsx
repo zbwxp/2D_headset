@@ -211,3 +211,20 @@ describe('review fixes (dot 1791978385)', () => {
     expect(text).not.toContain('加修正')
   })
 })
+
+describe('review fix (dot 1791978817)', () => {
+  it('a line hovered on L1 loses its handles when only L2 is selected: they are neither drawn nor dragged', async () => {
+    const t = await setup(), v = `v${t.k}`, L2 = `L2-${t.k}`
+    await act(async () => { bench().core.edit(e => e.layer(L2, L2)); bench().refresh() })
+    await t.play(30, 0)
+    const l = t.posedLine(v), p = t.posed(`p${t.k}`), tip = { x: p.x + l.ha.x, y: p.y + l.ha.y }
+    await t.hover({ x: p.x + 0.5 * l.ha.x + 5, y: p.y + 0.5 * l.ha.y + 1 })
+    expect(t.svg.querySelector(`[data-pose-handle="${v}:a"]`)).not.toBeNull()
+    const span = [...t.host.querySelectorAll('span[title="双击改名"]')].find(x => x.textContent === L2)!
+    await act(async () => { span.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    expect(t.svg.querySelector(`[data-pose-handle="${v}:a"]`)).toBeNull()
+    const before = save(bench().core)
+    await t.drag(tip, { x: 4, y: 4 })
+    expect(save(bench().core)).toBe(before)
+  })
+})

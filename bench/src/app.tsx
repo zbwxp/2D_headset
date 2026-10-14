@@ -763,6 +763,9 @@ export function App() {
   keyHooks.current.afterArrow = () => { if (ix.moving() === 'keys') holdKeys() }
   type PlaybackPick = { kind: 'points'; starts: Record<Id, Vec> } | { kind: 'handle'; line: Id; end: 'a' | 'b'; tip: Vec; point: Vec }
   /** The nearest visible line within the line reach, in this frame's geometry (V's press, A's hover). */
+  // the hovered line, only while it is a visible line of a selected layer: a scope change drops it (dot 1791978817)
+  const hoverLine = poseHover ? shownLines.find(l => l.id === poseHover && selLayers.includes(s.points.find(p => p.id === l.a)?.layer ?? '')) : undefined
+  useEffect(() => { if (poseHover && !hoverLine) setPoseHover(null) })
   const shownLineAt = (at: Vec): Id | null => {
     // editing's rules (dot 1791978385): only the selected layers' visible lines; a masked line by what is drawn of it
     const layerOf = new Map(s.points.map(p => [p.id, p.layer]))
@@ -782,7 +785,7 @@ export function App() {
       const cands: { d: number; rank: number; pick: PlaybackPick }[] = s.points.filter(p => shownEnds.has(p.id) && selLayers.includes(p.layer))
         .map(p => ({ d: Math.hypot(p.position.x - at.x, p.position.y - at.y), rank: 0, pick: { kind: 'points', starts: { [p.id]: p.position } } as PlaybackPick }))
         .filter(x => x.d <= REACH.point * px)
-      const hl = poseHover ? shownLines.find(l => l.id === poseHover) : undefined
+      const hl = hoverLine
       if (hl) for (const end of ['a', 'b'] as const) {
         const point = pos(end === 'a' ? hl.a : hl.b), tip = add(point, end === 'a' ? hl.ha : hl.hb), d = Math.hypot(tip.x - at.x, tip.y - at.y)
         if (d <= REACH.handle * px) cands.push({ d, rank: 1, pick: { kind: 'handle', line: hl.id, end, tip, point } })
@@ -1466,7 +1469,7 @@ export function App() {
           })}
           {pose && corrGhost && Object.entries(corrGhost.points).map(([gid, to]) => <circle key={'gp' + gid} data-ghost-point={gid} cx={to.x} cy={to.y} r={4 * px} fill="#06f" />)}
           {/* playback with A at a correction pose (§2, §3): the visible lines' end points, the hovered line's handles, a ring on a point corrected here */}
-          {pose && playbackMarks && shownLines.filter(l => l.id === poseHover).flatMap(l => (['a', 'b'] as const).map(end => {
+          {pose && playbackMarks && hoverLine && [hoverLine].flatMap(l => (['a', 'b'] as const).map(end => {
             const point = pos(end === 'a' ? l.a : l.b), tip = add(point, end === 'a' ? l.ha : l.hb), here = correctedHere.handles.has(`${l.id}:${end}`)
             return <g key={'ph' + l.id + end} data-pose-handle={`${l.id}:${end}`}><line x1={point.x} y1={point.y} x2={tip.x} y2={tip.y} stroke="#888" strokeWidth={px} />
               <rect x={tip.x - 3 * px} y={tip.y - 3 * px} width={6 * px} height={6 * px} fill={here ? '#f80' : '#fff'} stroke="#06f" strokeWidth={px} /></g>
