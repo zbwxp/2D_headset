@@ -56,7 +56,7 @@ The effects test lists them so.
 
 ## 5b. Playback: changing an arc's radius at 30° (dot 1791985670)
 - **Today:** the playback gate refuses `join`, so the panel cannot change a radius at 30°.
-- **The gate lets through an edit made only of `join` calls that change the radius of an existing arc.** For each call:
+- **The gate checks each call; it now also lets through a `join` that changes the radius of an existing arc** (the calls it already allowed, e.g. show / hide, may still come in the same edit; dot 1791986765). For each such call:
   - the row at that point and those two lines exists and is an arc;
   - the call's mode is `arc`.
 - **Still refused:** a new join, a mode change, anything else.
