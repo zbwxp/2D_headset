@@ -14,11 +14,11 @@
 - Deleting them point by point at one angle left others (bowen 1791993484).
 
 ## 1. Paste carries no corrections
-- **Copy:** the clip no longer holds `animation`.
+- **Copy:** the clip no longer holds `animation`. **Copying a layer** (`copyLayer`) carries none either (dot 1791995359).
 - **Paste:** writes no knots. A clip that still holds `animation` (made before this) is still checked, as today, so a bad one refuses the paste; it is then not written.
 - **The pasted lines** therefore blend linearly between the views until corrected.
 - **Unchanged:**
-  - cut-and-paste that moves lines (same ids, bench's cut) keeps their knots, because nothing is copied;
+  - cut-and-paste: the first paste after a cut moves the lines (same ids), so they keep their knots; any later paste is a new copy, without knots (dot 1791995359: tested separately);
   - mirror apply never wrote knots;
   - links and their identical response sets are untouched (a clip never carries links).
 
@@ -36,12 +36,14 @@
   - locks are not consulted (as `uncorrect`; bowen 1791903940).
 
 ## 3. Bench: the list at a correction pose
-- **One row per curve** with any knot at this pose. A curve is the group a line belongs to, else the line alone; this is the layer's first level, as the layers panel shows it.
+- **One row per curve** with any knot at *any* angle (dot 1791995359: a curve corrected only at another angle is still found here and cleared whole). The row shows both counts: this angle and all angles. A curve is the group a line belongs to, else the line alone; this is the layer's first level, as the layers panel shows it.
   - The row shows the curve's name and how many controls have knots here.
   - A curve's controls are its lines' end points and their handles.
 - **Only the selected layers' curves are listed** (bowen 1791993161).
 - **「删除这条曲线的全部修正」** on a row: one `clearCorrections` with all the curve's controls, *all angles*. bowen 1791993161 asked for a line's corrections all deleted; this angle only is the open question in 1791993568.
-  - A point shared with another curve (a junction) loses its knots for both. The row says so when it has one.
+  - **Not only the selected layers can be touched** (dot 1791995359). The row and the note under the list say so:
+    - a point shared with another curve (a junction) loses its knots for both;
+    - a point linked across layers loses them for its linked members, which may be in an unselected layer.
 - **「删除选中图层的全部修正」:** one `clearCorrections` with every point and handle of the selected layers, all angles.
 - **Rings and handle marks** at this pose stay as today: per point and handle, selected layers only.
 - **「刚才改了什么」** lists what was removed, as for `uncorrect`.
