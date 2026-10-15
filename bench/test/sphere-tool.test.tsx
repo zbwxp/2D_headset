@@ -61,9 +61,12 @@ describe('the sphere frame in the bench', () => {
   })
 
   it('a refused value: the message shows and 「应用」 is disabled', async () => {
-    const t = await setup(), start = save(bench().core)
+    const t = await setup()
+    // a lock the turn would break (a fold is not refused, bowen 1792056346; the panel keeps the lines on the sphere)
+    await act(async () => { bench().core.edit(e => e.lineState(t.e2, { locked: true })); bench().refresh() })
+    const start = save(bench().core)
     await act(async () => { t.button('球面框')!.click() })
-    await t.slide('sphere-yaw', 85) // at the default 弧度 (1.5 × reach) the far side turns past the edge
+    await t.slide('sphere-yaw', 35)
     expect(t.q('sphere-refused')).not.toBeNull()
     expect((t.q('sphere-apply') as HTMLButtonElement).disabled).toBe(true)
     expect(save(bench().core)).toBe(start)

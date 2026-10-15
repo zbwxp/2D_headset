@@ -93,11 +93,16 @@ describe('the sphere frame session', () => {
   })
 
   it('an invalid value keeps the last valid ghost but disables apply: nothing is written, not even the older value', () => {
-    const t = setup(), start = save(t.d)
+    // the panel cannot leave the sphere (「弧度」 stays ≥ 1.05 × reach) and a fold is not refused (bowen 1792056346):
+    // the refusal here is a lock the turned lines would change
+    const t = setup()
+    t.d.edit(e => { e.link('a', 'm') })
+    t.d.edit(e => e.lineState('mn', { locked: true }))
+    t.d.edit(e => e.select([{ kind: 'line', id: 'ab' }, { kind: 'line', id: 'bc' }]))
+    const start = save(t.d)
     t.ix.setTool('sphere')
-    t.ix.sphereSet({ yaw: 20 })
     const ghost = t.sp()!.lines
-    t.ix.sphereSet({ r: t.sp()!.range.rMin, yaw: 85 }) // the far side turns past the edge
+    t.ix.sphereSet({ yaw: 30 })
     const s = t.sp()!
     expect([s.valid, typeof s.refused]).toEqual([false, 'string'])
     expect(s.lines).toEqual(ghost)
@@ -116,6 +121,16 @@ describe('the sphere frame session', () => {
     expect(t.sp()!.valid).toBe(false)
     t.ix.sphereApply()
     expect(save(t.d)).toBe(start)
+  })
+
+  it('the turn reaches ±90° and a fold is previewed and applied like any other turn (bowen 1792056346)', () => {
+    const t = setup(), start = save(t.d)
+    t.ix.setTool('sphere')
+    t.ix.sphereSet({ r: t.sp()!.range.rMin, yaw: 120 })
+    expect(t.sp()!.values.yaw).toBe(90)
+    expect(t.sp()!.valid).toBe(true)
+    t.ix.sphereApply()
+    expect(save(t.d)).not.toBe(start)
   })
 
   it('cancels, writing nothing: Esc, another view, another tool, another drawing, a selection change, an edit or undo elsewhere', () => {

@@ -15,7 +15,7 @@ export type SphereControl = 'move' | 'rotate' | { corner: number }
 export const SPHERE_FRAME = Object.freeze({ corner: 10, rotate: 24, reach: 7 })
 /** 「弧度」's range as multiples of the largest distance of the source curves from the anchor (§3). */
 export const SPHERE_R = Object.freeze({ min: 1.05, max: 20, start: 1.5 })
-export const SPHERE_TURN = 85
+export const SPHERE_TURN = 90
 
 const point = (c: readonly Vec[], t: number): Vec => { const u = 1 - t; return { x: u * u * u * c[0]!.x + 3 * u * u * t * c[1]!.x + 3 * u * t * t * c[2]!.x + t * t * t * c[3]!.x, y: u * u * u * c[0]!.y + 3 * u * u * t * c[1]!.y + 3 * u * t * t * c[2]!.y + t * t * t * c[3]!.y } }
 /** The largest distance from `anchor` over the curves' end points and 128 samples each (the same samples the checks use, §1). */

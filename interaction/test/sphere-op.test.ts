@@ -115,12 +115,12 @@ describe('the sphere frame edit', () => {
     expect(at('m')).toEqual(at('a'))
   })
 
-  it('no line, an unknown one, or a sphere that does not hold the lines: refused before anything is written', () => {
+  it('no line, an unknown one, or a sphere that does not hold the lines: refused before anything is written; a fold is not refused', () => {
     const d = doc(), before = every(d)
     expect(() => sphereOp(d, FRONT, [], sphere)).toThrow(/deform-no-lines/)
     expect(() => sphereOp(d, FRONT, ['zz'], sphere)).toThrow(/deform-unknown-line/)
     expect(() => sphereOp(d, FRONT, ['ab'], { ...sphere, r: 20 })).toThrow('超出了球面')
-    expect(() => sphereOp(d, FRONT, ['ab', 'bc'], { ...sphere, r: 46, yaw: 80 })).toThrow('背面')
+    expect(() => sphereOp(d, FRONT, ['ab', 'bc'], { ...sphere, r: 46, yaw: 80 })).not.toThrow() // turned onto the back: kept, folds (bowen 1792056346)
     expect(every(d)).toBe(before)
     expect(save(d)).toBe(save(d))
   })

@@ -25,8 +25,8 @@ Replaces `docs/sphere-domain-checklist.md` (bowen 1792053826: "keep the domain a
 `sphereField({ anchor, r, yaw, pitch, roll, scale, offset })` returns a `Field` (`map`, `vector`, `denominator ≡ 1`, `affine: false`). For a point p:
 1. q = p − anchor; |q| ≥ r is refused (「超出球面」).
 2. P = (q.x, q.y, √(r² − |q|²)).
-3. P′ = R·P with R = Rx(pitch)·Ry(yaw): yaw about the vertical axis first, then pitch about the horizontal axis; |yaw|, |pitch| < 90°. Positive yaw moves the sphere's front toward +x; positive pitch toward −y (up on screen).
-4. P′.z ≤ 0.05 r is refused (「转到背面」, fold).
+3. P′ = R·P with R = Rx(pitch)·Ry(yaw): yaw about the vertical axis first, then pitch about the horizontal axis; |yaw|, |pitch| ≤ 90° (bowen 1792056346). Positive yaw moves the sphere's front toward +x; positive pitch toward −y (up on screen).
+4. ~~P′.z ≤ 0.05 r is refused~~ — **not refused** (bowen 1792056346): a part turned onto the back projects as it is and folds over; lines may cross, as when a head turns toward 90°.
 5. pole′ = R·(0, 0, r); d = (P′.x − pole′.x, P′.y − pole′.y): parallel projection, anchor fixed.
 6. Result: anchor + offset + scale · Rot(roll) · d.
 

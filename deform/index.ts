@@ -210,7 +210,7 @@ export interface Sphere {
   readonly anchor: Vec
   /** The sphere's radius: how strongly the drawing bends when turned (larger is flatter). */
   readonly r: number
-  /** Degrees, below 90 in size: yaw about the vertical axis first, then pitch about the horizontal axis. */
+  /** Degrees, at most 90 in size: yaw about the vertical axis first, then pitch about the horizontal axis. */
   readonly yaw: number
   readonly pitch: number
   /** Degrees: the in-plane rotation of the result. */
@@ -225,12 +225,12 @@ export const isRestSphere = (s: Sphere) => s.yaw === 0 && s.pitch === 0 && s.rol
 /**
  * The sphere frame's field: the drawing lifted onto the front of a sphere (what was drawn is what is seen at rest),
  * the sphere turned, projected in parallel relative to its turned front pole (so the anchor stays fixed), then
- * rotated in plane, scaled and moved. A point beyond the sphere or turned past 0.05 r from its edge is refused.
+ * rotated in plane, scaled and moved. A point beyond the sphere is refused; a part turned onto the back folds over (bowen 1792056346).
  */
 export function sphereField(s: Sphere): Field {
   fv(s.anchor); fv(s.offset); [s.r, s.yaw, s.pitch, s.roll, s.scale].forEach(fn)
   if (!(s.r > 0) || !(s.scale > 0)) throw Error('球面框的半径和缩放必须大于 0。')
-  if (Math.abs(s.yaw) >= 90 || Math.abs(s.pitch) >= 90) throw Error('球面框的转角必须小于 90°。')
+  if (Math.abs(s.yaw) > 90 || Math.abs(s.pitch) > 90) throw Error('球面框的转角不能超过 90°。')
   // at rest the field is the exact identity: no numeric refit, so applying it changes nothing at all (dot 1792055264)
   if (isRestSphere(s)) return { map: fv, vector: (p: Vec, v: Vec) => { fv(p); return fv(v) }, denominator: (p: Vec) => { fv(p); return 1 }, affine: true, controlsOffField: true }
   const cy = Math.cos(s.yaw * DEG), sy = Math.sin(s.yaw * DEG), cp = Math.cos(s.pitch * DEG), sp = Math.sin(s.pitch * DEG)
@@ -244,11 +244,14 @@ export function sphereField(s: Sphere): Field {
     if (!(z2 > 0)) throw Error('有线超出了球面，请把「弧度」调大。')
     return { qx, qy, z: Math.sqrt(z2) }
   }
-  /** The point on the turned sphere; off the sphere or past the fold is refused, for map and vector alike (dot 1792055327). */
+  /**
+   * The point on the turned sphere, for map and vector alike (dot 1792055327). Off the sphere is refused; a part turned
+   * past the edge onto the back is not (bowen 1792056346): it projects as it is and folds back, lines may cross, as
+   * when a head turns toward 90°.
+   */
   const turned = (p: Vec) => {
-    const q = lift(p), t = turn(q.qx, q.qy, q.z)
-    if (!(t.z > 0.05 * r)) throw Error('有线转到了球的背面，请减小转角或调大「弧度」。')
-    return { ...q, t }
+    const q = lift(p)
+    return { ...q, t: turn(q.qx, q.qy, q.z) }
   }
   const map = (p: Vec): Vec => {
     const { t } = turned(p), d = place({ x: t.x - pole.x, y: t.y - pole.y })

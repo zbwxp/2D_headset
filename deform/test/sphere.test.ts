@@ -56,16 +56,19 @@ describe('sphereField', () => {
     expect(p.y - 20).toBeCloseTo(2, 4)
   })
 
-  it('refuses a point on or beyond the sphere, and a point turned to the back', () => {
+  it('refuses a point on or beyond the sphere; a part turned onto the back folds over and is kept (bowen 1792056346)', () => {
     const f = sphereField({ ...rest, yaw: 1 }) // at rest the field is the exact identity and refuses nothing (dot 1792055264)
     expect(() => f.map({ x: 13, y: 20 })).toThrow('超出了球面')
     expect(() => f.map({ x: 13.1, y: 20 })).toThrow('超出了球面')
     expect(() => f.map({ x: 12.99, y: 20 })).not.toThrow()
-    // at yaw 80 a point on the +x side turns behind: its turned depth −sin80·x + cos80·z falls below 0.05 r
+    // at yaw 80 a point on the +x side turns behind (turned depth −sin80·x + cos80·z < 0): it is kept and folds back —
+    // projected nearer the anchor than the sphere's turned edge, which sits at r − r·sin80 to its right
     const g = sphereField({ ...rest, yaw: 80 })
-    expect(() => g.map({ x: 12.5, y: 20 })).toThrow('背面')
-    expect(() => g.map({ x: 9.8, y: 20 })).not.toThrow()
-    expect(() => sphereField({ ...rest, yaw: 90 })).toThrow('小于 90')
+    const back = g.map({ x: 12.5, y: 20 }), edge = 10 + 3 - 3 * Math.sin(80 * Math.PI / 180)
+    expect(back.x).toBeLessThan(edge)
+    expect(Number.isFinite(back.x)).toBe(true)
+    expect(() => sphereField({ ...rest, yaw: 90, pitch: -90 })).not.toThrow()
+    expect(() => sphereField({ ...rest, yaw: 90.5 })).toThrow('不能超过 90')
     expect(() => sphereField({ ...rest, r: 0 })).toThrow('大于 0')
     expect(() => sphereField({ ...rest, scale: -1 })).toThrow('大于 0')
     expect(() => sphereField({ ...rest, yaw: NaN })).toThrow('有限数')
@@ -104,9 +107,9 @@ describe('sphereField with the fit (dot 1792054665 #5)', () => {
 })
 
 describe('sphereField contracts (dot 1792055327)', () => {
-  it('vector refuses a folded point as map does; denominator refuses a non-finite point; at rest the field is the exact identity', () => {
+  it('vector accepts a folded point as map does; denominator refuses a non-finite point; at rest the field is the exact identity', () => {
     const g = sphereField({ ...rest, yaw: 80 })
-    expect(() => g.vector({ x: 12.5, y: 20 }, { x: 1, y: 0 })).toThrow('背面')
+    expect(Number.isFinite(g.vector({ x: 12.5, y: 20 }, { x: 1, y: 0 }).x)).toBe(true) // a folded point has a derivative too
     expect(() => g.denominator({ x: NaN, y: 0 })).toThrow('有限数')
     const f = sphereField({ ...rest, r: 0.5 })
     expect(f.affine).toBe(true)
