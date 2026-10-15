@@ -39,6 +39,12 @@ const nid = (p: string) => {
 const P = (x: number, y: number): Vec => ({ x, y })
 const add = (a: Vec, b: Vec) => P(a.x + b.x, a.y + b.y)
 const path = (c: readonly Vec[]) => `M${c[0]!.x},${c[0]!.y} C${c[1]!.x},${c[1]!.y} ${c[2]!.x},${c[2]!.y} ${c[3]!.x},${c[3]!.y}`
+/** 视角背景 (bowen, after 1792058545): one fixed colour per view, so a view reads the same wherever it is shown. */
+const VIEW_COLOUR: Record<string, string> = {
+  'view:-90,45': '#e4572e', 'view:0,45': '#2e86de', 'view:90,45': '#9b5de5',
+  'view:-90,0': '#f39c12', 'view:0,0': '#16a085', 'view:90,0': '#d81b60',
+  'view:-90,-45': '#8d6e63', 'view:0,-45': '#00a8c6', 'view:90,-45': '#7cb342',
+}
 const mid = (c: readonly Vec[]) => P((c[0]!.x + 3 * c[1]!.x + 3 * c[2]!.x + c[3]!.x) / 8, (c[0]!.y + 3 * c[1]!.y + 3 * c[2]!.y + c[3]!.y) / 8)
 
 // ---- the log: every edit's Editor calls and what core returned -------------------------
@@ -339,6 +345,11 @@ export function App() {
   // 从视角应用 (bowen 1791878160): on, the nine view buttons pick the view to apply from; Esc cancels. It belongs
   // to the drawing and the view it was started in: another drawing or view ends it (dot 1791879488)
   const [applyFromAt, setApplyFromAt] = useState<{ core: Core; view: string } | null>(null), applyFromOn = useRef(false)
+  // 视角背景 (bowen, after 1792058545): other views drawn in colour under the drawing, for reference only — no editing,
+  // never picked or boxed (dot), not saved; they belong to the drawing they were added in. `bgPick` on: the nine view
+  // buttons add a view instead of choosing it; Esc cancels
+  const [bgAt, setBgAt] = useState<{ core: Core; views: string[] } | null>(null)
+  const [bgPick, setBgPick] = useState<Core | null>(null), bgPickOn = useRef(false)
   // the one display kind of the name labels (docs/name-labels-plan.md; bowen 1791731823; dot 1791732110): set only
   // when A / V actually hit a line, a layers row is clicked or a name is found; nothing else changes it
   const [labelKind, setLabelKind] = useState<LabelKind>('line')
@@ -468,6 +479,9 @@ export function App() {
   const applyFrom = applyFromAt !== null && applyFromAt.core === core && applyFromAt.view === shown
   const setApplyFrom = (on: boolean) => setApplyFromAt(on ? { core, view: shown } : null)
   applyFromOn.current = applyFrom
+  const bgViews = bgAt && bgAt.core === core ? bgAt.views : [], bgPicking = bgPick === core
+  bgPickOn.current = bgPicking
+  const setBgViews = (f: (v: string[]) => string[]) => setBgAt({ core, views: f(bgViews) })
   // ended, not paused: coming back to that drawing or view does not bring it back (dot 1791879765)
   useEffect(() => { if (applyFromAt && !applyFrom) setApplyFromAt(null) })
   // lines whose front differs from the angle baseline (stage 2): marked on the canvas
@@ -1171,6 +1185,7 @@ export function App() {
       // Esc first: it cancels a gesture even in playback and with a field focused (dot 1791696958)
       if (e.key === 'Escape' && gesture.current) { gesture.current.cancel('Esc'); e.preventDefault(); return }
       if (e.key === 'Escape' && applyFromOn.current) { setApplyFrom(false); e.preventDefault(); return }
+      if (e.key === 'Escape' && bgPickOn.current) { setBgPick(null); e.preventDefault(); return }
       // playback: Esc clears the playback selection (docs/playback-tools-checklist.md §1)
       if (e.key === 'Escape' && posing.current) setPbSel(v => (v.ids.length ? { core, ids: [] } : v))
       // only a field that takes typing keeps its keys (dot 1791544530), an input method its own (dot 1791727663);
@@ -1449,16 +1464,30 @@ export function App() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2 }} data-testid="views">
           {[45, 0, -45].flatMap(pitch => [-90, 0, 90].map(yaw => {
             const k = `view:${yaw},${pitch}`, on = k === shown
-            return <button key={k} data-view={k} title={applyFrom ? (on ? '当前视角' : `把 ${k} 里选中图层的曲线搬到当前视角`) : k} disabled={applyFrom && on}
-              style={{ fontWeight: on ? 700 : 400, background: on ? '#cde' : applyFrom ? '#fec' : undefined }}
-              onClick={() => { if (!applyFrom) { chooseView(k); return } setApplyFrom(false); run(e => e.applyFromView([...env.current.layers], k)) }}>{yaw},{pitch}</button>
+            return <button key={k} data-view={k} title={applyFrom ? (on ? '当前视角' : `把 ${k} 里选中图层的曲线搬到当前视角`) : bgPicking ? (on ? '当前视角' : `把 ${k} 用彩色线画在背景上`) : k} disabled={(applyFrom || bgPicking) && on}
+              style={{ fontWeight: on ? 700 : 400, background: on ? '#cde' : applyFrom ? '#fec' : bgPicking ? '#e6f4ea' : undefined }}
+              onClick={() => {
+                if (bgPicking) { setBgPick(null); setBgViews(v => (v.includes(k) ? v : [...v, k])); return }
+                if (!applyFrom) { chooseView(k); return }
+                setApplyFrom(false); run(e => e.applyFromView([...env.current.layers], k))
+              }}>{yaw},{pitch}</button>
           }))}
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-          <button data-testid="apply-from" style={{ fontWeight: applyFrom ? 700 : 400, background: applyFrom ? '#fec' : undefined, whiteSpace: 'nowrap' }} onClick={() => setApplyFrom(!applyFrom)}
+          <button data-testid="apply-from" style={{ fontWeight: applyFrom ? 700 : 400, background: applyFrom ? '#fec' : undefined, whiteSpace: 'nowrap' }} onClick={() => { setBgPick(null); setApplyFrom(!applyFrom) }}
             title="把另一个视角里选中图层的曲线（端点位置和两个手柄）原样搬到当前视角；宽度等其他都不动；一步可撤销">从视角应用…</button>
           {applyFrom && <span style={{ color: '#a60' }}>选一个视角，把它的曲线搬到选中的图层（Esc 取消）</span>}
+          <button data-testid="add-view-background" style={{ fontWeight: bgPicking ? 700 : 400, background: bgPicking ? '#e6f4ea' : undefined, whiteSpace: 'nowrap' }}
+            onClick={() => { setApplyFrom(false); setBgPick(bgPicking ? null : core) }}
+            title="把另一个视角的线用彩色画在画布背景上，只用来参考：不能选、不能改、不存进文件">添加视角背景…</button>
+          {bgPicking && <span style={{ color: '#2a7' }}>选一个视角，用彩色线画在背景上（Esc 取消）</span>}
         </div>
+        {bgViews.length > 0 && <div data-testid="view-backgrounds" style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {bgViews.map(v => <span key={v} data-view-background-chip={v} style={{ display: 'inline-flex', alignItems: 'center', gap: 2, border: `2px solid ${VIEW_COLOUR[v] ?? '#888'}`, borderRadius: 4, padding: '0 2px' }}>
+            {v.slice(5)}{v === shown && !pose ? '（当前，不画）' : ''}
+            <button data-remove-view-background={v} title="移除这个视角背景" style={{ border: 0, background: 'none', padding: '0 2px', cursor: 'pointer' }} onClick={() => setBgViews(x => x.filter(y => y !== v))}>×</button>
+          </span>)}
+        </div>}
         <b>Edit</b>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
           {B('Undo', () => (isKeyRun(gesture.current) ? gesture.current!.cancel('undo') : ix.undo()))}{B('Redo', () => (isKeyRun(gesture.current) ? gesture.current!.cancel('redo') : ix.redo()))}
@@ -1656,6 +1685,15 @@ export function App() {
               transform={`rotate(${r.angle} ${r.x} ${r.y})${r.flipped ? ` translate(${r.x} ${r.y}) scale(-1 1) translate(${-r.x} ${-r.y})` : ''}`} onError={() => { const at = core; setRefBroken(b => (b.some(x => x.core === at && x.id === r.id && x.src === r.src) ? b : [...b, { core: at, id: r.id, src: r.src }])) }} />
           })}
           <line x1={s.axis} x2={s.axis} y1={box.y - 1e4} y2={box.y + 1e4} stroke="#9cf" strokeDasharray={`${6 * px} ${4 * px}`} strokeWidth={px} />
+          {/* 视角背景: other views' visible centre lines in their colour, under the drawing; never hit (pointer-events none, and
+              picking reads the core, not the DOM). The current view itself is not drawn over itself. */}
+          {bgViews.filter(v => v !== shown || !!pose).map(v => {
+            const r = core.in(v), visible = new Set(r.snapshot().lines.filter(l => l.state.visible).map(l => l.id)), gv = r.geometry()
+            return <g key={v} data-view-background={v} pointerEvents="none" fill="none" stroke={VIEW_COLOUR[v] ?? '#888'} strokeWidth={1.5 * px} strokeOpacity={0.85} strokeLinecap="round">
+              {gv.lines.filter(G => visible.has(G.id)).map(G => <path key={G.id} d={path(G.curve)} />)}
+              {gv.arcs.filter(a => visible.has(a.lines[0]) || visible.has(a.lines[1])).map(a => <path key={a.key} d={path(a.curve)} />)}
+            </g>
+          })}
           {(() => {
             const paintOf = (id: string) => {
               const l = line(id), on = selLines.includes(l.id), picked = pv.pick?.kind === 'line' && pv.pick.id === l.id
