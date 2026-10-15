@@ -197,6 +197,57 @@ export function deformField(rect: Rect, quad: Quad, bend?: Bend): Field {
   return { map, vector, denominator: (p: Vec) => projection.denominator(bent(p)), affine: false }
 }
 
+// ---- the sphere frame (bowen 1792050227, 1792053212, 1792053508; docs/sphere-frame-checklist.md §1) ------------
+
+export interface Sphere {
+  /** The point the sphere's front pole touches; it stays where it is when the sphere turns. */
+  readonly anchor: Vec
+  /** The sphere's radius: how strongly the drawing bends when turned (larger is flatter). */
+  readonly r: number
+  /** Degrees, below 90 in size: yaw about the vertical axis first, then pitch about the horizontal axis. */
+  readonly yaw: number
+  readonly pitch: number
+  /** Degrees: the in-plane rotation of the result. */
+  readonly roll: number
+  /** Uniform; no separate horizontal / vertical scale. */
+  readonly scale: number
+  readonly offset: Vec
+}
+const DEG = Math.PI / 180
+/**
+ * The sphere frame's field: the drawing lifted onto the front of a sphere (what was drawn is what is seen at rest),
+ * the sphere turned, projected in parallel relative to its turned front pole (so the anchor stays fixed), then
+ * rotated in plane, scaled and moved. A point beyond the sphere or turned past 0.05 r from its edge is refused.
+ */
+export function sphereField(s: Sphere): Field {
+  fv(s.anchor); fv(s.offset); [s.r, s.yaw, s.pitch, s.roll, s.scale].forEach(fn)
+  if (!(s.r > 0) || !(s.scale > 0)) throw Error('球面框的半径和缩放必须大于 0。')
+  if (Math.abs(s.yaw) >= 90 || Math.abs(s.pitch) >= 90) throw Error('球面框的转角必须小于 90°。')
+  const cy = Math.cos(s.yaw * DEG), sy = Math.sin(s.yaw * DEG), cp = Math.cos(s.pitch * DEG), sp = Math.sin(s.pitch * DEG)
+  const cr = Math.cos(s.roll * DEG), sr = Math.sin(s.roll * DEG), r = s.r
+  // R = Rx(pitch) · Ry(yaw): positive yaw moves the front toward +x, positive pitch toward −y (up on screen)
+  const turn = (x: number, y: number, z: number) => { const x1 = cy * x + sy * z, z1 = -sy * x + cy * z; return { x: x1, y: cp * y - sp * z1, z: sp * y + cp * z1 } }
+  const pole = turn(0, 0, r)
+  const place = (d: Vec): Vec => ({ x: s.scale * (cr * d.x - sr * d.y), y: s.scale * (sr * d.x + cr * d.y) })
+  const lift = (p: Vec) => {
+    const qx = fv(p).x - s.anchor.x, qy = p.y - s.anchor.y, z2 = r * r - qx * qx - qy * qy
+    if (!(z2 > 0)) throw Error('有线超出了球面，请把「弧度」调大。')
+    return { qx, qy, z: Math.sqrt(z2) }
+  }
+  const map = (p: Vec): Vec => {
+    const { qx, qy, z } = lift(p), t = turn(qx, qy, z)
+    if (!(t.z > 0.05 * r)) throw Error('有线转到了球的背面，请减小转角或调大「弧度」。')
+    const d = place({ x: t.x - pole.x, y: t.y - pole.y })
+    return fv({ x: s.anchor.x + s.offset.x + d.x, y: s.anchor.y + s.offset.y + d.y })
+  }
+  const vector = (p: Vec, v: Vec): Vec => {
+    fv(v)
+    const { qx, qy, z } = lift(p), dz = -(qx * v.x + qy * v.y) / z, t = turn(v.x, v.y, dz)
+    return fv(place({ x: t.x, y: t.y }))
+  }
+  return { map, vector, denominator: () => 1, affine: false }
+}
+
 // ---- one cubic per source cubic (cubicDeformation.ts) ------------------------------------------
 
 const point = (s: Cubic, t: number): Vec => { const u = 1 - t, a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t; return { x: a * s[0].x + b * s[1].x + c * s[2].x + d * s[3].x, y: a * s[0].y + b * s[1].y + c * s[2].y + d * s[3].y } }

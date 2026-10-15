@@ -32,7 +32,14 @@ Replaces `docs/sphere-domain-checklist.md` (bowen 1792053826: "keep the domain a
 
 - `vector`: the analytic derivative of the above (checked against finite differences).
 - Refusals are thrown errors with those messages, as `deformField`'s; every input and output finite (the `deform/` rules).
-- The curve fit is the existing `fitDeformedCubic` (end points exact, tangents from `vector`, least-squares handles, `maxError`). `denominator ≡ 1` makes its parameter scale 1.
+- **The curve fit** is the existing `fitDeformedCubic`: end points exact, tangents from `vector`, least-squares handles, `maxError`. `denominator ≡ 1` makes its parameter scale 1.
+- **Handles outside the sphere** (dot 1792054665 #5):
+  - a Bézier handle outside the sphere does not put the curve outside;
+  - `fitDeformedCubic` maps all four control points as a guard (right for 四角), so the sphere field carries a flag `controlsOffField: true`;
+  - with it, `fitDeformedCubic` maps only the two end points and checks the handles for finiteness;
+  - the inside / fold checks then act on the actual curve: the end points plus the fit's own 128 samples;
+  - 四角's check is unchanged (the flag is absent there).
+- **Sampled, not conservative:** inside / fold are sampled checks (end points + 128 samples per curve), not a bound over the whole curve. The 「弧度」 range's lower end (1.05 ×) uses the largest distance from the anchor over the same samples, not over the control points.
 
 ## 2. The edit (in `interaction/flows/deform.ts`, nothing new in core)
 - `deformOpFrom` is generalised to take a `Field` (the 四角 call passes `deformField(rect, quad, bend)`, unchanged behaviour).
@@ -46,7 +53,8 @@ Replaces `docs/sphere-domain-checklist.md` (bowen 1792053826: "keep the domain a
   - auto-bind;
   - one undo step.
 - **Source:** the lines as they are in this view now, as 四角. To start from the front's shape, first use the existing 「从视角应用」.
-- **Any view, the front included.** Playback correction poses: if the 四角 tool's playback path takes a `Field` op unchanged, the sphere frame works there too; otherwise not in this version (no special case).
+- **Any view, the front included.**
+- **Playback: disabled in this version** (dot 1792054665 #4). The 四角 tool's playback path assembles `correct` targets itself; it does not call `deformOpFrom`, so a general `Field` does not carry over by itself.
 
 ## 3. The frame (bench + `interaction/flows/deform.ts` session)
 - **Opening:** a new tool 「球面框」 on the selected lines (or the current layer's lines).
@@ -59,8 +67,17 @@ Replaces `docs/sphere-domain-checklist.md` (bowen 1792053826: "keep the domain a
   - yaw, pitch (−85…85°);
   - 「弧度」 = r: from 1.05 × the largest distance of the selection from the anchor (most curved), up to 20 ×; default 1.5 ×.
 - **The sphere is not drawn** (bowen 1792053508).
-- **Live preview** of the frozen op on every change. A refused state (outside, fold, lock) shows its message and keeps the last valid preview. The fit error is shown beside the sliders.
-- **Committing:** Enter or 「应用」. Esc / right-click cancels. After a commit the frame reopens on the result with every slider at zero (each commit is a new edit).
+- **One session = one frozen source** (dot 1792054665 #1):
+  - the target lines and their stored curves are fixed when the frame opens; they never fall back to another layer later;
+  - every change (yaw → pitch → 「弧度」 → scale …) recomputes from that frozen source, never from a previous preview.
+- **Nothing commits by itself:** releasing a slider, losing focus, or arrow keys only change the preview. Only Enter or 「应用」 commits, once, one undo step.
+- **After a commit** the frame reopens on the result: scale 1, 「弧度」 at its new default, everything else 0.
+- **A refused state** (outside, fold, lock) shows its message and keeps the last valid preview, but 「应用」 and Enter are disabled while the current values are invalid (dot 1792054665 #2): the panel never shows one value and commits another.
+- **Cancelled** (preview dropped, nothing written; dot 1792054665 #3) by:
+  - Esc or right-click;
+  - a change of drawing, view, tool or selection;
+  - any edit or undo / redo from elsewhere.
+- **The fit error** is shown beside the sliders.
 
 ## 4. Evidence
 **deform/:**
@@ -71,8 +88,11 @@ Replaces `docs/sphere-domain-checklist.md` (bowen 1792053826: "keep the domain a
 - refusals at |q| = r and at the fold threshold;
 - non-finite input refused.
 
+- a handle outside the sphere with the curve inside: accepted (and 四角's control-point guard unchanged).
+
 **interaction:**
 - package 2's tests 1–10 run with a sphere field: preview = commit, shared points, locks, links, mirror, auto-bind, one undo step.
+- session (dot 1792054665): yaw, then pitch, then 「弧度」 in one session equal one op built with the final values from the frozen source; slider release / blur / arrows commit nothing; an invalid value disables 「应用」 and Enter; each cancel case of §3 drops the preview and writes nothing; playback refuses the tool.
 
 **bench:**
 - open the frame on an eye at view 90,0;
