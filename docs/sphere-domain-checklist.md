@@ -35,13 +35,15 @@ A new module **`src/domains`**: per layer, at most one sphere domain.
   - `yaw`, `pitch` (degrees): turn the sphere;
   - `roll` (degrees): in-plane rotation of the result.
 - **A view without a set** reads the identity: offset 0, scale 1, yaw = pitch = roll = 0, r = the layer's default r (set when added: 1.5 × the largest distance of the layer's front geometry from the anchor).
-- **The front view's set is always the identity** and cannot be edited: the front is where the eye is drawn (bowen 1792052788).
+- **The front view's set:** default the identity. Whether it can be changed (bowen: "any view can scale", 1792053212; dot 1792053573 #1) is asked in Claude 1792053576 Q2.
+  - **Either way, generation always reads the undeformed front source** (the stored front positions), never the front's mapped result (dot 1792053573 #1).
+  - If the front set can change, the front view shows the mapped source too, and editing at the front then goes through the map (decided with bowen's answer).
 
 ## 2. The map (per view or pose; mapping A)
 For a front point p:
 1. q = p − anchor; refused if |q| ≥ r (see §4).
 2. On the sphere: P = (q.x, q.y, √(r² − |q|²)). The front pole is (0, 0, r).
-3. Turn: P′ = R(yaw, pitch) · P; pole′ = R · (0, 0, r).
+3. Turn: P′ = R · P, R = Rx(pitch) · Ry(yaw) (yaw about the vertical axis first, then pitch about the horizontal axis); pole′ = R · (0, 0, r). |yaw| and |pitch| < 90°.
 4. Parallel projection, relative to the turned pole: d = (P′.x − pole′.x, P′.y − pole′.y). This keeps the anchor fixed (dot's "centre fixed").
 5. Result: anchor + offset + scale · Rot(roll) · d.
 
@@ -56,27 +58,53 @@ For a front point p:
 ## 3. Where it is read
 At read time only. The stored positions of the domain layer in views other than the front are left untouched and ignored while the domain exists (removing the domain brings them back; undo-safe, nothing to migrate).
 - **A view's reader** (`core.in(view)`, view ≠ front): a private copy of the state (as `posedState` does today) in which the domain layers' points and handles are replaced by the map of the front geometry with that view's set.
-- **A pose's reader** (`atPose`, `previewAt`): evaluate as today, then the domain layers' points and handles are replaced by the map of the front geometry with the **blended set**. The blend uses the pose's geometric weights of its cell's four views (3a's bilinear weights), each parameter linearly. So in-between angles follow the sphere (乙), not a blend of positions.
-- **Everything downstream** (snapshot, geometry, ink, fills, masks, hit-testing, name labels) reads those readers and follows without change.
+- **A pose's reader** (`atPose`, `previewAt`): evaluate as today, then the domain layers' points and handles are replaced by the map of the front geometry with the **blended set**. The blend uses the pose's geometric weights of its cell's four views (3a's bilinear weights), each parameter linearly (angles in degrees, linearly; scale and r linearly). So in-between angles follow the sphere (乙), not a blend of positions.
+- **One generated state per reader** (dot 1792053573 #3): the overlay is applied inside the reader's state accessor, so every method of that reader reads the same generated state:
+  - `snapshot`, `geometry`, `nearby`, `pickLoop`, `linesInRect`, `loopsAt`, bounds, zones, `copy`;
+  - `core.preview(view, fn)` and `previewAt` apply `fn` to the stored state, then generate.
+  What is drawn and what is hit can never differ.
+- **Everything downstream** (ink, fills, masks, name labels) reads those readers and follows without change.
 - **Unchanged per view:** widths, end strokes, zones, joins. Only positions and handles are generated.
 
 ## 4. Refusals (never repaired)
-- **A point outside the sphere:** any sampled point of the layer's front lines (end points and 16 samples per curve) with |q| ≥ r in some view → refused (`domain-outside`, naming the view).
-- **Folding:** any sampled point turned to depth P′.z ≤ 0.05 r in some view or blended corner → refused (`domain-fold`). A sampled check, as `deform/`'s.
-- **When:** any edit after which some view (or a pose's corner set) would break these is refused whole, whichever edit it is (a view's parameter, or a front edit of the layer's lines). Proposal; dot to review (the alternative, letting a front edit through and showing the view as broken, contradicts "refused, never repaired").
-- **Generated geometry is not edited directly:** at a view ≠ front, an edit that writes positions or handles of a domain layer's points is refused (`domain-generated`): move, handles, 四角, apply-from-view, mirror apply into the layer.
-- **Corrections:** `correct` on a domain layer's controls is refused. Adding a domain to a layer that has corrections is refused (clear them first; the bench already has 「删除选中图层的全部修正」).
-- **Links:** adding a domain to a layer with linked points, and linking into a domain layer, are refused (a linked partner would have to follow generated positions).
+**Validity of one parameter set** (for a view, or a blended set at a pose):
+- every sampled point of the layer's front source (end points and 16 samples per curve) has |q| < r (`domain-outside`);
+- after the turn, depth P′.z > 0.05 r (`domain-fold`).
+These are sampled checks, as `deform/`'s.
+
+**At edit time** (dot 1792053573 #2): an edit is refused whole if, afterwards:
+- any of the 9 views' sets is invalid, or
+- any of a guard grid of poses is invalid: 9 × 9 poses per cell, for the cells touching a changed view (all cells after a front edit).
+The grid is a guard, not a proof that every pose is valid; the next point covers the rest.
+
+**At read time** (dot 1792053573 #2): a pose whose blended set is invalid is refused by `atPose` / `previewAt` (`domain-fold` or `domain-outside`, naming the layer and the pose). The bench already handles a refused pose: it shows `✗` and the message in the status line and draws the view as it does for any refused pose; nothing crashes. Tested at a pose between two valid views that turns through the back.
+
+**Which edits, checked on the final state** (dot 1792053573 #4, "the entry and the final state agree"):
+- at a view ≠ front, an edit is refused (`domain-generated`) if its final state differs from the state before in any domain layer's:
+  - points or lines (added, removed, moved between layers);
+  - stored positions or handles in that view;
+  - joins or links touching its points.
+  This covers every path (move, handles, 四角, split, paste, layer moves, smooth joins, apply-from-view), not just the ones listed. Edits that change only widths, end strokes, zones, visibility or locks stay allowed (they are not generated).
+- at the front, every edit is allowed, then the validity checks above run.
+- corrections:
+  - `correct` touching a domain layer's controls (points or handle ends) is refused;
+  - adding a domain to a layer with any correction (point or handle) is refused.
+- links and mirror pairs:
+  - adding a domain to a layer with linked points or with points in a mirror pair (`apply` pairs) is refused;
+  - creating a link or a mirror pair touching a domain layer is refused.
 
 ## 5. Edits
 - `addSphereDomain(layer)`, `removeSphereDomain(layer)`, `setSphereAnchor(layer, at)`, `setSphere(layer, view, partialSet)`; each one undo step.
-- Effects: `shared: ['domains']`.
+- Effects: `shared: ['domains']`, `settle: none`. A parameter edit writes `domains` only: no settling, no merging, the unused stored views untouched (dot 1792053573 #5).
 - Copy layer carries the domain; deleting a layer drops it.
 - Playback: the gate refuses all four (setting 30° / 60° comes later through the same logic, bowen 1792052788).
 
 ## 6. File
 - Archive 13 → 14: `domains` holds the per-layer records above.
-- Open checks: known layers; finite numbers; scale > 0; r > 0; known view keys; no set for the front.
+- Open checks: the shape (known layers; finite numbers; scale > 0; r > 0; |yaw|, |pitch| < 90; known view keys), and the same meaning as the edits (dot 1792053573 #5):
+  - the 9 views' sets valid;
+  - no corrections, links or mirror pairs touching a domain layer.
+  A file that fails is refused.
 - `legacy.fromV13`: identity (no domains).
 
 ## 7. Bench (first version)
