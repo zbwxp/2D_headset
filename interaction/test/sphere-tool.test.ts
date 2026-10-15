@@ -83,6 +83,20 @@ describe('the sphere frame session', () => {
     expect(t.d.snapshot().points).toEqual(expected(start, v))
   })
 
+  it('sphereShown: the drawing as the current values would leave it, read only; after apply it equals the drawing; none without a session', () => {
+    const t = setup(), start = save(t.d)
+    expect(t.ix.sphereShown()).toBeNull()
+    t.ix.setTool('sphere')
+    t.ix.sphereSet({ yaw: 35 })
+    const shown = t.ix.sphereShown()!.snapshot().points
+    expect(shown).not.toEqual(t.d.snapshot().points)
+    expect(save(t.d)).toBe(start)
+    t.ix.sphereApply()
+    expect(t.d.snapshot().points).toEqual(shown)
+    t.ix.key('Escape')
+    expect(t.ix.sphereShown()).toBeNull()
+  })
+
   it('after apply the frame reopens on the result: scale 1, 「弧度」 at the new default, the rest 0', () => {
     const t = setup()
     t.ix.setTool('sphere')

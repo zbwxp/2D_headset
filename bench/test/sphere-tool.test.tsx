@@ -45,14 +45,15 @@ async function setup() {
 }
 
 describe('the sphere frame in the bench', () => {
-  it('opens on the selection; a slider previews (frame and ghost drawn, nothing written); 「应用」 commits once; undo restores', async () => {
+  it('opens on the selection; a slider previews in place (the lines drawn turned, nothing written); 「应用」 commits once; undo restores', async () => {
     const t = await setup(), start = save(bench().core), before = t.points()
     await act(async () => { t.button('球面框')!.click() })
     expect(t.q('sphere-panel')).not.toBeNull()
     expect(t.q('sphere-frame')).not.toBeNull()
     expect((t.q('sphere-apply') as HTMLButtonElement).disabled).toBe(false)
+    const drawnBefore = (bench() as unknown as { svg(): string }).svg()
     await t.slide('sphere-yaw', 35)
-    expect(t.host.querySelectorAll('[data-sphere-ghost]').length).toBeGreaterThan(0)
+    expect((bench() as unknown as { svg(): string }).svg()).not.toBe(drawnBefore) // the canvas shows the turned lines
     expect(save(bench().core)).toBe(start)
     await act(async () => { (t.q('sphere-apply') as HTMLButtonElement).click() })
     expect(t.points()).not.toBe(before)

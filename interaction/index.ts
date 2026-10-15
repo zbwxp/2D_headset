@@ -6,7 +6,7 @@
 // clipboard. Each flow holds only its own temporary state; the drawing, the selection and
 // the history are core's, and every change goes through core's public operations as one
 // edit. Nothing here draws: `preview()` describes what to show, as plain data.
-import type { Snapshot, Vec } from '../src'
+import type { Core, Snapshot, Vec } from '../src'
 import { createCtx, POINT_TOOLS, type Env, type Flow, type Mods, type Options, type Preview, type Tool } from './base'
 import { fromError, note } from './feedback'
 import { straightHandles } from './flows/follow'
@@ -82,6 +82,8 @@ export interface Interaction {
   sphereSet(values: Partial<Pick<SphereValues, 'yaw' | 'pitch' | 'r' | 'roll' | 'scale'>>): void
   sphereApply(): void
   sphereDone(): void
+  /** The drawing as the sphere frame's current valid values would leave it (read only), or null: the app draws it in place. */
+  sphereShown(): ReturnType<Core['preview']>
   preview(): Preview
   /**
    * What the last press with V or A picked: 'line', 'point', 'handle', or null when it picked nothing
@@ -202,6 +204,7 @@ export function createInteraction(env: Env): Interaction {
     sphereSet: v => act(() => sf.set(v)),
     sphereApply: () => act(() => sf.apply()),
     sphereDone: () => act(() => sf.end()),
+    sphereShown: () => sf.shown(),
     lastPress: () => st.lastPress,
     keyUp: name => act(() => st.keyUp(name)),
     moving: () => st.moving,

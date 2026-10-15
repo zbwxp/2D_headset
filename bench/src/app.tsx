@@ -476,7 +476,11 @@ export function App() {
   // another App changed the shared drawing must not start a correction (dot 1791697642)
   const frame = useRef<{ core: Core; text: string } | null>(null)
   frame.current = pose || moveRef ? { core, text: save(core) } : null
-  const reader = posed && !(posed instanceof Error) ? posed : core.in(poseView ?? shown)
+  const ixHold = useRef<ReturnType<typeof createInteraction> | null>(null)
+  // the sphere frame shows its result in place (bowen 1792057134): the canvas reads core's preview of the current values
+  const ixNow = ixHold.current // the interaction is made further down; this frame reads the one the last frame made
+  const sphereShown = !pose && ixNow?.tool === 'sphere' ? ixNow.sphereShown() : null
+  const reader = posed && !(posed instanceof Error) ? posed : sphereShown ?? core.in(poseView ?? shown)
   const s = reader.snapshot(), g = reader.geometry(), zones = reader.zones()
   // yaw < 0 stacks the layers by the left order (bowen 1791995249; docs/left-layer-order-checklist.md): the panel shows
   // this frame's order; a side change remounts it, so a drag begun on one side never writes the other's (dot 1791997825)
@@ -517,6 +521,7 @@ export function App() {
       const a = (t.kind === 'line' ? c.lines : c.fills).get(t.id)
       return a !== undefined && (t.kind === 'line' ? maskDistance(a, at) > reach : !maskContains(a, at))
     } })).current
+  ixHold.current = ix
   useEffect(() => ix.subscribe(bump), [ix])
   // autosave: restore first (an Open of the stored text), then save every change in order; a late
   // restore after unmount applies nothing (the package checks its owner)
@@ -1126,6 +1131,7 @@ export function App() {
    */
   const openField = useRef<null | { end(): void }>(null)
   const sphereStart = useRef<number | null>(null) // a sphere slider's value when its slide began (Esc puts it back)
+  const sphereSliding = useRef<string | null>(null) // which sphere slider is sliding: its value prop holds still meanwhile
   const endOpenField = () => { const f = openField.current; openField.current = null; f?.end() }
   const sliderHooks = {
     onStart: (d: { input: 'drag' | 'keys'; pointerId?: number; cancel(): void }) => {
@@ -1414,9 +1420,10 @@ export function App() {
             const sv = pv.sphere, unit = sv.range.rMin / 1.05
             // the shared slider module (the bench's rule): a slide or a typed value only previews; Esc puts the slide's start back
             const row = (label: string, key: 'yaw' | 'pitch' | 'r', lo: number, hi: number, steps: { step: number; long: number; short: number }) =>
-              <Slider key={key} label={label} value={sv.values[key]} identity={'sphere-' + key} accept={v => v >= lo && v <= hi} track={[lo, hi]} steps={steps}
+              <Slider key={key} label={label} value={sphereSliding.current === key && sphereStart.current !== null ? sphereStart.current : sv.values[key]} identity={'sphere-' + key} accept={v => v >= lo && v <= hi} track={[lo, hi]} steps={steps}
                 fieldAttrs={{ 'data-testid': 'sphere-' + key }} {...sliderHooks}
-                onStart={d => { sphereStart.current = sv.values[key]; return sliderHooks.onStart(d) }}
+                onStart={d => { const ok = sliderHooks.onStart(d); if (ok) { sphereStart.current = sv.values[key]; sphereSliding.current = key } return ok }}
+                onEnd={() => { sphereSliding.current = null; sliderHooks.onEnd() }}
                 onPreview={v => ix.sphereSet({ [key]: v })} onCommit={v => ix.sphereSet({ [key]: v })}
                 onCancel={() => { if (sphereStart.current !== null) ix.sphereSet({ [key]: sphereStart.current }) }} />
             return <>
@@ -1797,8 +1804,6 @@ export function App() {
           {!inBetween && !restoring && pv.sphere && (() => {
             const sv = pv.sphere, f = sv.frame, c = sv.valid ? '#1f8a70' : '#c00'
             return <g data-testid="sphere-frame" pointerEvents="none">
-              {sv.lines.map(l => <path key={'sg' + l.id} data-sphere-ghost={l.id} d={path(l.curve)} fill="none" stroke={c} strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />)}
-              {sv.arcs.map(a => <path key={'sa' + a.key} d={path(a.curve)} fill="none" stroke={c} strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />)}
               <path d={f.corners.map((p, i) => `${i ? 'L' : 'M'}${p.x} ${p.y}`).join(' ') + ' Z'} fill="none" stroke={c} strokeWidth={1.5 * px} />
               <line x1={f.rotateBase.x} y1={f.rotateBase.y} x2={f.rotate.x} y2={f.rotate.y} stroke={c} strokeWidth={px} />
               <circle data-sphere-rotate="" cx={f.rotate.x} cy={f.rotate.y} r={5 * px} fill="#fff" stroke={c} strokeWidth={1.5 * px} />

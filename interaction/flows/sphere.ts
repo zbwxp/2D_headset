@@ -3,7 +3,7 @@
 // One session = one frozen source: every change recomputes the op from the curves read when it opened. Nothing commits
 // by itself; only apply() writes, once, one undo step (dot 1792054665).
 import { isRestSphere, type PlanLine, type Rect, type Sphere } from '../../deform'
-import type { Vec } from '../../src'
+import type { Core, Vec } from '../../src'
 import type { Ctx, Flow, Owned, Preview } from '../base'
 import { fromError, note } from '../feedback'
 import { planLines, sphereOpFrom, type DeformOp } from './deform'
@@ -59,9 +59,13 @@ interface Session {
   op: DeformOp | null
   refused?: string
   ghost: { lines: { id: string; curve: Vec[] }[]; arcs: { key: string; curve: Vec[] }[] } | null
+  /** Core's preview of the last valid values: the drawing as 「应用」 would leave it (bowen 1792057134: shown in place). */
+  shown: Shown | null
   mark: string
   drag?: { control: SphereControl; from: Vec; start: SphereValues }
 }
+
+type Shown = NonNullable<ReturnType<Core['preview']>>
 
 export interface SphereFlow extends Flow {
   readonly dragging: boolean
@@ -76,6 +80,8 @@ export interface SphereFlow extends Flow {
   apply(): void
   /** Another view, playback, 完成: the session ends; nothing written. */
   end(): void
+  /** The drawing as the last valid values would leave it — read only, never written; null without a session. */
+  shown(): Shown | null
 }
 
 export function sphereFlow(ctx: Ctx): SphereFlow {
@@ -103,7 +109,7 @@ export function sphereFlow(ctx: Ctx): SphereFlow {
       const reach = Math.max(reachOf(lines, anchor), 1e-6)
       const values: SphereValues = { yaw: 0, pitch: 0, r: SPHERE_R.start * reach, roll: 0, scale: 1, offset: { x: 0, y: 0 } }
       const sess = { owned, ids }
-      s = { ...sess, lines, box, anchor, reach, values, op: null, ghost: null, mark: fingerprint(sess) }
+      s = { ...sess, lines, box, anchor, reach, values, op: null, ghost: null, shown: null, mark: fingerprint(sess) }
       compute(values)
     } catch (err) { ctx.feedback = fromError(err) }
   }
@@ -121,6 +127,7 @@ export function sphereFlow(ctx: Ctx): SphereFlow {
     try {
       const core = s!.owned.core, view = s!.owned.view, shown = core.preview(view, op.run)
       if (shown) {
+        s!.shown = shown
         const g0 = core.in(view).geometry(), g1 = shown.geometry(), key = (c: readonly Vec[]) => JSON.stringify(c)
         const before = new Map(g0.lines.map(l => [l.id, key(l.curve)])), arcsBefore = new Map(g0.arcs.map(a => [a.key, key(a.curve)]))
         s!.ghost = {
@@ -181,6 +188,7 @@ export function sphereFlow(ctx: Ctx): SphereFlow {
       if (ids.every(id => snap.lines.some(l => l.id === id))) open(ids); else s = null
     },
     end() { s = null },
+    shown() { return alive() ? s!.shown : null },
     /** Esc: while dragging, the values go back to where the drag began; otherwise the session ends, nothing written. */
     cancel() {
       if (!s) return false
