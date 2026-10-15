@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest'
 import { Core, save, type Editor, type Vec } from '../../src'
 import { fitDeformedCubic, sphereField, type Cubic, type Sphere } from '../../deform'
-import { sphereOp } from '../flows/deform'
+import { sphereOp, sphereOpFrom } from '../flows/deform'
 
 const P = (x: number, y: number): Vec => ({ x, y })
 const FRONT = 'view:0,0', SIDE = 'view:90,0'
@@ -187,5 +187,15 @@ describe('the sphere frame at rest (dot 1792055264)', () => {
     expect(save(d)).toBe(text)
     d.undo()
     expect(d.snapshot().lines.find(l => l.id === 'mn')!.state.visible).toBe(true) // the earlier step, not a rest apply
+  })
+})
+
+describe('the rest path still checks its source (dot 1792055651)', () => {
+  it('a non-finite handle or point in the frozen curves is refused at rest too', () => {
+    const rest: Sphere = { ...sphere, yaw: 0, pitch: 0, roll: 0, scale: 1, offset: P(0, 0) }
+    const ok = { id: 'q', a: 'a', b: 'b', curve: [P(0, 0), P(1, 1), P(2, 1), P(3, 0)] as unknown as Cubic }
+    expect(() => sphereOpFrom([ok], rest)).not.toThrow()
+    expect(() => sphereOpFrom([{ ...ok, curve: [P(0, 0), P(NaN, 1), P(2, 1), P(3, 0)] as unknown as Cubic }], rest)).toThrow('有限数')
+    expect(() => sphereOpFrom([{ ...ok, curve: [P(0, 0), P(1, 1), P(2, 1), P(Infinity, 0)] as unknown as Cubic }], rest)).toThrow('有限数')
   })
 })

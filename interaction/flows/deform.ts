@@ -62,7 +62,10 @@ export function sphereOp(core: Core, view: string, lines: readonly string[], sph
  */
 export function sphereOpFrom(lines: readonly PlanLine[], sphere: Sphere): DeformOp {
   const field = sphereField(sphere)
-  return isRestSphere(sphere) ? { run: () => {}, maxError: 0 } : fieldOpFrom(lines, field)
+  if (!isRestSphere(sphere)) return fieldOpFrom(lines, field)
+  // still a non-finite source is refused at rest (dot 1792055651): the rest field's map is the finiteness check, no refit
+  for (const l of lines) l.curve.forEach(field.map)
+  return { run: () => {}, maxError: 0 }
 }
 
 // ---- the tool's session (package 3) ------------------------------------------------------------------
