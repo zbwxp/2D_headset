@@ -7,7 +7,7 @@ import { fromError, type Feedback } from './feedback'
 
 export type Id = string
 export type Unit = Snapshot['selection'][number]
-export type Tool = 'pen' | 'V' | 'A' | 'split' | 'bind' | 'merge' | 'link' | 'unbind' | 'join' | 'fill' | 'deform'
+export type Tool = 'pen' | 'V' | 'A' | 'split' | 'bind' | 'merge' | 'link' | 'unbind' | 'join' | 'fill' | 'deform' | 'sphere'
 /** `follow`: a move's handles follow their lines' chords (docs/handle-follow-checklist.md; on by default). */
 export interface Options { joinMode: 'bound' | 'smooth' | 'cusp' | 'arc'; radius: number; color: string; follow: boolean }
 /** `meta`: ⌘ or Ctrl, for the shortcuts; `ctrl` alone and `repeat` (a held key) are read by moving with arrow keys only. */
@@ -41,7 +41,7 @@ export interface Env {
  * every layer.
  */
 export const SCOPE: Record<Tool, 'selected' | 'current' | 'all'> = {
-  V: 'selected', A: 'selected', bind: 'selected', split: 'selected', unbind: 'selected', join: 'selected', fill: 'selected', deform: 'selected',
+  V: 'selected', A: 'selected', bind: 'selected', split: 'selected', unbind: 'selected', join: 'selected', fill: 'selected', deform: 'selected', sphere: 'selected',
   // across layers too, but only the selected ones: select the layers to edit, then act (bowen 1791899593; they were 'all')
   merge: 'selected', link: 'selected',
   pen: 'current', // a new line goes into the current layer, and both ends of a line are in one layer
@@ -97,6 +97,22 @@ export interface Preview {
     lines: { id: Id; curve: Vec[] }[] | null
     arcs: { key: string; curve: Vec[] }[] | null
     maxError: number
+    dragging: boolean
+    refused?: string
+  }
+  /**
+   * The 球面变形框 (docs/sphere-frame-checklist.md §3): the frame (corners and rotate handle, as drawn and hit), the panel's
+   * values and ranges, the lines as the current valid values would write them (the last valid ones while the values are
+   * refused), the fit error, and whether 「应用」 may commit.
+   */
+  sphere?: {
+    frame: { corners: Vec[]; rotate: Vec; rotateBase: Vec }
+    values: { yaw: number; pitch: number; r: number; roll: number; scale: number; offset: Vec }
+    range: { rMin: number; rMax: number; turn: number }
+    lines: { id: Id; curve: Vec[] }[]
+    arcs: { key: string; curve: Vec[] }[]
+    maxError: number | null
+    valid: boolean
     dragging: boolean
     refused?: string
   }
