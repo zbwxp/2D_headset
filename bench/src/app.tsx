@@ -279,7 +279,7 @@ function v2Eye() {
   })
 }
 
-const TOOLS: [Tool, string][] = [['pen', 'Pen P'], ['V', 'V group'], ['A', 'A direct'], ['split', 'Split'], ['bind', 'Bind B'], ['merge', 'Merge pos M'], ['link', 'Link L'], ['unbind', 'Unbind U'], ['join', 'Join J'], ['fill', 'Fill F'], ['deform', '四角/曲边']]
+const TOOLS: [Tool, string][] = [['pen', 'Pen P'], ['V', 'V group'], ['A', 'A direct'], ['split', 'Split'], ['bind', 'Bind B'], ['merge', 'Merge pos M'], ['link', 'Link L'], ['unbind', 'Unbind U'], ['join', 'Join J'], ['fill', 'Fill F'], ['deform', '四角/曲边'], ['sphere', '球面框']]
 
 /** The autosave store (docs/autosave-plan.md): IndexedDB in a browser; a test may give its own; none without either. */
 const autosaveStore = (): Store | undefined => (window as unknown as { benchStore?: Store }).benchStore ?? (typeof indexedDB !== 'undefined' ? indexedDbStore() : undefined)
@@ -1125,6 +1125,7 @@ export function App() {
    * — as leaving it would — before any other input begins (dot 1791770098).
    */
   const openField = useRef<null | { end(): void }>(null)
+  const sphereStart = useRef<number | null>(null) // a sphere slider's value when its slide began (Esc puts it back)
   const endOpenField = () => { const f = openField.current; openField.current = null; f?.end() }
   const sliderHooks = {
     onStart: (d: { input: 'drag' | 'keys'; pointerId?: number; cancel(): void }) => {
@@ -1406,6 +1407,31 @@ export function App() {
             <div data-testid="deform-error" style={{ color: '#555' }}>约束前采样拟合误差 {pv.deform.maxError.toFixed(3)}</div>
             <div style={{ display: 'flex', gap: 3 }}><button data-testid="deform-reset" onClick={() => ix.deformReset()}>重置变形框</button><button data-testid="deform-done" onClick={() => ix.deformDone()}>完成</button></div>
           </> : <div style={{ color: '#666' }}>先用 V 或 A 选中要变形的线，再选这个工具</div>}
+        </div>}
+        {/* 球面变形框 (docs/sphere-frame-checklist.md §3): sliders only preview; 「应用」 / Enter is the one commit, disabled while the values are refused */}
+        {ix.tool === 'sphere' && <div data-testid="sphere-panel">
+          {pv.sphere ? (() => {
+            const sv = pv.sphere, unit = sv.range.rMin / 1.05
+            // the shared slider module (the bench's rule): a slide or a typed value only previews; Esc puts the slide's start back
+            const row = (label: string, key: 'yaw' | 'pitch' | 'r', lo: number, hi: number, steps: { step: number; long: number; short: number }) =>
+              <Slider key={key} label={label} value={sv.values[key]} identity={'sphere-' + key} accept={v => v >= lo && v <= hi} track={[lo, hi]} steps={steps}
+                fieldAttrs={{ 'data-testid': 'sphere-' + key }} {...sliderHooks}
+                onStart={d => { sphereStart.current = sv.values[key]; return sliderHooks.onStart(d) }}
+                onPreview={v => ix.sphereSet({ [key]: v })} onCommit={v => ix.sphereSet({ [key]: v })}
+                onCancel={() => { if (sphereStart.current !== null) ix.sphereSet({ [key]: sphereStart.current }) }} />
+            return <>
+              {row('yaw°', 'yaw', -sv.range.turn, sv.range.turn, { step: 1, long: 10, short: 0.1 })}
+              {row('pitch°', 'pitch', -sv.range.turn, sv.range.turn, { step: 1, long: 10, short: 0.1 })}
+              {row('弧度', 'r', sv.range.rMin, sv.range.rMax, { step: unit * 0.05, long: unit * 0.5, short: unit * 0.005 })}
+              <div style={{ color: '#555' }}>弧度 {(sv.values.r / unit).toFixed(2)}× · 缩放 {sv.values.scale.toFixed(2)} · 旋转 {sv.values.roll.toFixed(0)}° · 拖框内平移，拉角缩放，拉顶上圆点旋转</div>
+              {sv.refused ? <div data-testid="sphere-refused" style={{ color: '#c00' }}>{sv.refused}</div>
+                : <div data-testid="sphere-error" style={{ color: '#555' }}>约束前采样拟合误差 {sv.maxError === null ? '—' : sv.maxError.toFixed(3)}</div>}
+              <div style={{ display: 'flex', gap: 3 }}>
+                <button data-testid="sphere-apply" disabled={!sv.valid} onClick={() => ix.sphereApply()}>应用（Enter）</button>
+                <button data-testid="sphere-done" onClick={() => ix.sphereDone()}>完成</button>
+              </div>
+            </>
+          })() : <div style={{ color: '#666' }}>先用 V 或 A 选中要变形的线，再选这个工具</div>}
         </div>}
         <b>View</b>
         {/* the nine views (step 7): columns yaw −90 / 0 / +90, rows pitch +45 / 0 / −45 */}
@@ -1765,6 +1791,18 @@ export function App() {
               </g>)}
               {f.midpoints.map(m => <path key={'m' + m.edge} data-deform-midpoint={m.edge} d={`M${m.at.x} ${m.at.y - 5 * px} l${5 * px} ${5 * px} ${-5 * px} ${5 * px} ${-5 * px} ${-5 * px} Z`} fill={c} stroke="#fff" strokeWidth={px} />)}
               {f.corners.map((q, i) => <rect key={'c' + i} data-deform-corner={i} x={q.x - 6 * px} y={q.y - 6 * px} width={12 * px} height={12 * px} fill="#fff" stroke={c} strokeWidth={2 * px} />)}
+            </g>
+          })()}
+          {/* the 球面变形框: the frame (corners scale, the round handle rotates, inside moves) and the lines as 「应用」 would write them */}
+          {!inBetween && !restoring && pv.sphere && (() => {
+            const sv = pv.sphere, f = sv.frame, c = sv.valid ? '#1f8a70' : '#c00'
+            return <g data-testid="sphere-frame" pointerEvents="none">
+              {sv.lines.map(l => <path key={'sg' + l.id} data-sphere-ghost={l.id} d={path(l.curve)} fill="none" stroke={c} strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />)}
+              {sv.arcs.map(a => <path key={'sa' + a.key} d={path(a.curve)} fill="none" stroke={c} strokeDasharray={`${4 * px} ${3 * px}`} strokeWidth={1.5 * px} />)}
+              <path d={f.corners.map((p, i) => `${i ? 'L' : 'M'}${p.x} ${p.y}`).join(' ') + ' Z'} fill="none" stroke={c} strokeWidth={1.5 * px} />
+              <line x1={f.rotateBase.x} y1={f.rotateBase.y} x2={f.rotate.x} y2={f.rotate.y} stroke={c} strokeWidth={px} />
+              <circle data-sphere-rotate="" cx={f.rotate.x} cy={f.rotate.y} r={5 * px} fill="#fff" stroke={c} strokeWidth={1.5 * px} />
+              {f.corners.map((q, i) => <rect key={'sc' + i} data-sphere-corner={i} x={q.x - 5 * px} y={q.y - 5 * px} width={10 * px} height={10 * px} fill="#fff" stroke={c} strokeWidth={1.5 * px} />)}
             </g>
           })()}
           {!inBetween && pv.handles.map(({ line: id, end }) => {
