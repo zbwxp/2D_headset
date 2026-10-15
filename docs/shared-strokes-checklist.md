@@ -5,6 +5,9 @@
 - bowen 1792057731: "如果没有了那么所有笔触就都归元曲线"; the transition-zone length too ("是的").
 - dot 1792057535: list each value's storage and old-file rule, and review the migration. Do not sync the UI while different per-view values remain underneath.
 
+**Review (dot, after 9c7cf05):** storage and "check all old data, then migrate" accepted; the three behaviours as proposed (mirror from any view with the lock checks kept, split by the edit's view, playback lets the five stroke calls through with targets, locks and undo checked, no new join / mode change). Wording fix taken in §3: what is shared is the manual zone and the automatic *desired* length; the actual length in `zones()`, limited by the lines' lengths, still varies by view and pose.
+**bowen:** "旧稿按照0，0 的为准" — old files take the front's values, side-only end strokes and zones included (§4).
+
 **What it replaces.** These earlier rules were implementation choices; bowen's rule now decides:
 - strokes per view (bowen 1791650085);
 - step 4 rule 3 (end strokes per view, `docs/step4-per-view-joins.md`);
@@ -49,7 +52,7 @@ The calls are bound to a view as today, but that view no longer matters for them
 - **Removed:** `views.broadcastStroke`, `Editor.broadcastStroke`, `interaction.broadcastStroke`, its effects row, and the bench button 「Broadcast stroke」. With one value there is nothing to broadcast.
 
 ## 3. Reads and playback
-- **Views.** `line.stroke`, `pointWidth`, `endStroke`, `rows()[].zone` and `zones()` give the shared value in every view. The automatic zone already follows the widths, so it is equal in every view too.
+- **Views.** `line.stroke`, `pointWidth`, `endStroke` and `rows()[].zone` give the shared value in every view. The automatic desired length follows the widths, so it is equal in every view too. `zones()` gives the actual length, limited by the lines' lengths in that view, so it still varies by view and pose (dot).
 - **evaluate.**
   - `Model.views[]` loses `lines[].stroke`, `zones` and `ends`; it keeps positions and handles.
   - `Posed` loses them too. `appearance` (slot A) goes, so nothing jumps at the dominant view any more.
