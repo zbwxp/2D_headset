@@ -57,7 +57,7 @@ describe('sphereField', () => {
   })
 
   it('refuses a point on or beyond the sphere, and a point turned to the back', () => {
-    const f = sphereField(rest)
+    const f = sphereField({ ...rest, yaw: 1 }) // at rest the field is the exact identity and refuses nothing (dot 1792055264)
     expect(() => f.map({ x: 13, y: 20 })).toThrow('超出了球面')
     expect(() => f.map({ x: 13.1, y: 20 })).toThrow('超出了球面')
     expect(() => f.map({ x: 12.99, y: 20 })).not.toThrow()
@@ -100,5 +100,17 @@ describe('sphereField with the fit (dot 1792054665 #5)', () => {
   it('a non-finite handle is still refused', () => {
     const f = sphereField(rest)
     expect(() => fitDeformedCubic([{ x: 9, y: 20 }, { x: NaN, y: 20 }, { x: 11, y: 20 }, { x: 11, y: 20 }], f)).toThrow()
+  })
+})
+
+describe('sphereField contracts (dot 1792055327)', () => {
+  it('vector refuses a folded point as map does; denominator refuses a non-finite point; at rest the field is the exact identity', () => {
+    const g = sphereField({ ...rest, yaw: 80 })
+    expect(() => g.vector({ x: 12.5, y: 20 }, { x: 1, y: 0 })).toThrow('背面')
+    expect(() => g.denominator({ x: NaN, y: 0 })).toThrow('有限数')
+    const f = sphereField({ ...rest, r: 0.5 })
+    expect(f.affine).toBe(true)
+    expect(f.map({ x: 0.1 + 0.2, y: 7 })).toEqual({ x: 0.1 + 0.2, y: 7 })
+    expect(() => f.denominator({ x: Infinity, y: 0 })).toThrow('有限数')
   })
 })

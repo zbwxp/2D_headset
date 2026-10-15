@@ -4,7 +4,7 @@
 // dragged (v103 7205381 src/ui/drawing/{cageEditorController.ts, DeformCageOverlay.tsx}). The same operation is
 // previewed (core.preview) and committed (core.editIn), so the preview is the commit's pipeline.
 import {
-  bendEdges, deformField, deformPlan, inverse3, map3, neutralBend, quadProjection, rectQuad, sphereField,
+  bendEdges, deformField, deformPlan, inverse3, map3, neutralBend, quadProjection, rectQuad, sphereField, isRestSphere,
   type Bend, type BendHandles, type Cubic, type Field, type Plan, type PlanLine, type Quad, type Rect, type Sphere,
 } from '../../deform'
 import type { Core, Editor, Vec } from '../../src'
@@ -54,7 +54,15 @@ export function deformOp(core: Core, view: string, lines: readonly string[], rec
 }
 /** The sphere frame's edit of `lines` in `view`: their stored curves read now and frozen, then the sphere's field (bowen 1792054134: an edit). */
 export function sphereOp(core: Core, view: string, lines: readonly string[], sphere: Sphere): DeformOp {
-  return fieldOpFrom(planLines(core, view, lines), sphereField(sphere))
+  return sphereOpFrom(planLines(core, view, lines), sphere)
+}
+/**
+ * The sphere frame's op on frozen curves. At rest it writes nothing at all — not a numeric refit of the same curves,
+ * which would change the file in its last digits and add an undo step (dot 1792055264).
+ */
+export function sphereOpFrom(lines: readonly PlanLine[], sphere: Sphere): DeformOp {
+  const field = sphereField(sphere)
+  return isRestSphere(sphere) ? { run: () => {}, maxError: 0 } : fieldOpFrom(lines, field)
 }
 
 // ---- the tool's session (package 3) ------------------------------------------------------------------

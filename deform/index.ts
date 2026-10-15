@@ -220,6 +220,8 @@ export interface Sphere {
   readonly offset: Vec
 }
 const DEG = Math.PI / 180
+/** No turn, no roll, scale 1, no offset: the sphere frame at rest (r does not matter). */
+export const isRestSphere = (s: Sphere) => s.yaw === 0 && s.pitch === 0 && s.roll === 0 && s.scale === 1 && s.offset.x === 0 && s.offset.y === 0
 /**
  * The sphere frame's field: the drawing lifted onto the front of a sphere (what was drawn is what is seen at rest),
  * the sphere turned, projected in parallel relative to its turned front pole (so the anchor stays fixed), then
@@ -229,6 +231,8 @@ export function sphereField(s: Sphere): Field {
   fv(s.anchor); fv(s.offset); [s.r, s.yaw, s.pitch, s.roll, s.scale].forEach(fn)
   if (!(s.r > 0) || !(s.scale > 0)) throw Error('球面框的半径和缩放必须大于 0。')
   if (Math.abs(s.yaw) >= 90 || Math.abs(s.pitch) >= 90) throw Error('球面框的转角必须小于 90°。')
+  // at rest the field is the exact identity: no numeric refit, so applying it changes nothing at all (dot 1792055264)
+  if (isRestSphere(s)) return { map: fv, vector: (p: Vec, v: Vec) => { fv(p); return fv(v) }, denominator: (p: Vec) => { fv(p); return 1 }, affine: true, controlsOffField: true }
   const cy = Math.cos(s.yaw * DEG), sy = Math.sin(s.yaw * DEG), cp = Math.cos(s.pitch * DEG), sp = Math.sin(s.pitch * DEG)
   const cr = Math.cos(s.roll * DEG), sr = Math.sin(s.roll * DEG), r = s.r
   // R = Rx(pitch) · Ry(yaw): positive yaw moves the front toward +x, positive pitch toward −y (up on screen)
@@ -240,18 +244,22 @@ export function sphereField(s: Sphere): Field {
     if (!(z2 > 0)) throw Error('有线超出了球面，请把「弧度」调大。')
     return { qx, qy, z: Math.sqrt(z2) }
   }
-  const map = (p: Vec): Vec => {
-    const { qx, qy, z } = lift(p), t = turn(qx, qy, z)
+  /** The point on the turned sphere; off the sphere or past the fold is refused, for map and vector alike (dot 1792055327). */
+  const turned = (p: Vec) => {
+    const q = lift(p), t = turn(q.qx, q.qy, q.z)
     if (!(t.z > 0.05 * r)) throw Error('有线转到了球的背面，请减小转角或调大「弧度」。')
-    const d = place({ x: t.x - pole.x, y: t.y - pole.y })
+    return { ...q, t }
+  }
+  const map = (p: Vec): Vec => {
+    const { t } = turned(p), d = place({ x: t.x - pole.x, y: t.y - pole.y })
     return fv({ x: s.anchor.x + s.offset.x + d.x, y: s.anchor.y + s.offset.y + d.y })
   }
   const vector = (p: Vec, v: Vec): Vec => {
     fv(v)
-    const { qx, qy, z } = lift(p), dz = -(qx * v.x + qy * v.y) / z, t = turn(v.x, v.y, dz)
+    const { qx, qy, z } = turned(p), dz = -(qx * v.x + qy * v.y) / z, t = turn(v.x, v.y, dz)
     return fv(place({ x: t.x, y: t.y }))
   }
-  return { map, vector, denominator: () => 1, affine: false, controlsOffField: true }
+  return { map, vector, denominator: (p: Vec) => { fv(p); return 1 }, affine: false, controlsOffField: true }
 }
 
 // ---- one cubic per source cubic (cubicDeformation.ts) ------------------------------------------

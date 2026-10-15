@@ -177,3 +177,15 @@ describe('the sphere frame edit', () => {
     expect(d.snapshot().points.length).toBeLessThan(points)
   })
 })
+
+describe('the sphere frame at rest (dot 1792055264)', () => {
+  it('applying at rest changes nothing: the saved text is identical and no undo step is added, whatever r', () => {
+    const d = doc()
+    d.edit(e => e.lineState('mn', { visible: false })) // one earlier step to undo back to
+    const text = save(d)
+    for (const r of [60, 75, 400]) d.edit(sphereOp(d, FRONT, ['ab', 'bc', 'cd'], { ...sphere, r, yaw: 0, pitch: 0, roll: 0, scale: 1, offset: P(0, 0) }).run)
+    expect(save(d)).toBe(text)
+    d.undo()
+    expect(d.snapshot().lines.find(l => l.id === 'mn')!.state.visible).toBe(true) // the earlier step, not a rest apply
+  })
+})
