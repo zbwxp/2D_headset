@@ -1,5 +1,7 @@
 # Sphere domain (球面域), first version: checklist before any code, for dot's review
 
+**Superseded** by `docs/sphere-frame-checklist.md` (bowen 1792053826: an edit, not a domain). Kept for the record.
+
 ## The ask
 - **bowen 1792050227:** a new deform frame beside 四角 / 曲边: a sphere-perspective frame. Per layer, at chosen angles, bowen sets the sphere's r and its yaw / pitch / rotation to get the shape he wants. "This brings the domain (域) back, one true sphere per layer."
 - **bowen 1792052788:**
