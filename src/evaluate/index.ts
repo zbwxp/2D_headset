@@ -1,26 +1,18 @@
 // evaluate — the drawing at any head angle from its nine views (docs/stage3a-playback-plan.md;
 // docs/architecture-multiview.md §3, package 5). Pure: plain data in a type of its own, no
 // state, no edit, no drawing. Geometry is blended bilinearly in each quadrant (rule 2, dot
-// 1791684410); appearance and joins after the blend are two slots with placeholders (rule 5,
-// bowen 1791684302) that may be filled later.
+// 1791684410); joins after the blend are a slot with a placeholder (rule 5, bowen 1791684302)
+// that may be filled later. Strokes are not here: one per meta-curve, the same at every pose
+// (bowen 1792057731; docs/shared-strokes-checklist.md), so the appearance slot went with them.
 import { type Vec } from '../geometry'
 
 type Id = string
-/** A line's stroke, as a view stores it. */
-export interface Stroke { readonly width: number; readonly widthB?: number; readonly profile: string }
-/** A point's end stroke, as a view stores it: an open dictionary. */
-export type EndStroke = Readonly<Record<string, number | string>>
-
 /** One view: its angle and its shapes. Handles are vectors from their point. */
 export interface ViewShape {
   readonly yaw: number
   readonly pitch: number
   readonly points: Readonly<Record<Id, Vec>>
-  readonly lines: Readonly<Record<Id, { readonly ha: Vec; readonly hb: Vec; readonly stroke: Stroke }>>
-  /** Effective transition-zone length per join row key (manual, else automatic from this view's widths; J1). */
-  readonly zones?: Readonly<Record<string, number>>
-  /** End strokes of the points that have one. */
-  readonly ends: Readonly<Record<Id, EndStroke>>
+  readonly lines: Readonly<Record<Id, { readonly ha: Vec; readonly hb: Vec }>>
 }
 /** One response: knots [progress, value], progress strictly increasing inside (0, 1); through (0,0) and (1,1). */
 export type Knots = readonly (readonly [number, number])[]
@@ -37,10 +29,7 @@ export interface Pose { readonly yaw: number; readonly pitch: number }
 /** The shapes at one pose, in the same kinds as a view. */
 export interface Posed {
   points: Record<Id, Vec>
-  lines: Record<Id, { ha: Vec; hb: Vec; stroke: Stroke }>
-  /** Zone lengths, blended (view-dependent values transition with the pose: bowen 1791811981). */
-  zones: Record<string, number>
-  ends: Record<Id, EndStroke>
+  lines: Record<Id, { ha: Vec; hb: Vec }>
 }
 
 export const YAW_LIMIT = 90
@@ -76,24 +65,19 @@ export function weights(model: Model, pose: Pose): Weighted[] {
   ].filter(w => w.weight > 0)
 }
 
-/** The drawing at a pose: blended geometry, then slot B, then slot A's appearance. */
+/** The drawing at a pose: blended geometry, then slot B. */
 export function evaluate(model: Model, pose: Pose): Posed {
-  const ws = weights(model, pose)
-  const look = appearance(ws)
-  const geometry = afterBlend(blend(ws, responded(model, pose), model.responses))
-  return {
-    points: geometry.points,
-    lines: Object.fromEntries(Object.entries(geometry.lines).map(([id, l]) => [id, { ...l, stroke: look.strokes[id]! }])),
-    zones: geometry.zones,
-    ends: look.ends,
-  }
+  const geometry = afterBlend(blend(weights(model, pose), responded(model, pose), model.responses))
+  return { points: geometry.points, lines: geometry.lines }
 }
 
-/** Blended geometry (rules 2, 3): positions, handle vectors and zone lengths. An arc's radius is not blended: it is one per join (bowen 1791985326). */
+/**
+ * Blended geometry (rules 2, 3): positions and handle vectors. Nothing of a stroke is blended: an arc's
+ * radius (bowen 1791985326), widths, profiles, zones and end strokes are one for every view (bowen 1792057731).
+ */
 export interface Geometry {
   points: Record<Id, Vec>
   lines: Record<Id, { ha: Vec; hb: Vec }>
-  zones: Record<string, number>
 }
 
 /**
@@ -243,21 +227,6 @@ function blend(ws: readonly Weighted[], scalar: ScalarWeights, responses?: Respo
       ha: vec(v => own(v.lines, l)?.ha, `handle a of ${l}`, control(control(responses?.handles, l, `handles of ${l}`), 'a', `handle a of ${l}`)),
       hb: vec(v => own(v.lines, l)?.hb, `handle b of ${l}`, control(control(responses?.handles, l, `handles of ${l}`), 'b', `handle b of ${l}`)),
     }])),
-    zones: Object.fromEntries(keys(v => v.zones ?? {}).map(k => [k, num(v => own(v.zones ?? {}, k), `zone of ${k}`)])),
-  }
-}
-
-/**
- * Slot A, appearance at a pose (rule 5). Placeholder: everything from the dominant view,
- * the largest weight, ties to F, then Y, then P; an end stroke whole, present or absent as
- * there. Nothing is blended and nothing is invented. To be filled when bowen takes up
- * playback rendering (ledger row 9); its inputs may have to grow.
- */
-export function appearance(ws: readonly Weighted[]): { strokes: Record<Id, Stroke>; ends: Record<Id, EndStroke> } {
-  const dominant = ws.reduce((best, w) => (w.weight > best.weight ? w : best)).view
-  return {
-    strokes: Object.fromEntries(Object.entries(dominant.lines).map(([id, l]) => [id, { ...l.stroke }])),
-    ends: Object.fromEntries(Object.entries(dominant.ends).map(([id, e]) => [id, { ...e }])),
   }
 }
 

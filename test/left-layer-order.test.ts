@@ -3,6 +3,7 @@
 // the view it is in; new / copied / removed layers keep both orders whole; the file is version 13.
 import { describe, it, expect } from 'vitest'
 import { Core, save, open, Refusal, type Vec } from '../src'
+import { strokesPerView } from './old-files'
 
 const P = (x: number, y = 0): Vec => ({ x, y })
 const LEFT = 'view:-90,0', RIGHT = 'view:90,0'
@@ -75,12 +76,12 @@ describe('the left layer order', () => {
     expect(ids(d, LEFT)).toEqual(['side', 'face', 'eye'])
   })
 
-  it('the file: version 13 round trip; a version 12 file opens and draws as before; a bad left order is refused', () => {
+  it('the file: version 13 on, now 14, round trip; a version 12 file opens and draws as before; a bad left order is refused', () => {
     const d = doc()
     d.editIn(LEFT, e => e.reorderLayer('side', 0))
     const f = JSON.parse(save(d))
-    expect([f.version, f.document.network.leftOrder]).toEqual([13, ['side', 'face', 'eye']])
-    const plain = doc(), v12 = JSON.parse(save(plain)); v12.version = 12
+    expect([f.version, f.document.network.leftOrder]).toEqual([14, ['side', 'face', 'eye']])
+    const plain = doc(), v12 = strokesPerView(JSON.parse(save(plain))); v12.version = 12
     const opened = open(JSON.stringify(v12))
     for (const k of opened.views()) expect(ids(opened, k)).toEqual(ids(plain, k))
     const bad = (v: unknown) => { const x = JSON.parse(save(d)); x.document.network.leftOrder = v; return JSON.stringify(x) }

@@ -15,30 +15,35 @@ type Id = net.Id
 export type JoinMode = 'bound' | 'smooth' | 'cusp' | 'arc'
 const isMode = (m: unknown): m is JoinMode => m === 'bound' || m === 'smooth' || m === 'cusp' || m === 'arc'
 /**
- * A join row as read in one shape layer: an arc carries its radius, one for every view (bowen
- * 1791985326); any join may carry that layer's manual transition-zone length (absent = automatic,
- * from the two widths — principle §4).
+ * A join row: an arc carries its radius (bowen 1791985326); any join may carry a manual
+ * transition-zone length (absent = automatic, from the two widths — principle §4). Both are one
+ * value for every view (bowen 1792057731).
  */
 export interface JoinRow { point: Id; lines: [Id, Id]; mode: JoinMode; radius?: number; zone?: number }
-export interface EndStroke { taper?: number; [key: string]: number | string | undefined }
+/**
+ * A point's end stroke as stored and read: an open dictionary of finite numbers and text, no undefined
+ * value (ledger row 10 closed); `taper` is a number, 0 or more.
+ */
+export type EndStroke = { [key: string]: number | string }
+/** An end stroke as given: an undefined value is left out. */
+export type EndStrokeIn = { [key: string]: number | string | undefined }
 declare const opaque: unique symbol
 /** Opaque handle; read through rows / rowsAt / endStroke (copies). */
 export type JoinsState = { readonly [opaque]: 'joins' }
 /**
- * The modes and the arc radii are shared by every view: an arc's radius is one value of its row,
- * the same at every view and pose (bowen 1791985326; docs/arc-radius-shared-checklist.md, replacing
- * step 4's per-view radius). Transition zones and end strokes are per shape layer (step 4,
- * docs/step4-per-view-joins.md): stored in the layers through the network handle, under keys this
- * module makes (a zone under its row's key, an end stroke under its point) and keeps valid.
+ * Everything here is shared by every view, the same at every view and pose: the modes, an arc's
+ * radius (bowen 1791985326; docs/arc-radius-shared-checklist.md), a manual zone in its row and the
+ * points' end strokes (bowen 1792057731; docs/shared-strokes-checklist.md, replacing step 4's
+ * per-layer zones and end strokes).
  */
-interface Row { point: Id; lines: [Id, Id]; mode: JoinMode; radius?: number }
-interface Store { rows: Row[] }
+interface Row { point: Id; lines: [Id, Id]; mode: JoinMode; radius?: number; zone?: number }
+interface Store { rows: Row[]; ends: Record<Id, Record<string, number | string>> }
 const S = (j: JoinsState) => j as unknown as Store
 
 /** One global stiffness (bowen 1791421988). With only spring forces it scales energy, not the balance. */
 export const SMOOTH_STIFFNESS = 1
 
-export const create = (): JoinsState => ({ rows: [] }) as Store as unknown as JoinsState
+export const create = (): JoinsState => ({ rows: [], ends: {} }) as Store as unknown as JoinsState
 const pair = (a: Id, b: Id): [Id, Id] => (a < b ? [a, b] : [b, a])
 /** The stored key of a row: its point and its two lines in sorted order. */
 export const rowKey = (point: Id, l1: Id, l2: Id) => { const p = pair(l1, l2); return JSON.stringify([point, p[0], p[1]]) }
@@ -53,29 +58,31 @@ const putOnTop = (list: Row[], item: Row) => {
   else list.splice(i, 0, item)
 }
 const same = (r: Row, point: Id, p: [Id, Id]) => r.point === point && r.lines[0] === p[0] && r.lines[1] === p[1]
-const layersOf = (n: net.NetworkState) => net.shapeLayers(n).map(l => ({ ...l, h: net.of(n, l.key) }))
+const own = <T>(r: Record<string, T>, id: string): T | undefined => (Object.hasOwn(r, id) ? r[id] : undefined)
+const put = <T>(r: Record<string, T>, id: string, v: T) => { Object.defineProperty(r, id, { value: v, writable: true, enumerable: true, configurable: true }) }
 
-const rowOut = (n: net.NetworkState, r: Row): JoinRow => {
+const rowOut = (r: Row): JoinRow => {
   const radius = r.mode === 'arc' ? r.radius : undefined
-  const zone = net.slot(n, 'zone', keyOf(r)) as number | undefined
-  return { point: r.point, lines: [r.lines[0], r.lines[1]], mode: r.mode, ...(radius !== undefined ? { radius } : {}), ...(zone !== undefined ? { zone } : {}) }
+  return { point: r.point, lines: [r.lines[0], r.lines[1]], mode: r.mode, ...(radius !== undefined ? { radius } : {}), ...(r.zone !== undefined ? { zone: r.zone } : {}) }
 }
-/** Every row, with its radius and the handle's layer's zone; each point's rows in list order (top first). */
-export const rows = (j: JoinsState, n: net.NetworkState): JoinRow[] => S(j).rows.map(r => rowOut(n, r))
+/** Every row, with its radius and zone; each point's rows in list order (top first). */
+export const rows = (j: JoinsState, _n?: net.NetworkState): JoinRow[] => S(j).rows.map(rowOut)
 /** A point's join list, top first. */
-export const rowsAt = (j: JoinsState, n: net.NetworkState, point: Id): JoinRow[] => S(j).rows.filter(r => r.point === point).map(r => rowOut(n, r))
+export const rowsAt = (j: JoinsState, _n: net.NetworkState | undefined, point: Id): JoinRow[] => S(j).rows.filter(r => r.point === point).map(rowOut)
 /** The join that governs a line's end at a point: the topmost row there containing the line (principle §2.3), or undefined. */
-export function governing(j: JoinsState, n: net.NetworkState, point: Id, line: Id): JoinRow | undefined {
+export function governing(j: JoinsState, _n: net.NetworkState | undefined, point: Id, line: Id): JoinRow | undefined {
   const r = S(j).rows.find(x => x.point === point && (x.lines[0] === line || x.lines[1] === line))
-  return r ? rowOut(n, r) : undefined
+  return r ? rowOut(r) : undefined
 }
 /** The rows' shared part (point, lines, mode), the same in every layer. */
 export const modes = (j: JoinsState): { point: Id; lines: [Id, Id]; mode: JoinMode }[] => S(j).rows.map(r => ({ point: r.point, lines: [r.lines[0], r.lines[1]], mode: r.mode }))
-/** The end stroke at a point in the handle's layer. */
-export function endStroke(_j: JoinsState, n: net.NetworkState, point: Id): EndStroke | undefined {
-  const e = net.slot(n, 'end', point) as Record<string, number | string> | undefined
+/** The end stroke at a point, one for every view. */
+export function endStroke(j: JoinsState, _n: net.NetworkState | undefined, point: Id): EndStroke | undefined {
+  const e = own(S(j).ends, point)
   return e ? { ...e } : undefined
 }
+/** Every point that has an end stroke. */
+export const endPoints = (j: JoinsState): Id[] => Object.keys(S(j).ends)
 
 /**
  * Set a join. The mode and an arc's radius belong to the row, so they are set for every view at
@@ -87,9 +94,11 @@ export function setJoin(j: JoinsState, n: net.NetworkState, point: Id, l1: Id, l
   const at = new Set(net.linesAt(n, point).map(e => e.line.id))
   if (!at.has(l1) || !at.has(l2)) throw new Error(`Both lines must end at ${point}`)
   if (opts.mode === 'arc' && !(typeof opts.radius === 'number' && Number.isFinite(opts.radius) && opts.radius > 0)) throw new Error('An arc join needs a positive radius')
-  const p = pair(l1, l2), next: Row = { point, lines: p, mode: opts.mode, ...(opts.mode === 'arc' ? { radius: opts.radius! } : {}) }
+  const p = pair(l1, l2), i = S(j).rows.findIndex(r => same(r, point, p))
+  // the zone belongs to every mode, so changing the mode keeps it (dot 1791811393)
+  const zone = i >= 0 ? S(j).rows[i]!.zone : undefined
+  const next: Row = { point, lines: p, mode: opts.mode, ...(opts.mode === 'arc' ? { radius: opts.radius! } : {}), ...(zone !== undefined ? { zone } : {}) }
   // a pair that has a row changes in place (its place in the list stays); a new pair goes on top
-  const i = S(j).rows.findIndex(r => same(r, point, p))
   if (i >= 0) S(j).rows[i] = next
   else putOnTop(S(j).rows, next)
 }
@@ -117,66 +126,66 @@ export function autoZone(a: number, b: number): number {
 }
 
 /**
- * A join's manual transition-zone length in the handle's layer only (bowen 1791810585: per view, not
- * broadcast); null sets it automatic there. The zone belongs to every mode, so changing the mode keeps
- * it (dot 1791811393).
+ * A join's manual transition-zone length, one for every view (bowen 1792057731, replacing the per-view
+ * zone of bowen 1791810585); null sets it automatic. The zone belongs to every mode, so changing the
+ * mode keeps it (dot 1791811393).
  */
-export function setZoneHere(j: JoinsState, n: net.NetworkState, point: Id, l1: Id, l2: Id, length: number | null) {
-  const p = pair(l1, l2)
-  if (!S(j).rows.some(r => same(r, point, p))) throw new Error(`No join at ${point} between ${l1} and ${l2}`)
-  if (length === null) net.dropSlotHere(n, 'zone', rowKey(point, l1, l2))
-  else net.setSlot(n, 'zone', rowKey(point, l1, l2), length)
+export function setZone(j: JoinsState, point: Id, l1: Id, l2: Id, length: number | null) {
+  const p = pair(l1, l2), r = S(j).rows.find(r => same(r, point, p))
+  if (!r) throw new Error(`No join at ${point} between ${l1} and ${l2}`)
+  if (length === null) { delete r.zone; return }
+  if (typeof length !== 'number' || !Number.isFinite(length) || !(length > 0)) throw new Error('A transition-zone length must be a finite number above zero')
+  r.zone = length
 }
 
-/** Remove a join: the row (its radius with it), and its zone in every layer. */
-export function removeJoin(j: JoinsState, n: net.NetworkState, point: Id, l1: Id, l2: Id) {
+/** Remove a join: the row, its radius and zone with it. */
+export function removeJoin(j: JoinsState, point: Id, l1: Id, l2: Id) {
   const p = pair(l1, l2)
   S(j).rows = S(j).rows.filter(r => !same(r, point, p))
-  net.dropSlot(n, 'zone', rowKey(point, l1, l2))
-}
-
-/** The end stroke at a point, in the handle's layer only. */
-export function setEndStroke(_j: JoinsState, n: net.NetworkState, point: Id, stroke: EndStroke) {
-  net.point(n, point)
-  for (const v of Object.values(stroke)) {
-    if (typeof v === 'number' ? !Number.isFinite(v) : typeof v !== 'string' && v !== undefined) throw new Error('End stroke values must be finite numbers or strings')
-  }
-  // its parameters are unordered: stored with sorted keys, so one content has one form (bowen 1791461643)
-  net.setSlot(n, 'end', point, Object.fromEntries(Object.keys(stroke).sort().filter(k => stroke[k] !== undefined).map(k => [k, stroke[k]!])))
-}
-
-/** Remove a point's end stroke in the handle's layer (it then has none there). */
-export function clearEndStroke(_j: JoinsState, n: net.NetworkState, point: Id) { net.dropSlotHere(n, 'end', point) }
-
-/** The joins inside a copied range as plain data: the shared modes and radii, and every layer's zones and end strokes. */
-export interface RangeData {
-  rows: { point: Id; lines: [Id, Id]; mode: JoinMode; radius?: number }[]
-  layers: { key: string; zones: { point: Id; lines: [Id, Id]; zone: number }[]; endStrokes: { point: Id; stroke: EndStroke }[] }[]
-}
-export function rangeData(j: JoinsState, n: net.NetworkState, lines: ReadonlySet<Id>, points: ReadonlySet<Id>): RangeData {
-  const inside = S(j).rows.filter(r => points.has(r.point) && lines.has(r.lines[0]) && lines.has(r.lines[1]))
-  return {
-    rows: inside.map(r => ({ point: r.point, lines: [r.lines[0], r.lines[1]], mode: r.mode, ...(r.radius !== undefined ? { radius: r.radius } : {}) })),
-    layers: layersOf(n).map(({ key, h }) => ({
-      key,
-      zones: inside.flatMap(r => { const z = net.slot(h, 'zone', keyOf(r)) as number | undefined; return z === undefined ? [] : [{ point: r.point, lines: [r.lines[0], r.lines[1]] as [Id, Id], zone: z }] }),
-      endStrokes: [...points].flatMap(p => { const e = endStroke(j, h, p); return e ? [{ point: p, stroke: e }] : [] }),
-    })),
-  }
 }
 
 /**
- * Joins from plain data onto the copied points and lines of `map`: the modes and radii once, and
- * each drawing layer's zones and end strokes from the copy's layer `layerMap` names for
- * it (the same correspondence as the shapes, dot 1791654260).
+ * An end stroke in its stored form, checked: finite numbers or text, `taper` a number 0 or more (a
+ * multiple of the end width, bowen 1791853511); undefined values left out; keys sorted, so one content
+ * has one form (bowen 1791461643).
  */
-export function insert(j: JoinsState, n: net.NetworkState, data: RangeData, map: net.CopyMap, layerMap: ReadonlyMap<string, string>) {
-  const byKey = new Map(data.layers.map(L => [L.key, L]))
-  const plan = layersOf(n).map(l => {
-    const src = byKey.get(layerMap.get(l.key) ?? '')
-    if (!src) throw new net.Refusal('paste-layer-unmatched', `paste-layer-unmatched: shape layer ${l.key} has no matching layer in the copy`)
-    return { ...l, src }
-  })
+export function endIn(stroke: EndStrokeIn): Record<string, number | string> {
+  if (!stroke || typeof stroke !== 'object' || Array.isArray(stroke)) throw new Error('An end stroke must be an object')
+  const out: Record<string, number | string> = {}
+  for (const k of Object.keys(stroke).sort()) {
+    const x = stroke[k]
+    if (x === undefined) continue
+    if (typeof x === 'number' ? !Number.isFinite(x) : typeof x !== 'string') throw new Error('End stroke values must be finite numbers or strings')
+    if (k === 'taper' && (typeof x !== 'number' || x < 0)) throw new Error('An end taper must be a number, 0 or more (a multiple of the end width)')
+    put(out, k, x)
+  }
+  return out
+}
+
+/** The end stroke at a point, one for every view (bowen 1792057731). */
+export function setEndStroke(j: JoinsState, n: net.NetworkState, point: Id, stroke: EndStrokeIn) {
+  net.point(n, point)
+  put(S(j).ends, point, endIn(stroke))
+}
+
+/** Remove a point's end stroke (it then has none, in every view). */
+export function clearEndStroke(j: JoinsState, point: Id) { if (Object.hasOwn(S(j).ends, point)) delete S(j).ends[point] }
+
+/** The joins inside a copied range as plain data: the rows (modes, radii, zones) and the points' end strokes, all shared by every view. */
+export interface RangeData {
+  rows: { point: Id; lines: [Id, Id]; mode: JoinMode; radius?: number; zone?: number }[]
+  endStrokes: { point: Id; stroke: EndStroke }[]
+}
+export function rangeData(j: JoinsState, lines: ReadonlySet<Id>, points: ReadonlySet<Id>): RangeData {
+  const inside = S(j).rows.filter(r => points.has(r.point) && lines.has(r.lines[0]) && lines.has(r.lines[1]))
+  return {
+    rows: inside.map(r => ({ point: r.point, lines: [r.lines[0], r.lines[1]], mode: r.mode, ...(r.radius !== undefined ? { radius: r.radius } : {}), ...(r.zone !== undefined ? { zone: r.zone } : {}) })),
+    endStrokes: [...points].flatMap(p => { const e = endStroke(j, undefined, p); return e ? [{ point: p, stroke: e }] : [] }),
+  }
+}
+
+/** Joins from plain data onto the copied points and lines of `map`: rows with their radii and zones, and the end strokes. */
+export function insert(j: JoinsState, n: net.NetworkState, data: RangeData, map: net.CopyMap) {
   for (const r of data.rows) {
     const point = map.points.get(r.point), l0 = map.lines.get(r.lines[0]), l1 = map.lines.get(r.lines[1])
     if (!point || !l0 || !l1) continue
@@ -184,31 +193,25 @@ export function insert(j: JoinsState, n: net.NetworkState, data: RangeData, map:
     if (!isMode(r.mode)) throw new Error(`Unknown join mode ${String(r.mode)}`)
     if (l0 === l1 || !at.has(l0) || !at.has(l1)) throw new Error(`Both lines must end at ${point}`)
     if (r.mode === 'arc' ? !(typeof r.radius === 'number' && Number.isFinite(r.radius) && r.radius > 0) : r.radius !== undefined) throw new Error('An arc join needs a positive radius; other joins have none')
+    if (r.zone !== undefined && !(typeof r.zone === 'number' && Number.isFinite(r.zone) && r.zone > 0)) throw new Error('A transition-zone length must be a finite number above zero')
     const p = pair(l0, l1)
     // the copy's rows arrive in their list order: appended, they keep it at the new points
     S(j).rows = S(j).rows.filter(x => !same(x, point, p))
-    S(j).rows.push({ point, lines: p, mode: r.mode, ...(r.mode === 'arc' ? { radius: r.radius! } : {}) })
-    const key = rowKey(point, l0, l1)
-    for (const { h, src } of plan) {
-      const z = src.zones.find(x => x.point === r.point && x.lines[0] === r.lines[0] && x.lines[1] === r.lines[1])
-      if (z) net.setSlot(h, 'zone', key, z.zone)
-      else net.dropSlotHere(h, 'zone', key)
-    }
+    S(j).rows.push({ point, lines: p, mode: r.mode, ...(r.mode === 'arc' ? { radius: r.radius! } : {}), ...(r.zone !== undefined ? { zone: r.zone } : {}) })
   }
-  for (const { h, src } of plan) for (const e of src.endStrokes) { const point = map.points.get(e.point); if (point) setEndStroke(j, h, point, e.stroke) }
+  for (const e of data.endStrokes) { const point = map.points.get(e.point); if (point) setEndStroke(j, n, point, e.stroke) }
 }
 
 /**
- * Keep references valid after one network operation, keeping each point's list order. A radius
- * is part of its row; each layer's zone follows its row (a split re-keys it, an unbind or a bind
- * moves it with the row, a dropped row drops it), and a removed point's end stroke leaves every layer. A bind keeps the
+ * Keep references valid after one network operation, keeping each point's list order. A radius and
+ * a zone are part of their row (a split re-keys it, an unbind or a bind moves it with the row, a
+ * dropped row drops it), and a removed point's end stroke goes. A bind keeps the
  * removed point's joins: they move to the kept point, below its own (principle §2.1, replacing
  * dot 1791654260's drop). Pairs the operation connected (`connected`) get a 'bound' row on top
  * of their point's list when they have none (checklist §2).
  */
 export function update(j: JoinsState, n: net.NetworkState, ch: net.Changes) {
-  // each row carries its key from before this operation
-  const tracked = S(j).rows.map(r => ({ row: { ...r, lines: [r.lines[0], r.lines[1]] as [Id, Id] }, was: keyOf(r) }))
+  const tracked = S(j).rows.map(r => ({ row: { ...r, lines: [r.lines[0], r.lines[1]] as [Id, Id] } }))
   for (const r of ch.replaced) {
     for (const { row } of tracked) {
       if (row.point === r.a) row.lines = pair(...row.lines.map(l => (l === r.line ? r.pieces[0] : l)) as [Id, Id])
@@ -250,19 +253,13 @@ export function update(j: JoinsState, n: net.NetworkState, ch: net.Changes) {
     if (p[0] === p[1] || !net.hasPoint(n, c.point)) continue
     const at = new Set(net.linesAt(n, c.point).map(e => e.line.id))
     if (!at.has(p[0]) || !at.has(p[1]) || kept.some(t => same(t.row, c.point, p))) continue
-    const top = kept.findIndex(t => t.row.point === c.point), item = { row: { point: c.point, lines: p, mode: 'bound' as JoinMode }, was: '' }
+    const top = kept.findIndex(t => t.row.point === c.point), item = { row: { point: c.point, lines: p, mode: 'bound' as JoinMode } }
     if (top < 0) kept.push(item)
     else kept.splice(top, 0, item)
   }
-  // move every layer's zones: read all old values first, then drop and write, so keys may swap
-  const layers = layersOf(n)
-  const zones = layers.map(({ h }) => new Map(tracked.map(t => [t.was, net.slot(h, 'zone', t.was) as number | undefined])))
-  for (const t of tracked) net.dropSlot(n, 'zone', t.was)
-  layers.forEach(({ h }, i) => {
-    for (const t of kept) { const z = zones[i]!.get(t.was); if (z !== undefined) net.setSlot(h, 'zone', keyOf(t.row), z) }
-  })
+  // a zone is part of its row: it moves and goes with it
   S(j).rows = kept.map(t => t.row)
-  for (const p of deadPoints) net.dropSlot(n, 'end', p)
+  for (const p of deadPoints) clearEndStroke(j, p)
 }
 
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a))
@@ -364,9 +361,8 @@ function smoothGroups(ids: string[], neighbours: Map<string, string[]>): string[
 
 /**
  * Joins from saved data, checked: each row on two different lines that both end at its
- * point, with a known mode, and a radius above zero exactly when it is an arc; then, in every
- * shape layer, zones only on rows and end strokes only on existing points (dot 1791654260;
- * shapes has checked the values' types).
+ * point, with a known mode, a radius above zero exactly when it is an arc, and a zone above zero
+ * if any; end strokes only on existing points, in their stored form (archive 14).
  */
 export function restore(v: unknown, n: net.NetworkState): JoinsState {
   const d = net.data, o = d.obj(v, 'joins')
@@ -379,26 +375,36 @@ export function restore(v: unknown, n: net.NetworkState): JoinsState {
     for (const l of [l0, l1]) { if (!net.hasLine(n, l)) d.fail(`join ${i} uses a missing line ${l}`); const x2 = net.line(n, l); if (x2.a !== point && x2.b !== point) d.fail(`join ${i}: line ${l} does not end at ${point}`) }
     const m = d.str(R.mode, `join ${i} mode`)
     if (!isMode(m)) d.fail(`join ${i} has an unknown mode ${m}`)
-    if (Object.keys(R).some(k => k !== 'point' && k !== 'lines' && k !== 'mode' && k !== 'radius')) d.fail(`join ${i} carries an extra value`)
+    if (Object.keys(R).some(k => k !== 'point' && k !== 'lines' && k !== 'mode' && k !== 'radius' && k !== 'zone')) d.fail(`join ${i} carries an extra value`)
+    let zone: number | undefined
+    if (Object.hasOwn(R, 'zone')) { zone = d.num(R.zone, `join ${i} zone`); if (!(zone > 0)) d.fail(`join ${i} has a zone that is not above zero`) }
+    const z = zone !== undefined ? { zone } : {}
     if (m !== 'arc') {
       if (Object.hasOwn(R, 'radius')) d.fail(`join ${i} is not an arc but has a radius`)
-      return { point, lines: [l0, l1], mode: m as JoinMode }
+      return { point, lines: [l0, l1], mode: m as JoinMode, ...z }
     }
     if (!Object.hasOwn(R, 'radius')) d.fail(`arc join ${i} has no radius`)
     const radius = d.num(R.radius, `join ${i} radius`)
     if (!(radius > 0)) d.fail(`arc join ${i} has a radius that is not above zero`)
-    return { point, lines: [l0, l1], mode: m as JoinMode, radius }
+    return { point, lines: [l0, l1], mode: m as JoinMode, radius, ...z }
   })
   // one stored form: sorted pairs, no repeats (dot 1791512476); the rows' order is the join lists' order, kept as stored
   const st = create()
-  S(st).rows = rows.map(r => ({ point: r.point, lines: pair(r.lines[0], r.lines[1]), mode: r.mode, ...(r.radius !== undefined ? { radius: r.radius } : {}) }))
+  S(st).rows = rows.map(r => ({ point: r.point, lines: pair(r.lines[0], r.lines[1]), mode: r.mode, ...(r.radius !== undefined ? { radius: r.radius } : {}), ...(r.zone !== undefined ? { zone: r.zone } : {}) }))
   const seen = new Set<string>()
   for (const r of S(st).rows) { if (seen.has(keyOf(r))) d.fail('joins are not in their stored form (a repeat)'); seen.add(keyOf(r)) }
   if (JSON.stringify(S(st).rows) !== JSON.stringify(rows)) d.fail('joins are not in their stored form (a reversed line pair or an extra value)')
-  const rowKeys = new Set(S(st).rows.map(keyOf))
-  for (const { key, h } of layersOf(n)) {
-    for (const k of net.slotKeys(h, 'zone')) if (!rowKeys.has(k)) d.fail(`zone ${k} in ${key} belongs to no join`)
-    for (const p of net.slotKeys(h, 'end')) if (!net.hasPoint(n, p)) d.fail(`end stroke in ${key} is on a missing point ${p}`)
+  const E = d.obj(o.ends, 'end strokes')
+  for (const p of Object.keys(E)) {
+    if (!net.hasPoint(n, p)) d.fail(`end stroke on a missing point ${p}`)
+    const e = d.obj(E[p], `end stroke ${p}`)
+    let kept: Record<string, number | string> = {}
+    try { kept = endIn(e as EndStrokeIn) } catch (err) { d.fail(`end stroke ${p}: ${(err as Error).message}`) }
+    // compared with the writer's own normal form, not with a sort: integer-like keys
+    // enumerate in numeric order whatever the insertion order (dot 1791654767)
+    if (JSON.stringify(kept) !== JSON.stringify(e)) d.fail(`end stroke ${p} is not in its stored form`)
+    put(S(st).ends, p, kept)
   }
+  if (Object.keys(o).some(k => k !== 'rows' && k !== 'ends')) d.fail('joins carry an extra value')
   return st
 }

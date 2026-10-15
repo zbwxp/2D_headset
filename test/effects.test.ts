@@ -143,7 +143,6 @@ const CASES: Case[] = [
   // every knot of b, on every edge (docs/correction-cleanup-checklist.md §2)
   { op: 'clearCorrections', args: () => [[{ kind: 'point', id: 'b' }]], setup: d => d.edit(e => e.correct({ yaw: 45, pitch: 0 }, { points: [{ id: 'b', position: P(10.4, 0.7) }] })) },
   // the corner's own stroke differs too, so a broadcast from either view writes the other
-  { op: 'broadcastStroke', args: () => [sel('ab')], setup: d => d.editIn('view:90,45', e => e.lineStroke('ab', { width: 7, profile: 'uniform' })) },
   { op: 'deleteSelection', args: () => [sel('xy')] },
   { op: 'placeReference', args: () => [refImage('r1')] },
   { op: 'setReference', args: () => ['r1', { opacity: 0.9 }], setup: d => d.edit(e => e.placeReference(refImage('r1'))) },
@@ -283,8 +282,8 @@ describe('the merged commit is today\'s, operation by operation (no behaviour ch
     try { d.editIn(layer, fn) } finally { off() }
     return m
   }
-  it('select, selectGroup, broadcastStroke and fit skip settling; broadcastShape and draftCorners settle the non-front views; everything else, and an empty edit, settles fully', () => {
-    const today: Record<string, string> = { placeReference: 'keeps', setReference: 'keeps', removeReference: 'keeps', addAsset: 'keeps', renameAsset: 'keeps', removeAsset: 'keeps', mask: 'keeps', removeMask: 'keeps', uncorrect: 'keeps', clearCorrections: 'keeps', select: 'keeps', selectGroup: 'keeps', broadcastStroke: 'keeps', fit: 'keeps', correct: 'views', broadcastShape: 'views', draftCorners: 'views' }
+  it('select, selectGroup and fit skip settling; broadcastShape and draftCorners settle the non-front views; everything else, and an empty edit, settles fully', () => {
+    const today: Record<string, string> = { placeReference: 'keeps', setReference: 'keeps', removeReference: 'keeps', addAsset: 'keeps', renameAsset: 'keeps', removeAsset: 'keeps', mask: 'keeps', removeMask: 'keeps', uncorrect: 'keeps', clearCorrections: 'keeps', select: 'keeps', selectGroup: 'keeps', fit: 'keeps', correct: 'views', broadcastShape: 'views', draftCorners: 'views' }
     for (const c of CASES) for (const layer of c.views ?? [FRONT]) {
       const d = fixture()
       c.setup?.(d)
@@ -294,10 +293,10 @@ describe('the merged commit is today\'s, operation by operation (no behaviour ch
     expect(mode(fixture(), FRONT, () => {})).toBe('full')
   })
 
-  it('companions and nesting merge as today; two alone operations, or one with anything but selections and stroke broadcasts, are refused', () => {
+  it('companions and nesting merge as today; two alone operations, or one with anything but selections, are refused', () => {
     const d = fixture()
     expect(mode(d, FRONT, e => { e.select(sel('ab')); e.fit(sel('ab')) })).toBe('keeps')
-    expect(mode(fixture(), FRONT, e => { e.select(sel('ab')); e.broadcastStroke(sel('ab')); e.broadcastShape(sel('ab')) })).toBe('views')
+    expect(mode(fixture(), FRONT, e => { e.select(sel('ab')); e.broadcastShape(sel('ab')) })).toBe('views')
     expect(mode(fixture(), FRONT, e => { e.select(sel('ab')); e.lineStroke('ab', { width: 2, profile: 'uniform' }) })).toBe('full')
     const f = fixture(), clip = f.copy(['qr'])
     expect(mode(f, FRONT, e => e.paste(clip, 'L', P(5, 5), 'p'))).toBe('full') // paste calls select inside: full, as today

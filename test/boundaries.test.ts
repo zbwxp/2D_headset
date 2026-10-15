@@ -27,7 +27,7 @@ const ALLOWED: Record<string, string[]> = {
   evaluate: ['geometry'],
   archive: ['document', 'legacy'],
   // old formats only, turned into the current one before the archive reads them (bowen 1791820592, dot 1791820713)
-  legacy: ['network', 'reference'],
+  legacy: ['network', 'reference', 'joins'],
 }
 // External packages each module may use.
 const EXTERNAL: Record<string, string[]> = { geometry: ['bezier-js'] }

@@ -61,7 +61,7 @@ describe('the join list in the properties panel', () => {
     expect(t.host.querySelector('[data-join-zone-auto="l1↔l2"]')!.textContent).toBe('自动 1') // widths 1 and 1: 1² / 1
     expect(t.host.querySelector('[data-join-zone-limited="l1↔l2"]')!.textContent).toBe('限长后 1')
   })
-  it('the mode changes in place; 手动 sets this view\'s zone, typed values commit with Enter, 自动 clears it; the order stays', async () => {
+  it('the mode changes in place; 手动 sets the zone (one for every view, bowen 1792057731), typed values commit with Enter, 自动 clears it; the order stays', async () => {
     const t = await setup()
     await t.pick('line', 'f2')
     expect(t.rows('p').map(x => x.dataset.joinRow)).toEqual(['f1↔f3', 'f1↔f2'])
@@ -75,7 +75,7 @@ describe('the join list in the properties panel', () => {
     await act(async () => { setValue(field, '12'); key('Enter', field) })
     expect(bench().core.snapshot().joins.find(j => j.lines.join() === 'f1,f2')?.zone).toBe(12)
     expect(t.host.querySelector('[data-join-zone-limited="f1↔f2"]')!.textContent).toBe('限长后 12')
-    expect(bench().core.in('view:90,0').snapshot().joins.find(j => j.lines.join() === 'f1,f2')?.zone).toBeUndefined()
+    expect(bench().core.in('view:90,0').snapshot().joins.find(j => j.lines.join() === 'f1,f2')?.zone).toBe(12)
     await act(async () => { (t.host.querySelector('[data-join-zone-manual="f1↔f2"]') as HTMLInputElement).click() })
     expect(bench().core.snapshot().joins.find(j => j.lines.join() === 'f1,f2')?.zone).toBeUndefined()
     expect(t.joinsAt('p')).toEqual(['f1↔f3:cusp', 'f1↔f2:smooth'])
@@ -145,13 +145,13 @@ describe('the join list in the properties panel', () => {
     await t.press(50, 0) // l1, a line of that curve: a new pick wins over the curve the list showed
     expect(t.title()).toMatch(/属性 线 · /)
   })
-  it('the line\'s width is set in its properties (bowen 1791814093): Enter commits, this view only; the left Set width with nothing selected says so', async () => {
+  it('the line\'s width is set in its properties (bowen 1791814093): Enter commits, for every view (bowen 1792057731); the left Set width with nothing selected says so', async () => {
     const t = await setup()
     await t.pick('line', 'l2')
     const field = t.host.querySelector('[data-line-width="l2"]') as HTMLInputElement
     await act(async () => { setValue(field, '6'); key('Enter', field) })
     expect(bench().core.snapshot().lines.find(l => l.id === 'l2')!.stroke.width).toBe(6)
-    expect(bench().core.in('view:90,0').snapshot().lines.find(l => l.id === 'l2')!.stroke.width).toBe(1)
+    expect(bench().core.in('view:90,0').snapshot().lines.find(l => l.id === 'l2')!.stroke.width).toBe(6)
     await act(async () => { bench().edit(e => e.select([])); bench().refresh() })
     await act(async () => { ([...t.host.querySelectorAll('button')].find(b => b.textContent === 'Set width') as HTMLButtonElement).click() })
     expect(t.host.textContent).toContain('Set width: no line is selected')

@@ -129,7 +129,7 @@ describe('save and open', () => {
   })
 })
 
-describe('a join\'s transition zone: per view, kept through mode changes and structure', () => {
+describe('a join\'s transition zone: one for every view (bowen 1792057731), kept through mode changes and structure', () => {
   const SIDE = 'view:90,0'
   const zoneAt = (d: Core, k: string, p: string) => d.in(k).snapshot().joins.find(j => j.point === p)?.zone
   const chain = () => {
@@ -137,15 +137,14 @@ describe('a join\'s transition zone: per view, kept through mode changes and str
     d.edit(e => { e.line('l1', at('a', 0), at('b', 10)); e.line('l2', 'b', at('c', 20)) })
     return d
   }
-  it('set in one view, automatic in the others; kept when the mode changes; null makes it automatic; removing the join drops it', () => {
+  it('set in one view, every view reads it; kept when the mode changes; null (from any view) makes it automatic everywhere; removing the join drops it', () => {
     const d = chain()
     d.editIn(SIDE, e => e.zone('b', 'l1', 'l2', 12))
-    expect(zoneAt(d, SIDE, 'b')).toBe(12)
-    for (const k of d.views()) if (k !== SIDE) expect(zoneAt(d, k, 'b')).toBeUndefined()
+    for (const k of d.views()) expect([k, zoneAt(d, k, 'b')]).toEqual([k, 12])
     d.edit(e => e.join('b', 'l1', 'l2', { mode: 'smooth' }))
-    expect(zoneAt(d, SIDE, 'b')).toBe(12)
-    d.editIn(SIDE, e => e.zone('b', 'l1', 'l2', null))
-    expect(zoneAt(d, SIDE, 'b')).toBeUndefined()
+    for (const k of d.views()) expect([k, zoneAt(d, k, 'b')]).toEqual([k, 12])
+    d.edit(e => e.zone('b', 'l1', 'l2', null))
+    for (const k of d.views()) expect([k, zoneAt(d, k, 'b')]).toEqual([k, undefined])
     d.editIn(SIDE, e => e.zone('b', 'l1', 'l2', 7))
     d.edit(e => e.removeJoin('b', 'l1', 'l2'))
     for (const k of d.views()) expect(d.in(k).snapshot().joins).toEqual([])
@@ -163,16 +162,12 @@ describe('a join\'s transition zone: per view, kept through mode changes and str
     expect(d.in(SIDE).snapshot().joins.find(j => j.lines.join() === 'k/l1,k/p')?.zone).toBe(9)
     expect(open(save(d)).in(SIDE).snapshot().joins).toEqual(d.in(SIDE).snapshot().joins)
   })
-  it('at a pose the zone is blended from each view\'s effective length — manual, else automatic from that view\'s widths, never 0 (dot 1791812073)', () => {
+  it('at a pose the zone is the one value, not blended (bowen 1792057731, replacing the blend of bowen 1791811981); automatic stays automatic', () => {
     const d = chain()
     d.editIn(SIDE, e => e.zone('b', 'l1', 'l2', 12))
-    // front: automatic, widths 1 and 1 → 1² / 1 = 1; side: 12; on the yaw axis the blend is (1 − u)·1 + u·12
-    for (const yaw of [20, 80]) expect(d.atPose({ yaw, pitch: 0 }).snapshot().joins.find(j => j.point === 'b')?.zone).toBeCloseTo(1 + 11 * yaw / 90, 12)
-    // a new width changes the automatic length in the blend: l2's width sets its points b and c, so both lines are 4 at
-    // b (widths at points, bowen 1791820396) → 4² / 4 = 4; at the front, which is automatic, it reads automatic
-    d.edit(e => e.lineStroke('l2', { width: 4, profile: 'uniform' }))
-    expect(d.model().views.find(v => v.yaw === 0 && v.pitch === 0)!.zones![JSON.stringify(['b', 'l1', 'l2'])]).toBe(4)
-    expect(d.atPose({ yaw: 0, pitch: 0 }).snapshot().joins.find(j => j.point === 'b')?.zone).toBeUndefined()
+    for (const yaw of [20, 80]) expect(d.atPose({ yaw, pitch: 0 }).snapshot().joins.find(j => j.point === 'b')?.zone).toBe(12)
+    d.edit(e => e.zone('b', 'l1', 'l2', null))
+    for (const yaw of [0, 20, 80]) expect(d.atPose({ yaw, pitch: 0 }).snapshot().joins.find(j => j.point === 'b')?.zone).toBeUndefined()
   })
 })
 

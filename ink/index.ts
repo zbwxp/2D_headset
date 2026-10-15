@@ -575,7 +575,7 @@ export function createInkCache(opts: InkOptions = {}) {
       // smooth and bound joins between visible lines (Slack 1791804157, dot 1791804198; bound since bowen 1791817201):
       // unequal widths ease through one S-curve centred on the joint (the average there), on each line
       // h(s) = h_i + 2 (h_p − h_i)·σ((1 − s/λ) / 2), s measured from the joint's end (`centred`; bowen 1791817874), λ = half the zone's 限长后长度 when the view's zones are given (default wider² / narrower,
-      // manual per view; already ≤ each line's length / 3), else min(3 × the wider full width, each line's length / 3)
+      // manual, one for every view; already ≤ each line's length / 3), else min(3 × the wider full width, each line's length / 3)
       // — the same λ on both sides. The rule enters the line's cache key, so a neighbour's new width or visibility
       // rebuilds this line too. Several such joins at one end: the first rules the easing (all of them join the group).
       const visible = (id: string) => { const l = byId.get(id); return l && l.state.visible ? l : undefined }

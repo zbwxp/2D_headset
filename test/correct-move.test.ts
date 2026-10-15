@@ -349,16 +349,16 @@ describe('the settle overflowing inside correct, through a spring (a file holds 
 })
 
 describe('companions in the same edit (dot 1791694523)', () => {
-  it('a stroke broadcast before and one after a move case: both go through, the strokes kept', () => {
+  // the stroke broadcast was the other companion; strokes are one for every view now (bowen 1792057731), so it went
+  it('a selection before and one after a move case: both go through, the selection kept', () => {
     for (const order of ['before', 'after'] as const) {
-      const d = base(), stroke = { width: 4, profile: 'uniform' }
-      d.edit(e => e.lineStroke('bc', stroke)) // the front's stroke, not yet broadcast
+      const d = base()
       d.edit(e => {
-        if (order === 'before') e.broadcastStroke([{ kind: 'line', id: 'bc' }])
+        if (order === 'before') e.select([{ kind: 'line', id: 'bc' }])
         e.correct({ yaw: 45, pitch: 0 }, { points: [{ id: 'c', position: P(20, 3) }] })
-        if (order === 'after') e.broadcastStroke([{ kind: 'line', id: 'bc' }])
+        if (order === 'after') e.select([{ kind: 'line', id: 'bc' }])
       })
-      expect([order, d.in(SIDE).snapshot().lines.find(l => l.id === 'bc')!.stroke, near(pos(d, { yaw: 45, pitch: 0 }, 'c').y, 3)]).toEqual([order, stroke, true])
+      expect([order, d.snapshot().selection, near(pos(d, { yaw: 45, pitch: 0 }, 'c').y, 3)]).toEqual([order, [{ kind: 'line', id: 'bc' }], true])
     }
   })
 })
@@ -366,7 +366,7 @@ describe('companions in the same edit (dot 1791694523)', () => {
 describe('evaluate on an edge is onEdge, bit for bit (ledger row 14)', () => {
   it('every edge, dyadic t, varied knots and values', () => {
     const val = (yaw: number, pitch: number, k: number) => 10 * k + yaw / 7 + pitch / 3.3 + (yaw * pitch) / 401
-    const views = [-90, 0, 90].flatMap(yaw => [-45, 0, 45].map(pitch => ({ yaw, pitch, points: { p: P(val(yaw, pitch, 1), val(yaw, pitch, 2)) }, lines: {}, radii: {}, ends: {} })))
+    const views = [-90, 0, 90].flatMap(yaw => [-45, 0, 45].map(pitch => ({ yaw, pitch, points: { p: P(val(yaw, pitch, 1), val(yaw, pitch, 2)) }, lines: {} })))
     const edges = [
       ...[-45, 0, 45].flatMap(p => [-90, 90].map(y => ({ key: `0,${p}>${y},${p}`, from: [0, p], to: [y, p] }))),
       ...[-90, 0, 90].flatMap(y => [-45, 45].map(p => ({ key: `${y},0>${y},${p}`, from: [y, 0], to: [y, p] }))),

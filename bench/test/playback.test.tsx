@@ -125,7 +125,7 @@ describe('bench playback', () => {
     const { host, button } = await setup()
     await act(async () => { button('Playback').click() })
     // disabled through their fieldset: `.disabled` is the element's own attribute, `:disabled` the real state
-    const labels = ['Undo', 'Redo', 'Delete', 'Paste', 'Broadcast shape', 'Broadcast stroke', 'Fit', 'Draft corners', 'Pen P', 'demo eyes']
+    const labels = ['Undo', 'Redo', 'Delete', 'Paste', 'Broadcast shape', 'Fit', 'Draft corners', 'Pen P', 'demo eyes']
     expect(labels.filter(label => !button(label).matches(':disabled'))).toEqual([])
     expect((host.querySelector('[data-testid="open"]') as HTMLInputElement).matches(':disabled')).toBe(true)
     expect([...host.querySelectorAll('[data-testid="views"] button')].every(b => b.matches(':disabled'))).toBe(true)

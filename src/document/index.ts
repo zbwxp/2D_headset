@@ -61,7 +61,7 @@ const createState = (axis = 0): State => ({
 export interface Snapshot {
   /** Layers bottom → top; `type` is the 元组件 type when it has one. */
   layers: (net.Layer & { type?: string })[]
-  /** `width`: the point's stroke width in this view, shared by every line ending there (bowen 1791820396). */
+  /** `width`: the point's stroke width, shared by every line ending there (bowen 1791820396) and by every view (bowen 1792057731). */
   points: { id: Id; layer: Id; position: Vec; width: number; links: Id[]; endStroke?: joins.EndStroke }[]
   lines: { id: Id; name: string; a: Id; b: Id; ha: Vec; hb: Vec; state: net.ElementState; stroke: net.Stroke }[]
   groups: (groups.Group & { name: string })[]
@@ -115,6 +115,12 @@ export class Editor {
    * Mirror links act only at 0,0 (bowen 1791650323). In another view an operation that
    * would act on a mirror pair is not defined yet, so it is refused (dot 1791653374).
    */
+  /**
+   * Mirror counterparts of a stroke value. A stroke value is one for every view (bowen 1792057731), so it
+   * has nothing per view to protect: both sides change together from any view, unlike positions and
+   * handles (`paired`; dot, docs/shared-strokes-checklist.md §2).
+   */
+  private strokes<T>(items: T[]): T[] { return items }
   private paired<T>(items: T[]): T[] {
     if (this.tx.layer !== views.FRONT && items.length > 1) throw new net.Refusal('mirror-front-only', `mirror-front-only: mirror-linked lines are edited together only in the front view (this edit is in ${this.tx.layer})`)
     return items
@@ -296,17 +302,18 @@ export class Editor {
     net.touch(this.tx.changes, point)
   }
   /**
-   * A join's manual transition-zone length in this view only (bowen 1791810585: per view, not
-   * broadcast); null sets it automatic here. Under a mirror link the counterpart's join gets the same.
+   * A join's manual transition-zone length, one for every view (bowen 1792057731); null sets it automatic.
+   * Under a mirror link the counterpart's join gets the same, from any view (strokes()).
    */
   zone(point: Id, l1: Id, l2: Id, length: number | null) {
-    for (const [p, a, b] of this.paired(apply.pairedJoins(this.s.apply, this.s.network, point, l1, l2))) joins.setZoneHere(this.s.joins, this.s.network, p, a, b, length)
+    for (const [p, a, b] of this.strokes(apply.pairedJoins(this.s.apply, this.s.network, point, l1, l2))) joins.setZone(this.s.joins, p, a, b, length)
   }
   removeJoin(point: Id, l1: Id, l2: Id) {
-    for (const [p, a, b] of this.paired(apply.pairedJoins(this.s.apply, this.s.network, point, l1, l2))) { joins.removeJoin(this.s.joins, this.s.network, p, a, b); net.touch(this.tx.changes, p) }
+    for (const [p, a, b] of this.paired(apply.pairedJoins(this.s.apply, this.s.network, point, l1, l2))) { joins.removeJoin(this.s.joins, p, a, b); net.touch(this.tx.changes, p) }
   }
-  endStroke(point: Id, stroke: joins.EndStroke) {
-    for (const p of this.paired(apply.pairedPoints(this.s.apply, this.s.network, point))) joins.setEndStroke(this.s.joins, this.s.network, p, stroke)
+  /** A point's end stroke, one for every view; under a mirror link its counterpart's too, from any view. */
+  endStroke(point: Id, stroke: joins.EndStrokeIn) {
+    for (const p of this.strokes(apply.pairedPoints(this.s.apply, this.s.network, point))) joins.setEndStroke(this.s.joins, this.s.network, p, stroke)
   }
 
   // links (cross-layer relation)
@@ -345,13 +352,13 @@ export class Editor {
   // (the widths go through the points, so a mirror partner drawn the other way round gets them at the right ends)
   lineStroke(line: Id, stroke: net.Stroke) {
     if (!(stroke.width > 0 && Number.isFinite(stroke.width)) || (stroke.widthB !== undefined && !(stroke.widthB > 0 && Number.isFinite(stroke.widthB)))) throw new Error('Stroke width must be a positive number')
-    for (const id of this.paired(apply.pairedLines(this.s.apply, this.s.network, line))) net.setLineProfile(this.s.network, id, stroke.profile)
+    for (const id of this.strokes(apply.pairedLines(this.s.apply, this.s.network, line))) net.setLineProfile(this.s.network, id, stroke.profile)
     const l = net.line(this.s.network, line)
     this.pointWidth(l.a, stroke.width)
     this.pointWidth(l.b, stroke.widthB ?? stroke.width)
   }
-  /** A point's width in this view, shared by every line ending there (bowen 1791820396). */
-  pointWidth(point: Id, width: number) { for (const p of this.paired(apply.pairedPoints(this.s.apply, this.s.network, point))) net.setPointWidth(this.s.network, p, width) }
+  /** A point's width, shared by every line ending there (bowen 1791820396) and by every view (bowen 1792057731). */
+  pointWidth(point: Id, width: number) { for (const p of this.strokes(apply.pairedPoints(this.s.apply, this.s.network, point))) net.setPointWidth(this.s.network, p, width) }
   /**
    * A group's width change is a batch over its unlocked lines (Q29 D): their profile, and the width of each of their
    * points that no locked line ends at (a shared point would change the locked line).
@@ -548,16 +555,6 @@ export class Editor {
   addAsset(asset: reference.Asset): string { return reference.addAsset(this.s.reference, asset) }
   renameAsset(id: Id, name: string) { reference.renameAsset(this.s.reference, id, name) }
   removeAsset(id: Id) { reference.removeAsset(this.s.reference, id) }
-  /**
-   * Stroke broadcast: the selected lines' (or `units`') own strokes and their end points'
-   * end strokes, as in this view, assigned to every other view (views.broadcastStroke).
-   * Without a line it is refused, as delete is.
-   */
-  broadcastStroke(units?: readonly editing.Unit[]) {
-    const lines = editing.units(this.targets(units, this.s.network)).flatMap(u => (u.kind === 'line' ? [u.id] : []))
-    if (!lines.length) throw new net.Refusal('select-lines-to-broadcast', 'select-lines-to-broadcast: the stroke broadcast takes lines; select lines')
-    views.broadcastStroke(this.s.network, this.s.joins, lines)
-  }
   /** Delete the selected lines, or the lines among `units` (explicit targets, as the transforms take); without a line it is refused. */
   deleteSelection(units?: readonly editing.Unit[]) {
     for (const id of editing.deletion(this.targets(units, this.view().network))) if (net.hasLine(this.s.network, id)) this.deleteLine(id)
@@ -639,7 +636,7 @@ export class Editor {
  * public methods, instead of per-operation handling.
  */
 /** @internal Editor members that are not operations (helpers and cancel): not wrapped, not declared. */
-export const UNWRAPPED: readonly string[] = ['constructor', 'topology', 'cancel', 'linesIn', 'fillsOf', 'loops', 'afterApply', 'view', 'insertClip', 'targets', 'paired', 'frontOnly', 'holdEverywhere']
+export const UNWRAPPED: readonly string[] = ['constructor', 'topology', 'cancel', 'linesIn', 'fillsOf', 'loops', 'afterApply', 'view', 'insertClip', 'targets', 'paired', 'strokes', 'frontOnly', 'holdEverywhere']
 for (const name of Object.getOwnPropertyNames(Editor.prototype)) {
   const d = Object.getOwnPropertyDescriptor(Editor.prototype, name)
   if (!d || typeof d.value !== 'function' || UNWRAPPED.includes(name)) continue
@@ -996,7 +993,7 @@ export function importState(data: unknown): Core {
   }
 }
 
-/** The views of a state as `evaluate` input: per view its angle, positions, handle vectors, strokes, zones and end strokes. */
+/** The views of a state as `evaluate` input: per view its angle, positions and handle vectors (strokes are one for every view). */
 function modelOf(s: State): evaluate.Model {
   // responses with edge keys as evaluate names them (`yaw,pitch>yaw,pitch`), copied
   const edgeKey = (k: string) => { const e = views.EDGES.find(x => x.key === k)!; const a = views.angle(e.inner), b = views.angle(e.outer); return `${a.yaw},${a.pitch}>${b.yaw},${b.pitch}` }
@@ -1013,15 +1010,7 @@ function modelOf(s: State): evaluate.Model {
       return {
         ...views.angle(k),
         points: Object.fromEntries(net.points(n).map(p => [p.id, p.position])),
-        lines: Object.fromEntries(net.lines(n).map(l => [l.id, { ha: l.ha, hb: l.hb, stroke: l.stroke }])),
-        // every join's effective zone in this view — the manual value, else the automatic one from this view's widths —
-        // so playback blends real lengths and never an absent one as 0 (dot 1791812073, bowen 1791811981)
-        zones: Object.fromEntries(joins.rows(s.joins, n).map(r => {
-          const width = (id: Id) => { const l = net.line(n, id); return net.widthAt(l.stroke, l.a === r.point ? 'a' : 'b') }
-          return [joins.rowKey(r.point, r.lines[0], r.lines[1]), r.zone ?? joins.autoZone(width(r.lines[0]), width(r.lines[1]))]
-        })),
-        // stored end strokes hold no undefined values (setEndStroke drops them); the type allows them, evaluate's does not
-        ends: Object.fromEntries(net.points(n).flatMap(p => { const e = joins.endStroke(s.joins, n, p.id); return e ? [[p.id, Object.fromEntries(Object.entries(e).filter((kv): kv is [string, number | string] => kv[1] !== undefined))]] : [] })),
+        lines: Object.fromEntries(net.lines(n).map(l => [l.id, { ha: l.ha, hb: l.hb }])),
       }
     }),
   })
@@ -1029,8 +1018,9 @@ function modelOf(s: State): evaluate.Model {
 
 /**
  * A private copy of `s` with a scratch shape layer holding `posed` (stage 3a read path). The
- * layer key is free in the copy (`pose`, `pose~1`, …; dot 1791684079). Every value is written,
- * end strokes set or cleared, so nothing copied from the front is left standing. No settling.
+ * layer key is free in the copy (`pose`, `pose~1`, …; dot 1791684079). Every position and handle
+ * is written, so nothing copied from the front is left standing; strokes, zones and end strokes are
+ * one for every view and pose, read as they are (bowen 1792057731). No settling.
  */
 function posedState(s: State, posed: evaluate.Posed, left = false): { state: State; layer: string } {
   const c = structuredClone(s)
@@ -1043,22 +1033,6 @@ function posedState(s: State, posed: evaluate.Posed, left = false): { state: Sta
   const n = net.of(c.network, layer)
   net.setPositions(n, Object.entries(posed.points).map(([id, position]) => ({ id, position })))
   net.setHandles(n, Object.entries(posed.lines).flatMap(([line, l]) => [{ line, end: 'a' as const, offset: l.ha }, { line, end: 'b' as const, offset: l.hb }]))
-  for (const [id, l] of Object.entries(posed.lines)) net.setLineStroke(n, id, l.stroke)
-  for (const r of joins.rows(c.joins, n)) {
-    const key = joins.rowKey(r.point, r.lines[0], r.lines[1])
-    // an arc's radius is its row's, the same at every pose: nothing to write
-    // a posed zone equal to the automatic length of the posed widths reads as automatic, so a view is reproduced exactly
-    const z = Object.hasOwn(posed.zones, key) ? posed.zones[key]! : undefined
-    const at = (id: Id) => net.widthAt(posed.lines[id]!.stroke, net.line(n, id).a === r.point ? 'a' : 'b')
-    const auto = joins.autoZone(at(r.lines[0]), at(r.lines[1]))
-    joins.setZoneHere(c.joins, n, r.point, r.lines[0], r.lines[1], z === undefined || Math.abs(z - auto) <= 1e-12 * Math.max(1, auto) ? null : z)
-  }
-  for (const p of net.points(n)) {
-    // own properties only: a point may be called `constructor` or `toString` (dot 1791685237)
-    const e = Object.hasOwn(posed.ends, p.id) ? posed.ends[p.id] : undefined
-    if (e) joins.setEndStroke(c.joins, n, p.id, e)
-    else joins.clearEndStroke(c.joins, n, p.id)
-  }
   return { state: c, layer }
 }
 

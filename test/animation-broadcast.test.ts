@@ -105,7 +105,7 @@ describe('fit (plan tests: fit)', () => {
 })
 
 describe('the stage boundary (plan tests: stage boundary; dot 1791680403)', () => {
-  it('with a move or a structural edit, or two of them, refused whole; with selections or a stroke broadcast, allowed', () => {
+  it('with a move or a structural edit, or two of them, refused whole; with selections, allowed', () => {
     const d = doc()
     d.edit(e => e.move([{ id: 'b', target: P(13, 2) }]))
     const before = all(d)
@@ -114,7 +114,7 @@ describe('the stage boundary (plan tests: stage boundary; dot 1791680403)', () =
     expect(() => d.edit(e => { e.fit(sel('ab')); e.broadcastShape(sel('bc')) })).toThrow(/stage2-alone/)
     expect(() => d.edit(e => { e.broadcastShape(sel('ab')); e.broadcastShape(sel('ab')) })).toThrow(/stage2-alone/) // counted by calls
     expect(all(d)).toBe(before)
-    d.edit(e => { e.select(sel('ab')); e.broadcastStroke(); e.broadcastShape() })
+    d.edit(e => { e.select(sel('ab')); e.broadcastShape() })
     // bc's only pending change was its shared end b, which the broadcast carried to every view
     expect(d.pendingLines()).toEqual([])
   })

@@ -161,16 +161,19 @@ describe('mirror links act at 0,0 only', () => {
     return d
   }
 
-  it('in a side view a geometric edit does not mirror; structural or paired edits are refused', () => {
+  it('in a side view a geometric edit does not mirror; structural or paired edits are refused; a stroke changes both sides', () => {
     const d = mirrored()
     d.editIn(SIDE, e => e.move([{ id: 'p', target: P(-30, 9) }]))
     expect(at(d, SIDE, 's')).toEqual(P(20, 0))
     const before = all(d)
     expect(() => d.editIn(SIDE, e => e.split('l', 0.5, 'm', 'x1', 'x2'))).toThrow(/mirror-front-only/)
-    expect(() => d.editIn(SIDE, e => e.lineStroke('l', { width: 3, profile: 'uniform' }))).toThrow(/mirror-front-only/)
     expect(() => d.editIn(SIDE, e => e.mirrorApply(['l'], ['r']))).toThrow(/mirror-front-only/)
     expect(() => d.editIn(SIDE, e => e.unmirror(['l']))).toThrow(/mirror-front-only/)
     expect(all(d)).toBe(before)
+    // a stroke is one for every view: from a side view it changes both sides, in every view (docs/shared-strokes-checklist.md §2)
+    d.editIn(SIDE, e => e.lineStroke('l', { width: 3, profile: 'uniform' }))
+    for (const k of d.views()) expect(['l', 'r'].map(id => d.in(k).snapshot().lines.find(l => l.id === id)!.stroke.width)).toEqual([3, 3])
+    d.undo()
     // in the front the same split runs paired, as before
     d.edit(e => e.split('l', 0.5, 'm', 'x1', 'x2'))
     expect(d.snapshot().lines.map(l => l.id).sort()).toHaveLength(4)

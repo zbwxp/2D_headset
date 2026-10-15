@@ -90,14 +90,14 @@ export const EFFECTS: Record<string, Effect> = {
   bind: full({ reads: 'draft', intents: 'edited', shapes: 'all-views', records: true, shared: STRUCTURAL_RESPONSES }),
   unbind: full({ reads: 'settled-trial', intents: 'edited', shapes: 'all-views', records: true, shared: STRUCTURAL_RESPONSES }),
   // joins: a smooth join holds its first-clicked handle in every view (an arc's radius is shared: no view written for it);
-  // a removed join drops its zone from every view
+  // a removed join takes its zone with its row (strokes are one for every view, docs/shared-strokes-checklist.md §3)
   join: full({ reads: 'draft', intents: 'all-views', shapes: 'all-views', records: true, shared: ['joins'] }),
-  removeJoin: full({ reads: 'draft', shapes: 'all-views', records: true, shared: ['joins'] }),
+  removeJoin: full({ reads: 'draft', shared: ['joins'] }),
   // the order of a point's join list: shared by every view, no shape written
   joinOrder: full({ reads: 'draft', shared: ['joins'] }),
-  endStroke: full({ reads: 'draft', shapes: 'edited', shared: [] }),
-  // a join's manual zone length: this view's layer only
-  zone: full({ reads: 'draft', shapes: 'edited', shared: [] }),
+  // a point's end stroke and a join's manual zone: one value for every view, in the joins
+  endStroke: full({ reads: 'draft', shared: ['joins'] }),
+  zone: full({ reads: 'draft', shared: ['joins'] }),
   // links: a link moves the second point onto the first in every view
   // a link merges the two components' responses (stage 3b package 2)
   link: full({ reads: 'settled-trial', intents: 'all-views', shapes: 'all-views', shared: ['links', 'animation'] }),
@@ -105,9 +105,10 @@ export const EFFECTS: Record<string, Effect> = {
   linkJoin: full({ reads: 'draft', intents: 'all-views', shared: ['links'] }),
   removeLinkJoin: full({ reads: 'draft', shared: ['links'] }),
   // strokes, groups, fills
-  lineStroke: full({ reads: 'draft', shapes: 'edited' }),
-  pointWidth: full({ reads: 'draft', shapes: 'edited' }),
-  stroke: full({ reads: 'draft', shapes: 'edited' }),
+  // a point's width and a line's profile: one value for every view, in the structure (bowen 1792057731)
+  lineStroke: full({ reads: 'draft', shared: ['structure'] }),
+  pointWidth: full({ reads: 'draft', shared: ['structure'] }),
+  stroke: full({ reads: 'draft', shared: ['structure'] }),
   reorderGroup: full({ reads: 'draft', shared: ['groups'] }),
   moveGroup: full({ reads: 'draft', shared: STRUCTURAL }),
   fill: full({ reads: 'draft', shared: ['fills'] }),
@@ -146,10 +147,10 @@ export const EFFECTS: Record<string, Effect> = {
   uncorrect: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['animation'], autoStructure: false, settle: 'none', alone: false, companion: false },
   // every knot of some controls (docs/correction-cleanup-checklist.md §2): responses only, nothing settles
   clearCorrections: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['animation'], autoStructure: false, settle: 'none', alone: false, companion: false },
-  broadcastStroke: { reads: 'draft', intents: 'none', shapes: 'others', records: false, shared: [], autoStructure: false, settle: 'none', alone: false, companion: true },
   // mirror (front only, so the edited view is the front). Inside the operation apply copies the
-  // source's geometry, strokes, end strokes and line states onto the target in the front; sets or
-  // removes the target's joins (an arc's radius goes with its shared row); copies or removes link joins; fills or clears the target's loops
+  // source's geometry and line states onto the target in the front, and its strokes and end strokes for
+  // every view (one value each); sets or removes the target's joins (an arc's radius and a zone go with
+  // their shared row); copies or removes link joins; fills or clears the target's loops
   // (src/apply/index.ts mirrorApply; dot 1791688672)
   mirrorApply: full({ reads: 'settled-trial', intents: 'edited', shapes: 'all-views', records: true, shared: ['structure', 'joins', 'links', 'fills', 'apply'] }),
   mirrorLink: full({ reads: 'settled-trial', intents: 'edited', shapes: 'all-views', records: true, shared: ['structure', 'joins', 'links', 'fills', 'apply'] }),

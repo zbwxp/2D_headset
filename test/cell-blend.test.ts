@@ -8,7 +8,7 @@ const YAWS = [-90, 0, 90], PITCHES = [-45, 0, 45]
 type K = [number, number][]
 /** One point p whose x per view is given; y follows yaw and pitch so every edge has a span. */
 function model(x: (yaw: number, pitch: number) => number, responses?: Record<string, { x?: K }>): Model {
-  const view = (yaw: number, pitch: number): ViewShape => ({ yaw, pitch, points: { p: { x: x(yaw, pitch), y: yaw / 9 + pitch / 4.5 } }, lines: {}, ends: {} })
+  const view = (yaw: number, pitch: number): ViewShape => ({ yaw, pitch, points: { p: { x: x(yaw, pitch), y: yaw / 9 + pitch / 4.5 } }, lines: {} })
   return { views: YAWS.flatMap(y => PITCHES.map(p => view(y, p))), ...(responses ? { responses: { points: { p: responses }, handles: {} } } : {}) }
 }
 const X = (yaw: number, pitch: number) => 10 + yaw / 7 + pitch / 3 + (yaw * pitch) / 500
@@ -47,7 +47,7 @@ describe('the cell blend', () => {
     const kx: Record<string, K> = { '0,0>90,0': [[0.3, -0.4]], '0,-45>90,-45': [[0.6, 1.8]], '0,0>0,-45': [[0.5, 0.2]], '90,0>90,-45': [[0.25, 0.9]] }
     const ky: Record<string, K> = { '0,0>90,0': [[0.8, 0.5]], '0,-45>90,-45': [[0.2, -0.7]], '0,0>0,-45': [[0.4, 1.4]], '90,0>90,-45': [[0.7, 0.1]] }
     const Yv = (yaw: number, pitch: number) => 3 - yaw / 11 + pitch / 5 + (yaw * pitch) / 300
-    const view = (yaw: number, pitch: number): ViewShape => ({ yaw, pitch, points: { p: { x: X(yaw, pitch), y: Yv(yaw, pitch) } }, lines: {}, ends: {} })
+    const view = (yaw: number, pitch: number): ViewShape => ({ yaw, pitch, points: { p: { x: X(yaw, pitch), y: Yv(yaw, pitch) } }, lines: {} })
     const m: Model = { views: YAWS.flatMap(y => PITCHES.map(p => view(y, p))), responses: { points: { p: Object.fromEntries(Object.keys(kx).map(e => [e, { x: kx[e]!, y: ky[e]! }])) }, handles: {} } }
     const coons = (f: (yaw: number, pitch: number) => number, k: Record<string, K>, u: number, v: number) => {
       const F = f(0, 0), Y = f(90, 0), P = f(0, -45), C = f(90, -45), r = (e: string, t: number) => respond(k[e], t)

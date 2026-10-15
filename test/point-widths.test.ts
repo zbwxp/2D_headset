@@ -1,4 +1,5 @@
-// Widths belong to points (docs/point-widths-checklist.md, bowen 1791820396): one width per point per view, shared by
+// Widths belong to points (docs/point-widths-checklist.md, bowen 1791820396): one width per point, for every view (bowen
+// 1792057731; docs/shared-strokes-checklist.md), shared by
 // every line ending there; a line reads `width` at its a end and `widthB` at its b end (absent when equal).
 import { describe, it, expect } from 'vitest'
 import { radiiPerView } from './old-files'
@@ -32,18 +33,18 @@ describe('widths belong to points', () => {
     d.edit(e => e.lineStroke('l0', { width: 3, profile: 'uniform' }))
     expect(line(d, 'l0').stroke).toEqual({ width: 3, profile: 'uniform' })
   })
-  it('per view: another view keeps its own widths; undo restores', () => {
+  it('one width for every view: set in one view, every view reads it; undo restores everywhere', () => {
     const d = pair()
-    d.edit(e => e.pointWidth('p', 5))
-    expect(d.in('view:90,0').snapshot().points.find(p => p.id === 'p')!.width).toBe(1)
+    d.editIn('view:90,0', e => e.pointWidth('p', 5))
+    for (const k of d.views()) expect([k, d.in(k).snapshot().points.find(p => p.id === 'p')!.width]).toEqual([k, 5])
     d.undo()
-    expect(width(d, 'p')).toBe(1)
+    for (const k of d.views()) expect([k, d.in(k).snapshot().points.find(p => p.id === 'p')!.width]).toEqual([k, 1])
   })
-  it('saved and opened unchanged (current version, 13)', () => {
+  it('saved and opened unchanged (current version, 14)', () => {
     const d = pair()
     d.edit(e => e.pointWidth('p', 6))
     const text = save(d)
-    expect(JSON.parse(text).version).toBe(13)
+    expect(JSON.parse(text).version).toBe(14)
     expect(width(open(text), 'p')).toBe(6)
     expect(save(open(text))).toBe(text)
   })
@@ -61,8 +62,9 @@ describe('widths belong to points', () => {
     v9.version = 8
     const back = open(JSON.stringify(v9))
     expect(['a', 'p', 'c'].map(id => width(back, id))).toEqual([3, 5, 1])
-    expect(back.in('view:90,0').snapshot().points.map(p => p.width)).toEqual([1, 1, 1])
-    expect(JSON.parse(save(back)).version).toBe(13)
+    // one width per point for every view since version 14: the front's (bowen 1792057731)
+    expect(back.in('view:90,0').snapshot().points.map(p => p.width)).toEqual([3, 5, 1])
+    expect(JSON.parse(save(back)).version).toBe(14)
   })
   it('a version 8 file with a bad old width is refused, not opened with another width (dot 1791821589)', () => {
     const d = pair()
@@ -124,12 +126,12 @@ describe('widths belong to points', () => {
 })
 
 describe('a free end\'s taper (bowen 1791853511): endStroke.taper is a multiple of the end width, 0 or more', () => {
-  it('accepted 0 and above, kept per view; a negative or non-number taper is refused', () => {
+  it('accepted 0 and above, one for every view (bowen 1792057731); a negative or non-number taper is refused', () => {
     const d = pair()
     d.edit(e => e.endStroke('a', { taper: 0 }))
     d.edit(e => e.endStroke('c', { taper: 6 }))
     expect(d.snapshot().points.find(p => p.id === 'c')!.endStroke).toEqual({ taper: 6 })
-    expect(d.in('view:90,0').snapshot().points.find(p => p.id === 'c')!.endStroke).toBeUndefined()
+    expect(d.in('view:90,0').snapshot().points.find(p => p.id === 'c')!.endStroke).toEqual({ taper: 6 })
     expect(() => d.edit(e => e.endStroke('a', { taper: -1 }))).toThrow(/0 or more/)
     expect(() => d.edit(e => e.endStroke('a', { taper: 'long' as unknown as number }))).toThrow(/0 or more/)
     expect(save(open(save(d)))).toBe(save(d))

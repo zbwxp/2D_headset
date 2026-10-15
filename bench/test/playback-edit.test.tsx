@@ -65,7 +65,7 @@ async function setup() {
 const near = (a: Vec, b: Vec) => Math.abs(a.x - b.x) < 1e-6 && Math.abs(a.y - b.y) < 1e-6
 
 describe('the gate (§1)', () => {
-  it('between the views: the layer eye writes; a lock, a stroke and an empty edit are refused with the call named', async () => {
+  it('between the views: the layer eye writes; a lock, a join change and an empty edit are refused with the call named (a stroke goes through: playback-strokes)', async () => {
     const t = await setup()
     await t.play(20, 0)
     await act(async () => { bench().edit(e => e.layerState('layer-1', { visible: false })) })
@@ -73,7 +73,7 @@ describe('the gate (§1)', () => {
     expect(bench().core.snapshot().lines.find(l => l.id === `v${t.k}`)!.state.visible).toBe(false) // a layer's state is its lines'
     const before = save(bench().core)
     expect(() => bench().edit(e => e.layerState('layer-1', { locked: true }))).toThrow(/read-only-playback: layerState is not allowed/)
-    expect(() => bench().edit(e => e.lineStroke(`v${t.k}`, { width: 3, profile: 'uniform' }))).toThrow(/read-only-playback: lineStroke is not allowed/)
+    expect(() => bench().edit(e => e.lineState(`v${t.k}`, { locked: true }))).toThrow(/read-only-playback: lineState is not allowed/)
     expect(() => bench().edit(() => {})).toThrow(/it called nothing/)
     expect(save(bench().core)).toBe(before)
   })

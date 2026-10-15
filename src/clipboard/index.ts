@@ -38,7 +38,7 @@ export function extract(d: Parts, lines: readonly Id[]): Clip {
   const lineSet = new Set(ids), pointSet = new Set(network.points.map(p => p.id))
   return structuredClone({
     network,
-    joins: joins.rangeData(d.joins, d.network, lineSet, pointSet),
+    joins: joins.rangeData(d.joins, lineSet, pointSet),
     fills: fills.rangeData(d.fills, lineSet),
     masks: masks.rangeData(d.masks, lineSet, new Set(fills.rangeData(d.fills, lineSet).map(f => f.id))),
     names: names.rangeData(d.names, d.groups, d.network, ids),
@@ -53,14 +53,19 @@ export function extract(d: Parts, lines: readonly Id[]): Clip {
 export function check(v: unknown): Clip {
   const d = net.data, o = d.obj(v, 'clip')
   const nw = d.obj(o.network, 'clip lines')
-  const points = d.arr(nw.points, 'clip points').map((x, i) => { const P = d.obj(x, `clip point ${i}`); return { id: d.str(P.id, `clip point ${i} id`) } })
+  // strokes are one per meta-curve (docs/shared-strokes-checklist.md §3): a point carries its width, a line its profile
+  const points = d.arr(nw.points, 'clip points').map((x, i) => {
+    const P = d.obj(x, `clip point ${i}`), id = d.str(P.id, `clip point ${i} id`), width = d.num(P.width, `clip point ${id} width`)
+    if (!(width > 0)) d.fail(`clip point ${id} has a width that is not positive`)
+    return { id, width }
+  })
   d.unique(points.map(p => p.id), 'clip point')
   const pointIds = new Set(points.map(p => p.id))
   const lines = d.arr(nw.lines, 'clip lines').map((x, i) => {
     const L = d.obj(x, `clip line ${i}`), id = d.str(L.id, `clip line ${i} id`), a = d.str(L.a, `clip line ${id} a`), b = d.str(L.b, `clip line ${id} b`)
     if (!pointIds.has(a) || !pointIds.has(b) || a === b) d.fail(`clip line ${id} needs two of the clip's points`)
-    const st = d.obj(L.state, `clip line ${id} state`)
-    return { id, a, b, state: { visible: d.bool(st.visible, `clip line ${id} visible`), locked: d.bool(st.locked, `clip line ${id} locked`) } }
+    const st = d.obj(L.state, `clip line ${id} state`), sk = d.obj(L.stroke, `clip line ${id} stroke`)
+    return { id, a, b, state: { visible: d.bool(st.visible, `clip line ${id} visible`), locked: d.bool(st.locked, `clip line ${id} locked`) }, stroke: { profile: d.str(sk.profile, `clip line ${id} stroke profile`) } }
   })
   if (!lines.length) d.fail('the clip has no lines')
   d.unique(lines.map(l => l.id), 'clip line')
@@ -72,14 +77,16 @@ export function check(v: unknown): Clip {
     // one list of kinds, the shapes module's (ledger row 5)
     const kind = d.str(L.kind, `clip shape layer ${key} kind`) as shapes.LayerKind
     if (!shapes.KINDS.includes(kind)) d.fail(`clip shape layer ${key} has an unknown kind`)
+    // a clip from before shared strokes (a width or stroke per layer) is a bad clip
     const lp = d.arr(L.points, `clip shape layer ${key} points`).map((y, k) => {
-      const P = d.obj(y, `clip shape layer ${key} point ${k}`), width = d.num(P.width, `clip shape layer ${key} point ${k} width`)
-      if (!(width > 0)) d.fail(`clip shape layer ${key} point ${k} has a width that is not positive`)
-      return { id: d.str(P.id, `clip shape layer ${key} point ${k} id`), position: d.vec(P.position, `clip shape layer ${key} point ${k} position`), width }
+      const P = d.obj(y, `clip shape layer ${key} point ${k}`)
+      if (Object.hasOwn(P, 'width')) d.fail(`clip shape layer ${key} point ${k} holds a width (a clip from before shared strokes)`)
+      return { id: d.str(P.id, `clip shape layer ${key} point ${k} id`), position: d.vec(P.position, `clip shape layer ${key} point ${k} position`) }
     })
     const ll = d.arr(L.lines, `clip shape layer ${key} lines`).map((y, k) => {
-      const S = d.obj(y, `clip shape layer ${key} line ${k}`), id = d.str(S.id, `clip shape layer ${key} line ${k} id`), sk = d.obj(S.stroke, `clip shape layer ${key} line ${id} stroke`)
-      return { id, ha: d.vec(S.ha, `clip shape layer ${key} line ${id} ha`), hb: d.vec(S.hb, `clip shape layer ${key} line ${id} hb`), stroke: { profile: d.str(sk.profile, `clip shape layer ${key} line ${id} stroke profile`) } }
+      const S = d.obj(y, `clip shape layer ${key} line ${k}`), id = d.str(S.id, `clip shape layer ${key} line ${k} id`)
+      if (Object.hasOwn(S, 'stroke')) d.fail(`clip shape layer ${key} line ${id} holds a stroke (a clip from before shared strokes)`)
+      return { id, ha: d.vec(S.ha, `clip shape layer ${key} line ${id} ha`), hb: d.vec(S.hb, `clip shape layer ${key} line ${id} hb`) }
     })
     d.unique(lp.map(p => p.id), `clip shape layer ${key} point`); d.unique(ll.map(l => l.id), `clip shape layer ${key} line`)
     if (lp.length !== pointIds.size || lp.some(p => !pointIds.has(p.id))) d.fail(`clip shape layer ${key} does not hold exactly the clip's points`)
@@ -96,29 +103,22 @@ export function check(v: unknown): Clip {
     if (row.mode !== 'bound' && row.mode !== 'smooth' && row.mode !== 'cusp' && row.mode !== 'arc') throw new Error(`Unknown join mode ${String(row.mode)}`)
     if (ls.length !== 2 || !pointIds.has(row.point) || !lineIds.has(row.lines[0]) || !lineIds.has(row.lines[1])) d.fail(`clip join ${i} points outside the clip`)
     // an arc's radius is one per join, in the row (bowen 1791985326); other joins have none
-    if (row.mode !== 'arc') { if (Object.hasOwn(R, 'radius')) d.fail(`clip join ${i} is not an arc but has a radius`); return row }
+    // a manual zone is one per join too (bowen 1792057731)
+    let zone: number | undefined
+    if (Object.hasOwn(R, 'zone')) { zone = d.num(R.zone, `clip join ${i} zone`); if (!(zone > 0)) d.fail(`clip join ${i} has a zone that is not above zero`) }
+    const z = zone !== undefined ? { zone } : {}
+    if (row.mode !== 'arc') { if (Object.hasOwn(R, 'radius')) d.fail(`clip join ${i} is not an arc but has a radius`); return { ...row, ...z } }
     const radius = d.num(R.radius, `clip join ${i} radius`)
     if (!(radius > 0)) d.fail(`clip join ${i} has a radius that is not above zero`)
-    return { ...row, radius }
+    return { ...row, radius, ...z }
   })
-  // every shape layer of the copy carries its own zones and end strokes (dot 1791654154)
-  const joinLayers = d.arr(jo.layers, 'clip join layers').map((x, i) => {
-    const L = d.obj(x, `clip join layer ${i}`), key = d.str(L.key, `clip join layer ${i} key`)
-    if (Object.hasOwn(L, 'radii')) d.fail(`clip join layer ${key} holds radii per view (a clip from before one radius per join)`)
-    const zones = d.arr(L.zones, `clip zones in ${key}`).map((y, k) => {
-      const Z = d.obj(y, `clip zone ${k} in ${key}`), ls = d.arr(Z.lines, `clip zone ${k} lines in ${key}`)
-      const z = { point: d.str(Z.point, `clip zone ${k} point in ${key}`), lines: [d.str(ls[0], `clip zone ${k} line in ${key}`), d.str(ls[1], `clip zone ${k} line in ${key}`)] as [Id, Id], zone: d.num(Z.zone, `clip zone ${k} in ${key}`) }
-      if (!rows.some(row => row.point === z.point && row.lines[0] === z.lines[0] && row.lines[1] === z.lines[1])) d.fail(`clip zone ${k} in ${key} belongs to no join of the clip`)
-      return z
-    })
-    const endStrokes = d.arr(L.endStrokes, `clip end strokes in ${key}`).map((y, k) => {
-      const E = d.obj(y, `clip end stroke ${k} in ${key}`), point = d.str(E.point, `clip end stroke ${k} point in ${key}`)
-      if (!pointIds.has(point)) d.fail(`clip end stroke ${k} in ${key} points outside the clip`)
-      return { point, stroke: d.obj(E.stroke, `clip end stroke ${k} stroke in ${key}`) as joins.EndStroke }
-    })
-    return { key, zones, endStrokes }
+  // the points' end strokes, one per point for every view; a clip with per-layer join data is from before shared strokes
+  if (Object.hasOwn(jo, 'layers')) d.fail('the clip holds zones and end strokes per layer (a clip from before shared strokes)')
+  const endStrokes = d.arr(jo.endStrokes, 'clip end strokes').map((y, k) => {
+    const E = d.obj(y, `clip end stroke ${k}`), point = d.str(E.point, `clip end stroke ${k} point`)
+    if (!pointIds.has(point)) d.fail(`clip end stroke ${k} points outside the clip`)
+    return { point, stroke: d.obj(E.stroke, `clip end stroke ${k} stroke`) as joins.EndStroke }
   })
-  if (JSON.stringify(joinLayers.map(L => L.key).sort()) !== JSON.stringify(layers.map(L => L.key).sort())) d.fail("the clip's join layers do not match its shape layers")
   const fillsData = d.arr(o.fills, 'clip fills').map((x, i) => {
     const F = d.obj(x, `clip fill ${i}`), ls = d.arr(F.lines, `clip fill ${i} lines`).map((l, k) => d.str(l, `clip fill ${i} line ${k}`))
     if (!ls.length || ls.some(l => !lineIds.has(l))) d.fail(`clip fill ${i} points outside the clip`)
@@ -144,7 +144,7 @@ export function check(v: unknown): Clip {
   }
   // the masks, when present: every reference inside the clip, else the paste is refused
   const maskData = o.masks === undefined ? undefined : masks.checkData(o.masks, lineIds, new Set(fillsData.map(f => f.id)), 'clip masks')
-  return { network: { points, lines, source, layers }, joins: { rows, layers: joinLayers }, fills: fillsData, names: { lines: lineNames, groups: groupNames }, ...(maskData ? { masks: maskData } : {}), ...(responses ? { animation: responses } : {}) }
+  return { network: { points, lines, source, layers }, joins: { rows, endStrokes }, fills: fillsData, names: { lines: lineNames, groups: groupNames }, ...(maskData ? { masks: maskData } : {}), ...(responses ? { animation: responses } : {}) }
 }
 
 /**
@@ -185,7 +185,7 @@ export function insert(d: Parts, ch: net.Changes, clip: Clip, layer: Id, offset:
 }
 /** Joins, fills, masks and names after `insert`, with the same layer correspondence (dot 1791654260). */
 export function attach(d: Parts, clip: Clip, map: net.CopyMap, idOf: (old: Id) => Id, layers: ReadonlyMap<string, string>) {
-  joins.insert(d.joins, d.network, clip.joins, map, layers)
+  joins.insert(d.joins, d.network, clip.joins, map)
   const fillMap = fills.insert(d.fills, d.network, clip.fills, map, idOf)
   // after the fills, with their old → new ids (dot 1791903786)
   if (clip.masks) masks.insert(d.masks, clip.masks, map.lines, fillMap, idOf)

@@ -60,22 +60,17 @@ describe('the view picker', () => {
     expect(svg.outerHTML).toContain(`M20,${300 * k + 40}`)
   })
 
-  it('the broadcast button gives every view the side view\'s stroke for the selected line', async () => {
-    const { svg, k, host } = await setup()
+  it('a width set in the side view shows in every view without any other step; there is no "Broadcast stroke" button (bowen 1792057731)', async () => {
+    const { host, k } = await setup()
     await act(async () => { (host.querySelector('[data-view="view:90,0"]') as HTMLButtonElement).click() })
-    await act(async () => {
-      bench().core.editIn('view:90,0', e => e.lineStroke(`v${k}`, { width: 6, profile: 'uniform' }))
-      bench().ix.setTool('V'); bench().refresh()
-      svg.dispatchEvent(pe('pointerdown', 50, 300 * k, 1)); window.dispatchEvent(pe('pointerup', 50, 300 * k, 0))
-    })
-    await act(async () => { [...host.querySelectorAll('button')].find(b => b.textContent === 'Broadcast stroke')!.click() })
+    await act(async () => { bench().core.editIn('view:90,0', e => e.lineStroke(`v${k}`, { width: 6, profile: 'uniform' })); bench().refresh() })
     for (const v of bench().core.views()) expect(bench().core.in(v).snapshot().lines.find(l => l.id === `v${k}`)!.stroke.width).toBe(6)
+    expect([...host.querySelectorAll('button')].find(b => b.textContent === 'Broadcast stroke')).toBeUndefined()
   })
 
-  it('the pending mark shows after a front move; "Broadcast shape" (separate from "Broadcast stroke") sends it to the other views and clears it', async () => {
+  it('the pending mark shows after a front move; "Broadcast shape" sends it to the other views and clears it', async () => {
     const { svg, k, host } = await setup()
     const button = (label: string) => [...host.querySelectorAll('button')].find(b => b.textContent === label)!
-    expect(button('Broadcast stroke')).toBeDefined()
     await act(async () => {
       svg.dispatchEvent(pe('pointerdown', 0, 300 * k, 1))
       window.dispatchEvent(pe('pointermove', 0, 300 * k + 10, 1))

@@ -1,6 +1,6 @@
-// Step 4 of the multi-view framework: end strokes per view (docs/step4-per-view-joins.md; checked by
-// dot 1791654260). Join modes and arc radii are shared: one radius per join, whichever view sets it
-// (bowen 1791985326; docs/arc-radius-shared-checklist.md). Acceptance: every view reads the radius last
+// Step 4 of the multi-view framework (docs/step4-per-view-joins.md; checked by dot 1791654260), since made
+// shared: join modes and arc radii, one radius per join whichever view sets it (bowen 1791985326;
+// docs/arc-radius-shared-checklist.md), and end strokes, one per point (bowen 1792057731; docs/shared-strokes-checklist.md). Acceptance: every view reads the radius last
 // set anywhere; split, unbind, bind, mirror apply, copy / paste and save / open carry it with the row.
 import { describe, it, expect } from 'vitest'
 import { Core, save, open, type Vec } from '../src'
@@ -53,18 +53,16 @@ describe('one arc radius per join (bowen 1791985326)', () => {
   })
 })
 
-describe('end strokes per view', () => {
-  it('set or cleared in one view only', () => {
+describe('end strokes, one per point for every view (bowen 1792057731)', () => {
+  it('set in one view: every view reads it; set again in another: every view reads the new one', () => {
     const d = corner()
     d.editIn(SIDE, e => e.endStroke('a', { taper: 2 }))
-    expect(endAt(d, SIDE, 'a')).toEqual({ taper: 2 })
-    expect(endAt(d, FRONT, 'a')).toBeUndefined()
+    for (const k of d.views()) expect([k, endAt(d, k, 'a')]).toEqual([k, { taper: 2 }])
     d.edit(e => e.endStroke('a', { taper: 1 }))
-    expect(endAt(d, SIDE, 'a')).toEqual({ taper: 2 })
-    expect(endAt(d, FRONT, 'a')).toEqual({ taper: 1 })
+    for (const k of d.views()) expect([k, endAt(d, k, 'a')]).toEqual([k, { taper: 1 }])
   })
 
-  it('a locked line\'s free-end end stroke is protected in the view that has it', () => {
+  it('a locked line\'s free-end end stroke is protected', () => {
     const d = corner()
     d.editIn(SIDE, e => e.endStroke('a', { taper: 2 }))
     d.edit(e => { e.lineState('ab', { locked: true }); e.line('xy', { id: 'x', layer: 'L', position: P(-20) }, { id: 'y', layer: 'L', position: P(-30) }) })
@@ -114,16 +112,15 @@ describe('mirror apply gives the target arc the source\'s radius in every view',
   })
 })
 
-describe('copy / paste and save / open carry the radius and every view\'s end strokes', () => {
-  it('a paste writes the row\'s radius (every view) and each view\'s own end stroke', () => {
+describe('copy / paste and save / open carry the radius and the end strokes', () => {
+  it('a paste writes the row\'s radius and the end stroke, each the one value in every view', () => {
     const d = corner()
     d.edit(e => { e.join('b', 'ab', 'bc', { mode: 'arc', radius: 1 }); e.endStroke('a', { taper: 1 }) })
     d.editIn(SIDE, e => { e.join('b', 'ab', 'bc', { mode: 'arc', radius: 3 }); e.endStroke('a', { taper: 3 }) })
     const clip = d.in(SIDE).copy(['ab', 'bc'])
     d.edit(e => e.paste(clip, 'L', P(0, 100), 'p'))
     for (const k of d.views()) expect(radiusAt(d, k, 'p/b')).toBe(3)
-    expect(endAt(d, FRONT, 'p/a')).toEqual({ taper: 1 })
-    expect(endAt(d, SIDE, 'p/a')).toEqual({ taper: 3 })
+    for (const k of d.views()) expect(endAt(d, k, 'p/a')).toEqual({ taper: 3 })
   })
 
   it('an end stroke with integer-like parameter names is set, saved and opened (dot 1791654767)', () => {
@@ -133,7 +130,7 @@ describe('copy / paste and save / open carry the radius and every view\'s end st
     expect(endAt(again, SIDE, 'a')).toEqual({ '2': 1, '10': 2, taper: 3 })
   })
 
-  it('save and open keep the radius and every view\'s end strokes', () => {
+  it('save and open keep the radius and the end strokes', () => {
     const d = corner()
     d.edit(e => { e.join('b', 'ab', 'bc', { mode: 'arc', radius: 1 }); e.endStroke('c', { taper: 1 }) })
     d.editIn(SIDE, e => { e.join('b', 'ab', 'bc', { mode: 'arc', radius: 3 }); e.endStroke('c', { taper: 3 }) })

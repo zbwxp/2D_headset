@@ -122,15 +122,6 @@ describe('refusals and new actions', () => {
     expect(ix.preview().refusal?.code).toBe('mirror-front-only')
     expect(JSON.stringify(core().in(SIDE).snapshot().points)).toBe(before)
   })
-
-  it('broadcastStroke takes the selected lines\' strokes from the current view to the others', () => {
-    const { ix, core, setView } = setup()
-    core().editIn(SIDE, e => e.lineStroke('ab', { width: 4, profile: 'uniform' }))
-    setView(SIDE)
-    ix.setTool('V'); ix.pointerDown(P(25, 25)); ix.pointerUp(P(25, 25))
-    ix.broadcastStroke()
-    expect(core().in(FRONT).snapshot().lines.find(l => l.id === 'ab')!.stroke.width).toBe(4)
-  })
 })
 
 describe('a selection-only edit changes only the selection (dot 1791656400)', () => {

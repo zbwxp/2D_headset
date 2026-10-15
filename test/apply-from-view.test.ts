@@ -7,7 +7,7 @@ import { Core, type Vec } from '../src'
 const P = (x: number, y = 0): Vec => ({ x, y })
 const FRONT = 'view:0,0', SIDE = 'view:90,0', UP = 'view:0,45'
 
-/** Layer L: ab and bc joined by an arc at b, an end stroke at a; layer M: mn apart. Then L made different in the side view. */
+/** Layer L: ab and bc joined by an arc at b, an end stroke at a; layer M: mn apart. Then L's curves made different in the side view (its strokes, set there too, are one for every view: bowen 1792057731). */
 function doc() {
   const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })
   d.edit(e => {
@@ -46,10 +46,10 @@ const restOf = (d: Core, k: string, layer = 'L') => {
 const every = (d: Core) => JSON.stringify(d.views().map(k => [k, d.in(k).snapshot()]))
 
 describe('apply from another view', () => {
-  it('the side view\'s layer L takes exactly the front\'s curves, and keeps its own widths, strokes, end strokes, radius, zone; M and every other view are unchanged; one undo step', () => {
+  it('the side view\'s layer L takes exactly the front\'s curves, and keeps the widths, strokes, end strokes, radius, zone; M and every other view are unchanged; one undo step', () => {
     const d = doc()
     expect(shapeOf(d, SIDE)).not.toEqual(shapeOf(d, FRONT))
-    expect(restOf(d, SIDE)).not.toEqual(restOf(d, FRONT))
+    expect(restOf(d, SIDE)).toEqual(restOf(d, FRONT)) // one for every view
     const front = shapeOf(d, FRONT), sideM = shapeOf(d, SIDE, 'M'), rest = restOf(d, SIDE)
     const others = JSON.stringify(d.views().filter(k => k !== SIDE).map(k => [k, d.in(k).snapshot()]))
     const before = every(d)
@@ -62,13 +62,13 @@ describe('apply from another view', () => {
     expect(every(d)).toBe(before)
   })
 
-  it('the other way, into the front: the curves only; the front keeps its manual zone and end strokes', () => {
+  it('the other way, into the front: the curves only; the zone and end strokes stay as they are', () => {
     const d = doc()
     const side = shapeOf(d, SIDE), rest = restOf(d, FRONT)
     d.edit(e => e.applyFromView(['L'], SIDE))
     expect(shapeOf(d, FRONT)).toEqual(side)
     expect(restOf(d, FRONT)).toEqual(rest)
-    expect(restOf(d, FRONT).joins[0]!.zone).toBe(6)
+    expect(restOf(d, FRONT).points[0]![1]).toEqual({ taper: 4 })
   })
 
   it('two layers at once; a view with no lines in the layers, or the view itself, changes nothing', () => {

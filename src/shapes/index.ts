@@ -1,6 +1,7 @@
 // shapes — shape layers (docs/architecture-multiview.md §1). One layer holds, for every
-// point its position, and for every line its two handles and its stroke. A drawing has
-// one structure (network) and several shape layers over it: the nine views, and later
+// point its position, and for every line its two handles. Strokes are not here: every stroke
+// value is one per meta-curve, the same in every view (bowen 1792057731;
+// docs/shared-strokes-checklist.md). A drawing has one structure (network) and several shape layers over it: the nine views, and later
 // the hidden baselines and the expression shapes. This module stores the layers and
 // their kinds; it knows nothing of views, baselines or expressions beyond the kind.
 //
@@ -14,10 +15,7 @@ export type Id = string
 /** view: an editable view; expression: an editable expression shape; record: a hidden baseline. */
 export type LayerKind = 'view' | 'expression' | 'record'
 export const KINDS: readonly LayerKind[] = Object.freeze(['view', 'expression', 'record'])
-export interface Stroke { readonly width: number; readonly widthB?: number; readonly profile: string }
-/** A line's stored stroke: its profile only — widths belong to its points (bowen 1791820396). */
-export interface LineStroke { readonly profile: string }
-export interface LineShape { readonly ha: Vec; readonly hb: Vec; readonly stroke: LineStroke }
+export interface LineShape { readonly ha: Vec; readonly hb: Vec }
 /**
  * `copyNew`: a non-view layer whose owner has declared that new geometry (a new line's new
  * points and handles) takes the drawn values there, as in a view; and
@@ -30,25 +28,12 @@ declare const opaque: unique symbol
 /** Opaque handle to the shape layers of one drawing. */
 export type ShapesState = { readonly [opaque]: 'shapes' }
 
-type Mutable<T> = { -readonly [K in keyof T]: T[K] }
-/**
- * Per-layer values keyed by their owner (joins: a manual transition-zone length under the join
- * row's key, an end stroke under its point). An arc's radius is not here: one per join, in every
- * view (bowen 1791985326; docs/arc-radius-shared-checklist.md).
- */
-export type Slot = 'zone' | 'end'
-export type EndValue = Readonly<Record<string, number | string>>
 interface LayerData {
   key: string
   kind: LayerKind
   copyNew: boolean
   points: Record<Id, Vec>
-  /** Every point's stroke width in this layer (bowen 1791820396: widths belong to points; a new point gets 1). */
-  widths: Record<Id, number>
-  lines: Record<Id, { ha: Vec; hb: Vec; stroke: Mutable<LineStroke> }>
-  /** Values owned by other modules, stored per layer (step 4, dot 1791654260): shapes only stores them. */
-  zone: Record<string, number>
-  end: Record<string, Record<string, number | string>>
+  lines: Record<Id, { ha: Vec; hb: Vec }>
 }
 interface Store { layers: LayerData[] }
 const S = (s: ShapesState) => s as unknown as Store
@@ -60,14 +45,6 @@ const drop = (r: Record<string, unknown>, id: string) => { if (Object.hasOwn(r, 
 function vecIn(v: Vec): Vec {
   if (!v || !Number.isFinite(v.x) || !Number.isFinite(v.y)) throw new Error('Coordinates must be finite numbers')
   return { x: v.x, y: v.y }
-}
-function strokeIn(s: LineStroke): Mutable<LineStroke> {
-  if (!s) throw new Error('A stroke is needed')
-  return { profile: String(s.profile) }
-}
-function widthIn(w: number): number {
-  if (!(w > 0) || !Number.isFinite(w)) throw new Error('Stroke width must be a positive number')
-  return w
 }
 const vecOut = (v: Vec): Vec => Object.freeze({ x: v.x, y: v.y })
 
@@ -84,7 +61,7 @@ function layer(s: ShapesState, key: string): LayerData {
 /** A drawing's shapes with one empty first layer. */
 export function create(first: LayerInfo): ShapesState {
   if (typeof first.key !== 'string' || !first.key) throw new Error('A shape layer needs a key')
-  return { layers: [{ key: first.key, kind: kindIn(first.kind), copyNew: false, points: {}, widths: {}, lines: {}, zone: {}, end: {} }] } as Store as unknown as ShapesState
+  return { layers: [{ key: first.key, kind: kindIn(first.kind), copyNew: false, points: {}, lines: {} }] } as Store as unknown as ShapesState
 }
 
 /** A new layer holding a copy of `from` (every point and line has a shape in every layer). */
@@ -92,7 +69,7 @@ export function addLayer(s: ShapesState, key: string, kind: LayerKind, from: str
   if (typeof key !== 'string' || !key) throw new Error('A shape layer needs a key')
   if (S(s).layers.some(l => l.key === key)) throw new Error(`Shape layer ${key} already exists`)
   const src = layer(s, from)
-  S(s).layers.push({ key, kind: kindIn(kind), copyNew: kind !== 'view' && copyNew === true, points: structuredClone(src.points), widths: structuredClone(src.widths), lines: structuredClone(src.lines), zone: structuredClone(src.zone), end: structuredClone(src.end) })
+  S(s).layers.push({ key, kind: kindIn(kind), copyNew: kind !== 'view' && copyNew === true, points: structuredClone(src.points), lines: structuredClone(src.lines) })
 }
 
 export const layers = (s: ShapesState): readonly LayerInfo[] => Object.freeze(S(s).layers.map(l => Object.freeze({ key: l.key, kind: l.kind, ...(l.copyNew ? { copyNew: true } : {}) })))
@@ -111,18 +88,7 @@ export function position(s: ShapesState, key: string, point: Id): Vec {
 export function line(s: ShapesState, key: string, id: Id): LineShape {
   const l = own(layer(s, key).lines, id)
   if (!l) throw new Error(`No line ${id} in shape layer ${key}`)
-  return Object.freeze({ ha: vecOut(l.ha), hb: vecOut(l.hb), stroke: Object.freeze({ ...l.stroke }) })
-}
-/** A point's stroke width in one layer. */
-export function width(s: ShapesState, key: string, point: Id): number {
-  const w = own(layer(s, key).widths, point)
-  if (w === undefined) throw new Error(`No point ${point} in shape layer ${key}`)
-  return w
-}
-export function setWidth(s: ShapesState, key: string, point: Id, w: number) {
-  const L = layer(s, key)
-  if (own(L.widths, point) === undefined) throw new Error(`No point ${point} in shape layer ${key}`)
-  put(L.widths, point, widthIn(w))
+  return Object.freeze({ ha: vecOut(l.ha), hb: vecOut(l.hb) })
 }
 /** Every point position of one layer (one pass, for bulk readers). */
 export function positions(s: ShapesState, key: string): ReadonlyMap<Id, Vec> {
@@ -141,48 +107,6 @@ export function setHandle(s: ShapesState, key: string, id: Id, end: 'a' | 'b', v
   if (end === 'a') l.ha = vecIn(v)
   else l.hb = vecIn(v)
 }
-export function setStroke(s: ShapesState, key: string, id: Id, stroke: LineStroke) {
-  const l = own(layer(s, key).lines, id)
-  if (!l) throw new Error(`No line ${id} in shape layer ${key}`)
-  l.stroke = strokeIn(stroke)
-}
-
-// ---- per-layer values owned by other modules -----------------------------------
-
-function slotIn(slot: Slot, v: unknown): number | Record<string, number | string> {
-  if (slot === 'zone') {
-    if (typeof v !== 'number' || !Number.isFinite(v) || !(v > 0)) throw new Error('A transition-zone length must be a finite number above zero')
-    return v
-  }
-  if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('An end stroke must be an object')
-  const o = v as Record<string, unknown>, out: Record<string, number | string> = {}
-  for (const k of Object.keys(o).sort()) {
-    const x = o[k]
-    if (x === undefined) continue
-    if (typeof x === 'number' ? !Number.isFinite(x) : typeof x !== 'string') throw new Error('End stroke values must be finite numbers or strings')
-    // `taper`: a free end's taper length as a multiple of its width (bowen 1791853511): a number, 0 or more
-    if (k === 'taper' && (typeof x !== 'number' || x < 0)) throw new Error('An end taper must be a number, 0 or more (a multiple of the end width)')
-    put(out, k, x)
-  }
-  return out
-}
-const slotOut = (v: number | Record<string, number | string>) => (typeof v === 'number' ? v : Object.freeze({ ...v }))
-
-/** A value in one layer, or undefined. */
-export function slotGet(s: ShapesState, key: string, slot: Slot, id: string): number | EndValue | undefined {
-  const v = own(layer(s, key)[slot] as Record<string, number | Record<string, number | string>>, id)
-  return v === undefined ? undefined : slotOut(v)
-}
-/** Write a value in one layer (copied in; end strokes stored with sorted keys, one form per content). */
-export function slotSet(s: ShapesState, key: string, slot: Slot, id: string, v: number | EndValue) {
-  put(layer(s, key)[slot] as Record<string, unknown>, id, slotIn(slot, v))
-}
-/** Remove a value from one layer. */
-export function slotDropIn(s: ShapesState, key: string, slot: Slot, id: string) { drop(layer(s, key)[slot], id) }
-/** Remove a value from every layer. */
-export function slotDrop(s: ShapesState, slot: Slot, id: string) { for (const L of S(s).layers) drop(L[slot], id) }
-/** Every key holding a value in one layer. */
-export const slotKeys = (s: ShapesState, key: string, slot: Slot): string[] => Object.keys(layer(s, key)[slot])
 
 // ---- structure follows (called by network only) ----------------------------
 
@@ -190,24 +114,20 @@ export const slotKeys = (s: ShapesState, key: string, slot: Slot): string[] => O
  * A new point or line gets its shape in one layer. Every layer must end up holding
  * every point and line; network checks that before a structural change completes.
  */
-export function putPoint(s: ShapesState, key: string, point: Id, v: Vec, w = 1) {
-  const L = layer(s, key)
-  put(L.points, point, vecIn(v))
-  put(L.widths, point, widthIn(w))
-}
-export function putLine(s: ShapesState, key: string, id: Id, shape: { ha: Vec; hb: Vec; stroke: LineStroke }) {
-  put(layer(s, key).lines, id, { ha: vecIn(shape.ha), hb: vecIn(shape.hb), stroke: strokeIn(shape.stroke) })
+export function putPoint(s: ShapesState, key: string, point: Id, v: Vec) { put(layer(s, key).points, point, vecIn(v)) }
+export function putLine(s: ShapesState, key: string, id: Id, shape: { ha: Vec; hb: Vec }) {
+  put(layer(s, key).lines, id, { ha: vecIn(shape.ha), hb: vecIn(shape.hb) })
 }
 /** A point or line removed from the structure leaves every layer. */
-export function removePoint(s: ShapesState, point: Id) { for (const L of S(s).layers) { drop(L.points, point); drop(L.widths, point) } }
+export function removePoint(s: ShapesState, point: Id) { for (const L of S(s).layers) drop(L.points, point) }
 export function removeLine(s: ShapesState, id: Id) { for (const L of S(s).layers) drop(L.lines, id) }
 
 /** Every layer holds exactly these points and lines (an internal consistency check). */
 export function covers(s: ShapesState, points: readonly Id[], lines: readonly Id[]): boolean {
   for (const L of S(s).layers) {
     const p = Object.keys(L.points), l = Object.keys(L.lines)
-    if (p.length !== points.length || l.length !== lines.length || Object.keys(L.widths).length !== points.length) return false
-    if (points.some(id => !Object.hasOwn(L.points, id) || !Object.hasOwn(L.widths, id)) || lines.some(id => !Object.hasOwn(L.lines, id))) return false
+    if (p.length !== points.length || l.length !== lines.length) return false
+    if (points.some(id => !Object.hasOwn(L.points, id)) || lines.some(id => !Object.hasOwn(L.lines, id))) return false
   }
   return true
 }
@@ -219,9 +139,12 @@ const obj = (v: unknown, what: string): Record<string, unknown> => { if (!v || t
 const num = (v: unknown, what: string): number => { if (typeof v !== 'number' || !Number.isFinite(v)) fail(`${what} is not a finite number`); return v }
 const vec = (v: unknown, what: string): Vec => { const o = obj(v, what); return { x: num(o.x, `${what}.x`), y: num(o.y, `${what}.y`) } }
 
+/** What a saved shape layer may hold: since archive 14 no stroke value (docs/shared-strokes-checklist.md §4). */
+const LAYER_KEYS = new Set(['key', 'kind', 'copyNew', 'points', 'lines'])
+
 /**
  * Shape layers from saved data, checked: known kinds, unique keys, and every layer holds
- * a finite shape for exactly the given points (a position and a positive width) and lines.
+ * a finite shape for exactly the given points (a position) and lines (two handles), and nothing else.
  */
 export function restore(v: unknown, ids: { points: readonly Id[]; lines: readonly Id[] }): ShapesState {
   const o = obj(v, 'shapes')
@@ -233,44 +156,25 @@ export function restore(v: unknown, ids: { points: readonly Id[]; lines: readonl
     if (keys.has(L.key)) fail(`shape layer ${L.key} appears twice`)
     keys.add(L.key)
     if (!KINDS.includes(L.kind as LayerKind)) fail(`shape layer ${L.key} has an unknown kind`)
-    const P = obj(L.points, `shape layer ${L.key} points`), Ls = obj(L.lines, `shape layer ${L.key} lines`), Wd = obj(L.widths, `shape layer ${L.key} widths`)
-    const points: Record<Id, Vec> = {}, widths: Record<Id, number> = {}, lines: LayerData['lines'] = {}
+    for (const k of Object.keys(L)) if (!LAYER_KEYS.has(k)) fail(`shape layer ${L.key} holds ${k} (strokes are one per meta-curve since archive 14)`)
+    const P = obj(L.points, `shape layer ${L.key} points`), Ls = obj(L.lines, `shape layer ${L.key} lines`)
+    const points: Record<Id, Vec> = {}, lines: LayerData['lines'] = {}
     for (const id of ids.points) {
       if (!Object.hasOwn(P, id)) fail(`shape layer ${L.key} has no position for point ${id}`)
       put(points, id, vec(P[id], `point ${id} in ${L.key}`))
-      if (!Object.hasOwn(Wd, id)) fail(`shape layer ${L.key} has no width for point ${id}`)
-      const w = num(Wd[id], `width of point ${id} in ${L.key}`)
-      if (!(w > 0)) fail(`point ${id} has a width that is not positive in ${L.key}`)
-      put(widths, id, w)
     }
-    if (Object.keys(Wd).length !== ids.points.length) fail(`shape layer ${L.key} has widths for points that do not exist`)
     for (const id of ids.lines) {
       if (!Object.hasOwn(Ls, id)) fail(`shape layer ${L.key} has no shape for line ${id}`)
-      const s = obj(Ls[id], `line ${id} in ${L.key}`), k = obj(s.stroke, `line ${id} stroke in ${L.key}`)
-      if (typeof k.profile !== 'string') fail(`line ${id} stroke profile in ${L.key} is not text`)
-      if (Object.keys(k).length !== 1) fail(`line ${id} stroke in ${L.key} holds more than its profile (widths belong to points)`)
-      put(lines, id, { ha: vec(s.ha, `line ${id} ha in ${L.key}`), hb: vec(s.hb, `line ${id} hb in ${L.key}`), stroke: { profile: k.profile } })
+      const s = obj(Ls[id], `line ${id} in ${L.key}`)
+      if (Object.keys(s).some(k => k !== 'ha' && k !== 'hb')) fail(`line ${id} in ${L.key} holds more than its two handles`)
+      put(lines, id, { ha: vec(s.ha, `line ${id} ha in ${L.key}`), hb: vec(s.hb, `line ${id} hb in ${L.key}`) })
     }
     if (Object.keys(P).length !== ids.points.length) fail(`shape layer ${L.key} has positions for points that do not exist`)
     if (Object.keys(Ls).length !== ids.lines.length) fail(`shape layer ${L.key} has shapes for lines that do not exist`)
-    // values of other modules: types here; their keys are checked by their owners (joins)
-    if (Object.hasOwn(L, 'radius')) fail(`shape layer ${L.key} holds arc radii (one per join since archive 12)`)
-    const Z = obj(L.zone, `shape layer ${L.key} zone`), E = obj(L.end, `shape layer ${L.key} end strokes`)
-    const zone: Record<string, number> = {}, end: Record<string, Record<string, number | string>> = {}
-    for (const k of Object.keys(Z)) { const z = num(Z[k], `zone ${k} in ${L.key}`); if (!(z > 0)) fail(`zone ${k} in ${L.key} is not above zero`); put(zone, k, z) }
-    for (const k of Object.keys(E)) {
-      const e = obj(E[k], `end stroke ${k} in ${L.key}`)
-      for (const f of Object.keys(e)) { const x = e[f]; if (typeof x !== 'string') num(x, `end stroke ${k} ${f} in ${L.key}`) }
-      // compared with the writer's own normal form, not with a sort: integer-like keys
-      // enumerate in numeric order whatever the insertion order (dot 1791654767)
-      const kept = slotIn('end', e) as Record<string, number | string>
-      if (JSON.stringify(kept) !== JSON.stringify(e)) fail(`end stroke ${k} in ${L.key} is not in its stored form`)
-      put(end, k, kept)
-    }
     if (L.copyNew !== undefined && typeof L.copyNew !== 'boolean') fail(`shape layer ${L.key} copyNew is not true / false`)
     const copyNew = L.copyNew === true
     if (copyNew && L.kind === 'view') fail(`shape layer ${L.key} is a view marked copyNew`)
-    return { key: L.key, kind: L.kind as LayerKind, copyNew, points, widths, lines, zone, end }
+    return { key: L.key, kind: L.kind as LayerKind, copyNew, points, lines }
   })
   return { layers } as Store as unknown as ShapesState
 }

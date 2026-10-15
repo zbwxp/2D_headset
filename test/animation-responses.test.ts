@@ -64,8 +64,7 @@ describe('evaluate with responses', () => {
   const view = (yaw: number, pitch: number): ViewShape => ({
     yaw, pitch,
     points: { p: P(f(yaw, pitch, 1), f(yaw, pitch, 2)), q: P(f(yaw, pitch, 3), f(yaw, pitch, 4)) },
-    lines: { pq: { ha: P(1, f(yaw, pitch, 5)), hb: P(-1, 0), stroke: { width: 1 + Math.abs(yaw) / 90, profile: `w${yaw},${pitch}` } } },
-    ends: yaw === 0 && pitch === 0 ? { p: { taper: 2 } } : {},
+    lines: { pq: { ha: P(1, f(yaw, pitch, 5)), hb: P(-1, 0) } },
   })
   const views = [-90, 0, 90].flatMap(y => [-45, 0, 45].map(p => view(y, p)))
   const model = (responses?: Model['responses']): Model => ({ views, ...(responses ? { responses } : {}) })
@@ -124,8 +123,6 @@ describe('evaluate with responses', () => {
     const expected = (1 - v) * Eb + v * Et + (1 - u) * El + u * Er - ((1 - u) * (1 - v) * F + u * (1 - v) * Y + (1 - u) * v * Pv + u * v * C)
     expect(evaluate(m, pose).points.p!.x).toBeCloseTo(expected, 12)
     for (const vw of views) expect(evaluate(m, { yaw: vw.yaw, pitch: vw.pitch }).points.p).toEqual(vw.points.p)
-    const plain = evaluate(model(), pose), withR = evaluate(m, pose)
-    expect([withR.lines.pq!.stroke, withR.ends]).toEqual([plain.lines.pq!.stroke, plain.ends])
   })
 
   it('continuous across cell borders and across 0° with responses', () => {

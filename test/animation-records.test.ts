@@ -78,9 +78,9 @@ describe('the angle baseline record layer', () => {
   it('paste: a clip without a baseline layer gives the baseline the clip\'s front (nothing pending)', () => {
     const d = doc()
     d.edit(e => e.move([{ id: 'b', target: P(15, 5) }]))
-    const clip = d.copy(['ab']) as unknown as { network: { layers: { key: string }[] }; joins: { layers: { key: string }[] } }
+    // the joins carry nothing per layer (strokes are one for every view, bowen 1792057731): only the shapes lose the layer
+    const clip = d.copy(['ab']) as unknown as { network: { layers: { key: string }[] } }
     clip.network.layers = clip.network.layers.filter(l => l.key !== 'base:angle')
-    clip.joins.layers = clip.joins.layers.filter(l => l.key !== 'base:angle')
     d.edit(e => e.paste(clip as never, 'L', P(0, 100), 'p'))
     expect(base(d).points['p/b']).toEqual(front(d).points['p/b'])
   })

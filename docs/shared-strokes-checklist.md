@@ -41,12 +41,10 @@ The calls do not change: `pointWidth`, `lineStroke`, `stroke` (group), `endStrok
 The calls are bound to a view as today, but that view no longer matters for them. In detail:
 - **Locks:** unchanged. A locked line's widths and profile are not changed; the group `stroke` skips points a locked line ends at.
 - **Mirror (front only today).** Mirror-linked lines are edited together. Outside the front, `paired` refuses with `mirror-front-only`.
-  - **Proposal:** for these five stroke calls, the refusal goes, so both sides change together from any view. That rule exists because positions differ per view; a shared value has nothing per view to protect. Without this, a mirrored eye's width could not be changed from the side view, which contradicts "在任何视角改".
-  - **For dot:** agree, or keep stroke edits of mirror-linked lines front-only?
+  - **Decided (dot, bowen "对的"):** for these five stroke calls, the refusal goes, so both sides change together from any view. That rule exists because positions differ per view; a shared value has nothing per view to protect. Without this, a mirrored eye's width could not be changed from the side view, which contradicts "在任何视角改".
 - **Mirror apply (front):** it copies widths, profile and end strokes to the target as today. The target now takes them in every view, not only the front.
 - **Split.** Today each layer gives the new point its own width, linear in arc length along that layer's curve. Now there is one width.
-  - **Proposal:** use the arc-length fraction of the curve in the view the split is made in. The line then draws exactly as before there; elsewhere the width at the cut may differ by the views' arc-length difference.
-  - **For dot:** this or the front's curve?
+  - **Decided (dot):** the new point's width is linear in arc length, the ratio measured on the curve of the view the split is made in. No promise that the whole ink stays unchanged.
 - **Unbind / insert / copy layer:** the new point copies the old point's one width. Same rule as today, one value.
 - **Structural changes** (`joins.update`): a zone travels inside its row, and a dropped row drops it (as the radius does). A deleted point's end stroke goes.
 - **Removed:** `views.broadcastStroke`, `Editor.broadcastStroke`, `interaction.broadcastStroke`, its effects row, and the bench button 「Broadcast stroke」. With one value there is nothing to broadcast.
@@ -59,9 +57,8 @@ The calls are bound to a view as today, but that view no longer matters for them
   - The posed reader reads widths, profile, end strokes and zones from the shared store, like the radius. `posedState` writes only positions and handles.
   - `Core.model()` shrinks accordingly. The bench's change base compares it as before.
 - **Playback gate.** Today it refuses every stroke call; only an arc's radius goes through (§5b of the radius checklist, dot 1791985670).
-  - **Proposal:** for the same reason, `pointWidth`, `lineStroke`, `stroke`, `endStroke` and `zone` (set or automatic) are allowed at any pose. Each writes the one value.
+  - **Decided (dot, bowen "对的"):** for the same reason, `pointWidth`, `lineStroke`, `stroke`, `endStroke` and `zone` (set or automatic) are allowed at any pose. Each writes the one value.
   - `join` / `removeJoin` stay refused, except for the radius rule.
-  - **For dot:** agree?
 - **Copy / paste.** The clip carries one width per point, one profile per line, the rows' zones and the points' end strokes. Its per-layer data keeps positions and handles only. A clip in the old form is refused as a bad clip. Clips are not saved files, so there is no reader for the old form.
 - **Effects.**
   - `lineStroke`, `pointWidth` and `stroke` become `shapes: 'none', shared: ['structure']`.
@@ -112,7 +109,7 @@ The calls are bound to a view as today, but that view no longer matters for them
 - **Line widths:** `lineStroke` with `widthB` from view `0,45`: both points' widths change everywhere, and so does every other line at those points.
 - **Locks:** unchanged (the existing tests, with an all-views assertion).
 - **Mirror:** per dot's answer on §2. Either a side-view width edit of a mirror-linked line changes both sides everywhere, or it is refused as today. Mirror apply then writes the target in every view.
-- **Split:** per dot's answer. The new point's width is the chosen view's arc-length value; in that view the line draws as before.
+- **Split:** the new point's width is the arc-length value measured in the edited view.
 - **Structural (split / bind / unbind / delete):** zones travel with rows and end strokes with points (existing joins tests, with all-views assertions).
 - **Copy / paste:** the four values round-trip; an old-form clip is refused.
 - **Archive:**

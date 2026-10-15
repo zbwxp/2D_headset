@@ -30,9 +30,13 @@ export const FORMAT = 'headset-v3-drawing'
  * - 12: an arc's radius is one value of its join row, in every view; shape layers hold none
  *   (docs/arc-radius-shared-checklist.md); read as it is when opened (a 13 file without a left layer order).
  * - 13: an optional left layer order (`network.leftOrder`, the stacking at yaw < 0; docs/left-layer-order-checklist.md);
- *   a 12 reader would ignore it and stack wrongly.
+ *   a 12 reader would ignore it and stack wrongly; converted to 14 when opened, every stroke value taking the front's
+ *   (bowen 1792057731).
+ * - 14: every stroke value is one per meta-curve, in every view (docs/shared-strokes-checklist.md §4): a point's
+ *   `width` and a line's `stroke.profile` in the network, a join's manual `zone` in its row, the end strokes in
+ *   `joins.ends`; shape layers hold only positions and handles.
  */
-export const VERSION = 13
+export const VERSION = 14
 
 export function save(core: Core): string {
   return JSON.stringify({ format: FORMAT, version: VERSION, document: exportState(core) })

@@ -9,7 +9,7 @@ const P = (x: number, y = 0): Vec => ({ x, y })
 const FRONT = 'view:0,0'
 const angle = (k: string) => { const [yaw, pitch] = k.slice(5).split(',').map(Number); return { yaw: yaw!, pitch: pitch! } }
 
-/** A square a b c d with a fill, an arc join at b (one radius, set last in the last view: bowen 1791985326), shapes that differ per view, an end stroke at the front only. */
+/** A square a b c d with a fill, an arc join at b (one radius, set last in the last view: bowen 1791985326), shapes that differ per view, an end stroke and strokes set from several views (one value each: bowen 1792057731). */
 function doc() {
   const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })
   d.edit(e => {
@@ -29,6 +29,7 @@ function doc() {
       e.lineStroke('cd', { width: 1 + i, profile: `p${i}` })
     })
   })
+  d.editIn('view:90,45', e => e.zone('b', 'ab', 'bc', 3))
   return d
 }
 
@@ -36,23 +37,10 @@ function doc() {
 function oracle(d: Core, pose: { yaw: number; pitch: number }) {
   const posed = evaluate(d.model(), pose)
   const file = JSON.parse(save(d))
-  const front = (file.document.network.shapes.layers as { key: string; points: unknown; lines: unknown; zone?: unknown; end?: unknown }[]).find(l => l.key === FRONT)!
+  const front = (file.document.network.shapes.layers as { key: string; points: unknown; lines: unknown }[]).find(l => l.key === FRONT)!
+  // positions and handles only: strokes, zones and end strokes are one for every view, already in the file
   front.points = posed.points
-  // the posed strokes as stored: the profile on each line, the widths on the points (bowen 1791820396)
-  const ends = new Map((file.document.network.lines as { id: string; a: string; b: string }[]).map(l => [l.id, l] as const))
-  const widthAt = (line: string, point: string) => { const st = posed.lines[line]!.stroke; return ends.get(line)!.b === point && st.widthB !== undefined ? st.widthB : st.width }
-  front.lines = Object.fromEntries(Object.entries(posed.lines).map(([id, l]) => [id, { ha: l.ha, hb: l.hb, stroke: { profile: l.stroke.profile } }]))
-  ;(front as { widths?: unknown }).widths = Object.fromEntries(Object.keys(posed.points).map(p => {
-    const l = [...ends.values()].find(x => x.a === p || x.b === p)
-    return [p, l ? widthAt(l.id, p) : 1]
-  }))
-  // a posed zone equal to the automatic length of the posed widths stays automatic (J1)
-  front.zone = Object.fromEntries(Object.entries(posed.zones).filter(([k, z]) => {
-    const [p, l0, l1] = JSON.parse(k) as [string, string, string], w0 = widthAt(l0, p), w1 = widthAt(l1, p)
-    const auto = Math.max(w0, w1) ** 2 / Math.min(w0, w1)
-    return Math.abs(z - auto) > 1e-12 * Math.max(1, auto)
-  }))
-  front.end = posed.ends
+  front.lines = posed.lines
   return open(JSON.stringify(file)).in(FRONT)
 }
 
@@ -85,15 +73,13 @@ describe('atPose: parameters and drawn geometry', () => {
     }
   })
 
-  it('end strokes come from the posed result only: the front\'s is not left standing where the result has none', () => {
-    const d = doc()
-    const a = (pose: { yaw: number; pitch: number }) => d.atPose(pose).snapshot().points.find(p => p.id === 'a')!
-    expect(a({ yaw: 0, pitch: 0 }).endStroke).toEqual({ cap: 'round', taper: 3 })
-    expect(a({ yaw: 80, pitch: 0 }).endStroke).toBeUndefined() // the side view dominates and has none
-    // the other way: none at the front, one in the dominant view → set at the pose
-    d.editIn('view:-90,45', e => e.endStroke('c', { taper: 1 }))
-    expect(d.atPose({ yaw: -80, pitch: 40 }).snapshot().points.find(p => p.id === 'c')!.endStroke).toEqual({ taper: 1 })
-    expect(d.atPose({ yaw: -10, pitch: 5 }).snapshot().points.find(p => p.id === 'c')!.endStroke).toBeUndefined()
+  it('strokes, zones and end strokes are the one shared value at every pose: nothing jumps at the dominant view (bowen 1792057731)', () => {
+    const d = doc(), front = d.in(FRONT).snapshot()
+    const look = (s: ReturnType<Core['snapshot']>) => ({ strokes: s.lines.map(l => [l.id, l.stroke]), ends: s.points.map(p => [p.id, p.endStroke ?? null]), joins: s.joins })
+    for (const pose of [{ yaw: 44, pitch: 0 }, { yaw: 46, pitch: 0 }, { yaw: 80, pitch: 0 }, { yaw: -60, pitch: 45 }, { yaw: 10, pitch: -22.5 }]) expect(look(d.atPose(pose).snapshot())).toEqual(look(front))
+    expect(front.points.find(p => p.id === 'a')!.endStroke).toEqual({ cap: 'round', taper: 3 })
+    expect(front.joins.find(j => j.point === 'b')!.zone).toBe(3)
+    expect(front.lines.find(l => l.id === 'cd')!.stroke).toEqual({ width: 9, profile: 'p8' })
   })
 
   it('points and lines named like inherited properties (constructor, toString) keep "no end stroke" at all nine views (dot 1791685237)', () => {

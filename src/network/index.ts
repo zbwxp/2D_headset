@@ -51,9 +51,14 @@ declare const opaque: unique symbol
 export type NetworkState = { readonly [opaque]: 'network' }
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] }
-/** Structure only: positions, handles and strokes are in the shape layers. */
-interface TPoint { id: Id; layer: Id }
-interface TLine { id: Id; a: Id; b: Id; state: ElementState }
+/** A line's stored stroke: its profile only — widths belong to its points (bowen 1791820396). */
+export interface LineStroke { readonly profile: string }
+/**
+ * The structure and the strokes: positions and handles are in the shape layers, one per view. A point's width and a
+ * line's profile are one value each, the same in every view (bowen 1792057731; docs/shared-strokes-checklist.md §1).
+ */
+interface TPoint { id: Id; layer: Id; width: number }
+interface TLine { id: Id; a: Id; b: Id; state: ElementState; stroke: { profile: string } }
 interface Store {
   /** Bottom → top: the stacking at yaw ≥ 0. */
   layers: Mutable<Layer>[]
@@ -148,17 +153,6 @@ export const boundLayer = (n: NetworkState): string => K(n)
 export const shapeLayers = (n: NetworkState): readonly shapes.LayerInfo[] => shapes.layers(SH(n))
 /** A new shape layer holding a copy of `from`; `copyNew` is the owner's declaration (shapes.LayerInfo). */
 export function addShapeLayer(n: NetworkState, key: string, kind: shapes.LayerKind, from: string, copyNew = false) { shapes.addLayer(SH(n), key, kind, from, copyNew) }
-/**
- * Per-layer values owned by other modules (joins: arc radii, end strokes), stored in the
- * shape layers (step 4). Keys and references are their owner's; these only read and
- * write the bound layer, or drop a value from every layer.
- */
-export type Slot = shapes.Slot
-export const slot = (n: NetworkState, s: Slot, key: string) => shapes.slotGet(SH(n), K(n), s, key)
-export const setSlot = (n: NetworkState, s: Slot, key: string, v: number | shapes.EndValue) => shapes.slotSet(SH(n), K(n), s, key, v)
-export const dropSlotHere = (n: NetworkState, s: Slot, key: string) => shapes.slotDropIn(SH(n), K(n), s, key)
-export const dropSlot = (n: NetworkState, s: Slot, key: string) => shapes.slotDrop(SH(n), s, key)
-export const slotKeys = (n: NetworkState, s: Slot) => shapes.slotKeys(SH(n), K(n), s)
 
 /** Every shape layer key of the drawing. */
 const keys = (n: NetworkState) => shapes.layers(SH(n)).map(l => l.key)
@@ -313,7 +307,9 @@ export function restore(v: unknown, layer: string): NetworkState {
   const points = d.arr(o.points, 'points').map((x, i) => {
     const P = d.obj(x, `point ${i}`), id = d.str(P.id, `point ${i} id`), layer = d.str(P.layer, `point ${id} layer`)
     if (!layerIds.has(layer)) d.fail(`point ${id} is in a missing layer`)
-    return { id, layer }
+    const width = d.num(P.width, `point ${id} width`)
+    if (!(width > 0)) d.fail(`point ${id} has a width that is not positive`)
+    return { id, layer, width }
   })
   d.unique(points.map(p => p.id), 'point')
   const layerOf = new Map(points.map(p => [p.id, p.layer]))
@@ -322,8 +318,10 @@ export function restore(v: unknown, layer: string): NetworkState {
     if (!layerOf.has(a) || !layerOf.has(b)) d.fail(`line ${id} ends at a missing point`)
     if (a === b) d.fail(`line ${id} has both ends on one point`)
     if (layerOf.get(a) !== layerOf.get(b)) d.fail(`line ${id} crosses layers`)
-    const st = d.obj(L.state, `line ${id} state`)
-    return { id, a, b, state: { visible: d.bool(st.visible, `line ${id} visible`), locked: d.bool(st.locked, `line ${id} locked`) } }
+    const st = d.obj(L.state, `line ${id} state`), k = d.obj(L.stroke, `line ${id} stroke`)
+    if (Object.keys(k).length !== 1) d.fail(`line ${id} stroke holds more than its profile (widths belong to points)`)
+    const profile = d.str(k.profile, `line ${id} stroke profile`)
+    return { id, a, b, state: { visible: d.bool(st.visible, `line ${id} visible`), locked: d.bool(st.locked, `line ${id} locked`) }, stroke: { profile } }
   })
   d.unique(lines.map(l => l.id), 'line')
   const ends = new Set(lines.flatMap(l => [l.a, l.b]))
@@ -361,13 +359,13 @@ function vecIn(v: Vec): Vec {
 const vecOut = (v: Vec): Vec => Object.freeze({ x: v.x, y: v.y })
 const pointOut = (n: NetworkState, p: TPoint): Point => Object.freeze({ id: p.id, layer: p.layer, position: pos(n, p.id) })
 /** A line's stroke read from its points' widths and its stored profile. */
-const strokeOf = (n: NetworkState, l: TLine, profile: string): Stroke => {
-  const wa = shapes.width(SH(n), K(n), l.a), wb = shapes.width(SH(n), K(n), l.b)
+const strokeOf = (n: NetworkState, l: TLine): Stroke => {
+  const wa = rawPoint(n, l.a).width, wb = rawPoint(n, l.b).width, profile = l.stroke.profile
   return Object.freeze(wb === wa ? { width: wa, profile } : { width: wa, widthB: wb, profile })
 }
 const lineOut = (n: NetworkState, l: TLine): Line => {
   const s = shapeOf(n, l.id)
-  return Object.freeze({ id: l.id, a: l.a, b: l.b, ha: s.ha, hb: s.hb, state: Object.freeze({ ...l.state }), stroke: strokeOf(n, l, s.stroke.profile) })
+  return Object.freeze({ id: l.id, a: l.a, b: l.b, ha: s.ha, hb: s.hb, state: Object.freeze({ ...l.state }), stroke: strokeOf(n, l) })
 }
 
 function rawPoint(n: NetworkState, id: Id) {
@@ -694,20 +692,24 @@ export function setLineState(n: NetworkState, id: Id, state: Partial<ElementStat
   l.state = { visible: state.visible ?? l.state.visible, locked: state.locked ?? l.state.locked }
 }
 
-/** A line's own stroke in the bound layer (an edit; strokes are per view, bowen 1791650085). */
+function widthIn(w: number): number {
+  if (!(w > 0) || !Number.isFinite(w)) throw new Error('Stroke width must be a positive number')
+  return w
+}
+/** A line's stroke, one for every view (bowen 1792057731): its profile and its two points' widths. */
 export function setLineStroke(n: NetworkState, id: Id, stroke: Stroke) {
   const l = rawLine(n, id)
-  if (!(stroke.width > 0 && Number.isFinite(stroke.width)) || (stroke.widthB !== undefined && !(stroke.widthB > 0 && Number.isFinite(stroke.widthB)))) throw new Error('Stroke width must be a positive number')
-  shapes.setStroke(SH(n), K(n), id, { profile: stroke.profile })
+  const wa = widthIn(stroke.width), wb = widthIn(stroke.widthB ?? stroke.width)
+  l.stroke = { profile: String(stroke.profile) }
   // the widths are its points' (bowen 1791820396): every other line at those points changes with it
-  shapes.setWidth(SH(n), K(n), l.a, stroke.width)
-  shapes.setWidth(SH(n), K(n), l.b, stroke.widthB ?? stroke.width)
+  rawPoint(n, l.a).width = wa
+  rawPoint(n, l.b).width = wb
 }
-/** A line's profile alone in the bound layer (its widths are its points'). */
-export function setLineProfile(n: NetworkState, id: Id, profile: string) { rawLine(n, id); shapes.setStroke(SH(n), K(n), id, { profile }) }
-/** A point's stroke width in the bound layer (bowen 1791820396: one width per point, shared by its lines). */
-export function pointWidth(n: NetworkState, id: Id): number { rawPoint(n, id); return shapes.width(SH(n), K(n), id) }
-export function setPointWidth(n: NetworkState, id: Id, w: number) { rawPoint(n, id); shapes.setWidth(SH(n), K(n), id, w) }
+/** A line's profile alone, one for every view (its widths are its points'). */
+export function setLineProfile(n: NetworkState, id: Id, profile: string) { rawLine(n, id).stroke = { profile: String(profile) } }
+/** A point's stroke width (bowen 1791820396: one width per point, shared by its lines), one for every view (bowen 1792057731). */
+export function pointWidth(n: NetworkState, id: Id): number { return rawPoint(n, id).width }
+export function setPointWidth(n: NetworkState, id: Id, w: number) { rawPoint(n, id).width = widthIn(w) }
 
 /**
  * Cut and paste a whole group to another layer, keeping every id (bowen 1791435958):
@@ -730,13 +732,13 @@ export interface CopyMap { points: Map<Id, Id>; lines: Map<Id, Id> }
 /** `read`: where positions and handles are copied from (settled, docs/edit-model.md). */
 /** Lines as plain data, with their end points: what a copy carries (docs/clipboard-plan.md). */
 export interface LinesData {
-  /** The structure: points and lines (one source of truth; their shapes are only in `layers`). */
-  points: { id: Id }[]
-  lines: { id: Id; a: Id; b: Id; state: ElementState }[]
+  /** The structure with its strokes (one value each for every view); their shapes are only in `layers`. */
+  points: { id: Id; width: number }[]
+  lines: { id: Id; a: Id; b: Id; state: ElementState; stroke: LineStroke }[]
   /** The shape layer the copy was read in (one of `layers`). */
   source: string
   /** The points' and lines' shapes in every shape layer of the copied drawing, with the layer's kind. */
-  layers: { key: string; kind: shapes.LayerKind; points: { id: Id; position: Vec; width: number }[]; lines: { id: Id; ha: Vec; hb: Vec; stroke: shapes.LineStroke }[] }[]
+  layers: { key: string; kind: shapes.LayerKind; points: { id: Id; position: Vec }[]; lines: { id: Id; ha: Vec; hb: Vec }[] }[]
 }
 
 /** The given lines and their end points as plain data (copies), read from `read` and from every layer of its drawing. */
@@ -745,12 +747,12 @@ export function linesData(read: NetworkState, lineIds: readonly Id[]): LinesData
   const pointIds: Id[] = []
   for (const id of ids) { const l = rawLine(read, id); for (const p of [l.a, l.b]) if (!pointIds.includes(p)) pointIds.push(p) }
   const layerData = (h: NetworkState) => ({
-    points: pointIds.map(id => ({ id, position: { ...pos(h, id) }, width: shapes.width(SH(h), K(h), id) })),
-    lines: ids.map(id => { const s = shapeOf(h, id); return { id, ha: { ...s.ha }, hb: { ...s.hb }, stroke: { ...s.stroke } } }),
+    points: pointIds.map(id => ({ id, position: { ...pos(h, id) } })),
+    lines: ids.map(id => { const s = shapeOf(h, id); return { id, ha: { ...s.ha }, hb: { ...s.hb } } }),
   })
   return {
-    points: pointIds.map(id => ({ id })),
-    lines: ids.map(id => { const l = rawLine(read, id); return { id, a: l.a, b: l.b, state: { ...l.state } } }),
+    points: pointIds.map(id => ({ id, width: rawPoint(read, id).width })),
+    lines: ids.map(id => { const l = rawLine(read, id); return { id, a: l.a, b: l.b, state: { ...l.state }, stroke: { ...l.stroke } } }),
     source: K(read),
     layers: shapes.layers(SH(read)).map(({ key, kind }) => ({ key, kind, ...layerData(of(read, key)) })),
   }
@@ -777,7 +779,7 @@ export function insertLines(n: NetworkState, ch: Changes, data: LinesData, layer
   const map: CopyMap = { points: new Map(), lines: new Map() }
   for (const p of data.points) {
     const np = idOf(p.id)
-    addPoint(n, ch, np, layer, key => { const q = pointAt(key, p.id).position; return { x: q.x + off.x, y: q.y + off.y } }, key => pointAt(key, p.id).width)
+    addPoint(n, ch, np, layer, key => { const q = pointAt(key, p.id).position; return { x: q.x + off.x, y: q.y + off.y } }, p.width)
     map.points.set(p.id, np)
   }
   for (const l of data.lines) {
@@ -785,8 +787,8 @@ export function insertLines(n: NetworkState, ch: Changes, data: LinesData, layer
     if (!a || !b || a === b) throw new Error(`Line ${l.id} needs two of the given points`)
     const nl = idOf(l.id)
     claimLine(n, nl)
-    for (const key of keys(n)) { const s = shapeAt(key, l.id); shapes.putLine(SH(n), key, nl, { ha: s.ha, hb: s.hb, stroke: s.stroke }) }
-    S(n).lines.push({ id: nl, a, b, state: { visible: !!l.state.visible, locked: !!l.state.locked } })
+    for (const key of keys(n)) { const s = shapeAt(key, l.id); shapes.putLine(SH(n), key, nl, { ha: s.ha, hb: s.hb }) }
+    S(n).lines.push({ id: nl, a, b, state: { visible: !!l.state.visible, locked: !!l.state.locked }, stroke: { profile: String(l.stroke.profile) } })
     ch.addedLines.push(nl)
     map.lines.set(l.id, nl)
   }
@@ -822,12 +824,13 @@ export function overlaps(n: NetworkState, ch: Changes): { keep: Id; remove: Id }
  * Internal to this module: points are created only with lines (addLine, split, unbind,
  * insert). `at` gives its position in every shape layer (one value: the same everywhere).
  */
-function addPoint(n: NetworkState, ch: Changes, id: Id, layer: Id, at: Vec | ((key: string) => Vec), width: (key: string) => number = () => 1) {
+function addPoint(n: NetworkState, ch: Changes, id: Id, layer: Id, at: Vec | ((key: string) => Vec), width = 1) {
   if (!hasLayer(n, layer)) throw new Error(`No layer ${layer}`)
-  const each = keys(n).map(key => [key, vecIn(typeof at === 'function' ? at(key) : at), width(key)] as const)
+  const each = keys(n).map(key => [key, vecIn(typeof at === 'function' ? at(key) : at)] as const)
+  const w = widthIn(width)
   claimPoint(n, id)
-  for (const [key, v, w] of each) shapes.putPoint(SH(n), key, id, v, w)
-  S(n).points.push({ id, layer })
+  for (const [key, v] of each) shapes.putPoint(SH(n), key, id, v)
+  S(n).points.push({ id, layer, width: w })
   ch.addedPoints.push(id)
 }
 
@@ -859,7 +862,7 @@ export function addLine(n: NetworkState, ch: Changes, id: Id, aSpec: EndSpec, bS
   claimLine(n, id)
   ch.prefer.push({ lines: linesAt(n, a).map(e => e.line.id) })
   // the drawn shape in every view layer (architecture §1): the handles as drawn, the default stroke
-  const shape = { ha: hIn?.ha ?? { x: d.x / 3, y: d.y / 3 }, hb: hIn?.hb ?? { x: -d.x / 3, y: -d.y / 3 }, stroke: DEFAULT_STROKE }
+  const shape = { ha: hIn?.ha ?? { x: d.x / 3, y: d.y / 3 }, hb: hIn?.hb ?? { x: -d.x / 3, y: -d.y / 3 } }
   for (const key of keys(n)) shapes.putLine(SH(n), key, id, shape)
   // an existing end point that carried exactly one line end: the new line continues that line
   const continued = [aSpec, bSpec].flatMap(spec => {
@@ -867,7 +870,7 @@ export function addLine(n: NetworkState, ch: Changes, id: Id, aSpec: EndSpec, bS
     const at = linesAt(n, spec)
     return at.length === 1 ? [{ point: spec, lines: [at[0]!.line.id, id] as [Id, Id] }] : []
   })
-  S(n).lines.push({ id, a, b, state: { ...DEFAULT_STATE } })
+  S(n).lines.push({ id, a, b, state: { ...DEFAULT_STATE }, stroke: { profile: DEFAULT_STROKE.profile } })
   ch.addedLines.push(id)
   ch.connected.push(...continued)
 }
@@ -921,25 +924,22 @@ export function splitLine(n: NetworkState, ch: Changes, lineId: Id, t: number, m
   if (first === second) throw new Error('The two pieces need different ids')
   const l = rawLine(n, lineId)
   // every layer splits its own curve at the same t (a proposal, Claude 1791652727): no layer's drawing changes
-  const pieces = new Map(keys(n).map(key => {
-    const h = of(read, key)
-    const halves = split(curve(h, lineId), t), stroke = shapeOf(h, lineId).stroke
-    // the new point takes the width at the cut — linear in arc length along this layer's own curve between the two
-    // points' widths (dot 1791819133) — so the split line draws as before
-    const wa = shapes.width(SH(h), K(h), l.a), wb = shapes.width(SH(h), K(h), l.b)
-    const f = chordLength(halves[0]) / (chordLength(halves[0]) + chordLength(halves[1]) || 1)
-    return [key, { halves, strokes: [stroke, stroke], width: wa + (wb - wa) * f }] as const
-  }))
+  const pieces = new Map(keys(n).map(key => [key, split(curve(of(read, key), lineId), t)] as const))
+  // the new point takes the width at the cut — linear in arc length between the two points' widths (dot 1791819133),
+  // the arc-length ratio measured on the curve of the view the split is made in (dot, shared strokes §2); one width
+  // for every view (bowen 1792057731)
+  const [h0, h1] = pieces.get(K(n))!, wa = rawPoint(n, l.a).width, wb = rawPoint(n, l.b).width
+  const f = chordLength(h0) / (chordLength(h0) + chordLength(h1) || 1)
   claimLine(n, first)
   claimLine(n, second)
-  addPoint(n, ch, mid, rawPoint(n, l.a).layer, key => pieces.get(key)!.halves[0][3], key => pieces.get(key)!.width)
+  addPoint(n, ch, mid, rawPoint(n, l.a).layer, key => pieces.get(key)![0][3], wa + (wb - wa) * f)
   shapes.removeLine(SH(n), lineId)
-  for (const [key, { halves: [c1, c2], strokes: [s1, s2] }] of pieces) {
-    shapes.putLine(SH(n), key, first, { ha: sub(c1[1], c1[0]), hb: sub(c1[2], c1[3]), stroke: s1 })
-    shapes.putLine(SH(n), key, second, { ha: sub(c2[1], c2[0]), hb: sub(c2[2], c2[3]), stroke: s2 })
+  for (const [key, [c1, c2]] of pieces) {
+    shapes.putLine(SH(n), key, first, { ha: sub(c1[1], c1[0]), hb: sub(c1[2], c1[3]) })
+    shapes.putLine(SH(n), key, second, { ha: sub(c2[1], c2[0]), hb: sub(c2[2], c2[3]) })
   }
   const all = S(n).lines
-  all.splice(all.indexOf(l), 1, { id: first, a: l.a, b: mid, state: { ...l.state } }, { id: second, a: mid, b: l.b, state: { ...l.state } })
+  all.splice(all.indexOf(l), 1, { id: first, a: l.a, b: mid, state: { ...l.state }, stroke: { ...l.stroke } }, { id: second, a: mid, b: l.b, state: { ...l.state }, stroke: { ...l.stroke } })
   ch.addedLines.push(first, second)
   ch.replaced.push({ line: lineId, a: l.a, b: l.b, mid, pieces: [first, second], t })
   ch.connected.push({ point: mid, lines: [first, second] })
@@ -1013,8 +1013,8 @@ export function unbind(n: NetworkState, ch: Changes, pointId: Id, lineIds: Id[],
   const toward = length(atA ? seen.ha : seen.hb) > 1e-12 ? (atA ? seen.ha : seen.hb) : sub(other, at0)
   const dir = length(toward) > 1e-12 ? scale(toward, 1 / length(toward)) : { x: 1, y: 0 }
   const shift = scale(dir, UNBIND_OFFSET)
-  // the new point is a copy of the old one: its position (shifted) and its width in every layer
-  addPoint(n, ch, newPoint, p.layer, key => add(pos(of(read, key), pointId), shift), key => shapes.width(SH(n), key, pointId))
+  // the new point is a copy of the old one: its position (shifted) in every layer, and its width
+  addPoint(n, ch, newPoint, p.layer, key => add(pos(of(read, key), pointId), shift), p.width)
   for (const id of lineIds) {
     const l = rawLine(n, id)
     if (l.a === pointId) l.a = newPoint

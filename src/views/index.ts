@@ -3,7 +3,6 @@
 // candidate value, graph row "Views"); a view is a shape layer of kind 'view' whose key
 // is `view:<yaw>,<pitch>`. And operations across views: the stroke broadcast.
 import * as net from '../network'
-import * as joins from '../joins'
 import { add, sub } from '../geometry'
 
 export type Yaw = -90 | 0 | 90
@@ -48,28 +47,6 @@ export function angle(k: string): { yaw: Yaw; pitch: Pitch } {
   const i = ALL.indexOf(k)
   if (i < 0) throw new Error(`Not a view key: ${String(k)}`)
   return { yaw: YAWS[Math.floor(i / PITCHES.length)]!, pitch: PITCHES[i % PITCHES.length]! }
-}
-
-/**
- * Stroke broadcast (bowen 1791650085, 1791650171, 1791650206; docs/step6-stroke-broadcast.md,
- * dot 1791655825): the chosen lines' own strokes, and the end strokes at their end points
- * (once per point), read in the view `from` is bound to and assigned to every other view
- * layer. A point without an end stroke there is cleared elsewhere (an assignment). Every
- * source value is read before anything is written; the source view is not written;
- * expression and record layers are not written. Shapes, radii, joins, links and fills
- * are untouched.
- */
-export function broadcastStroke(from: net.NetworkState, j: joins.JoinsState, lines: readonly net.Id[]) {
-  const ids = [...new Set(lines)]
-  const points = [...new Set(ids.flatMap(id => { const l = net.line(from, id); return [l.a, l.b] }))]
-  const strokes = ids.map(id => [id, net.line(from, id).stroke] as const)
-  const ends = points.map(p => [p, joins.endStroke(j, from, p)] as const)
-  for (const { key, kind } of net.shapeLayers(from)) {
-    if (kind !== 'view' || key === net.boundLayer(from)) continue
-    const to = net.of(from, key)
-    for (const [id, stroke] of strokes) net.setLineStroke(to, id, stroke)
-    for (const [p, e] of ends) { if (e) joins.setEndStroke(j, to, p, e); else joins.clearEndStroke(j, to, p) }
-  }
 }
 
 /** The four corner views (yaw ±90 × pitch ±45) with the yaw and pitch views each is drafted from. */

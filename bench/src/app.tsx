@@ -81,6 +81,9 @@ function refusedInPlayback(n: string, a: readonly unknown[], atView: boolean, pl
     const o = a[3] as Record<string, unknown> | null
     if (o && typeof o === 'object' && o.mode === 'arc' && Object.keys(o).every(k => k === 'mode' || k === 'radius')) return undefined
   }
+  // a stroke value: one for every view and pose (bowen 1792057731; docs/shared-strokes-checklist.md §3) — a point's width,
+  // a line's or a curve's stroke, an end stroke, a join's zone; core still checks the targets and the locks
+  if (n === 'pointWidth' || n === 'lineStroke' || n === 'stroke' || n === 'endStroke' || n === 'zone') return undefined
   // at a view, writing that view: what A and V do there in editing — pick, then move points, curves and handles (§2)
   if (atView && (n === 'select' || n === 'selectGroup' || n === 'translate' || n === 'moveHandle')) return undefined
   // every show / hide switch of the panels: a layer's lines or fills, a curve, a line, a fill (bowen 1791979917: layerFills was missed)
@@ -89,7 +92,7 @@ function refusedInPlayback(n: string, a: readonly unknown[], atView: boolean, pl
   if (n === 'placeReference' && (a[0] as { view?: unknown } | null)?.view === 'playback') return undefined
   if ((n === 'setReference' || n === 'removeReference') && playbackRef(a[0])) return undefined
   if (n === 'addAsset') return undefined
-  return `${n} is not allowed during playback (only a correction, deleting one, showing or hiding, an arc's radius, playback's own pictures, and at a view moving its points and handles)`
+  return `${n} is not allowed during playback (only a correction, deleting one, showing or hiding, an arc's radius, widths and other strokes, playback's own pictures, and at a view moving its points and handles)`
 }
 type Pose = { yaw: number; pitch: number }
 /** The view a pose is exactly at (yaw 0 / ±90 × pitch 0 / ±45), else null. */
@@ -193,10 +196,11 @@ function changesBetween(before: Model, after: Model, s: Snapshot): string[] {
       const q = va.lines[id]?.[h]
       if (q && (q.x !== l[h].x || q.y !== l[h].y)) out.push(`${name} 的线 ${lineName(id)} 的 ${h === 'ha' ? 'a' : 'b'} 端手柄变了`)
     }
-    const strip = (v: typeof vb) => JSON.stringify({ ...v, points: Object.keys(v.points), lines: Object.fromEntries(Object.entries(v.lines).map(([k, l]) => [k, l.stroke])) })
+    // strokes are one for every view (bowen 1792057731): the model holds positions and handles only
+    const strip = (v: typeof vb) => JSON.stringify({ ...v, points: Object.keys(v.points), lines: Object.keys(v.lines) })
     rest ||= strip(va) !== strip(vb)
   }
-  if (rest) out.push('（还有别的数据变了：线宽、圆角或结构）')
+  if (rest) out.push('（还有别的数据变了：结构）')
   return out.length ? out : ['（没有数据变化）']
 }
 function loggedFor(mode: () => WriteMode, afterWrite: () => void = () => {}, poseView: () => string | null = () => null): (c: Core) => Core {
@@ -1474,7 +1478,6 @@ export function App() {
           <Slider label="width" value={width} identity="stroke-width" accept={v => v > 0} track={null} steps={{ step: 1, long: 10, short: 0.1 }}
             fieldAttrs={{ 'data-testid': 'width' }} {...sliderHooks} onPreview={() => {}} onCommit={v => setWidth(v)} onCancel={() => {}} />
           {B('Set width', () => (selLines.length ? run(x => selLines.forEach(l => x.lineStroke(l, { profile: line(l).stroke.profile, width }))) : (note('Set width: no line is selected — select lines first, or set a line\'s width in its properties'), bump())))}
-          {B('Broadcast stroke', () => ix.broadcastStroke(), 'this view\'s width, profile and end strokes of the selected lines → every other view')}
         </div>
         {/* stage 2: shapes between views (front → others), separate from the stroke broadcast above */}
         <b>Angle (shapes) · pending {pending.length}</b>

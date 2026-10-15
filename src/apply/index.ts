@@ -170,7 +170,7 @@ export function mirrorApply(s: ApplyState, d: Doc, ch: net.Changes, source: read
     return { id: tp, target }
   })
   const lineData = srcLines.map(id => ({ id, line: net.line(rn, id), to: m.lines.get(id)! }))
-  // end strokes are per view: an apply (front only) reads and writes the front's (step 4); an arc's radius is its row's
+  // end strokes, widths, profiles, zones and an arc's radius are one for every view (bowen 1792057731): the target takes them everywhere
   const endData = [...m.points].map(([sp, tp]) => ({ tp, stroke: joins.endStroke(d.joins, n, sp) }))
   const joinRows = [...m.points].map(([sp, tp]) => ({
     tp,
@@ -199,17 +199,17 @@ export function mirrorApply(s: ApplyState, d: Doc, ch: net.Changes, source: read
   }
   for (const { tp, stroke } of endData) {
     if (stroke) joins.setEndStroke(d.joins, n, tp, stroke)
-    else joins.clearEndStroke(d.joins, n, tp)
+    else joins.clearEndStroke(d.joins, tp)
   }
   for (const { tp, old, add: rows } of joinRows) {
     // a row that stays keeps its place and zones; only rows really gone are removed (dot 1791654260)
     const next = rows.map(r => ({ r, l0: m.lines.get(r.lines[0])!.to, l1: m.lines.get(r.lines[1])!.to }))
     const stays = new Set(next.map(x => joins.rowKey(tp, x.l0, x.l1)))
-    for (const r of old) if (!stays.has(joins.rowKey(tp, r.lines[0], r.lines[1]))) joins.removeJoin(d.joins, n, tp, r.lines[0], r.lines[1])
+    for (const r of old) if (!stays.has(joins.rowKey(tp, r.lines[0], r.lines[1]))) joins.removeJoin(d.joins, tp, r.lines[0], r.lines[1])
     for (const { r, l0, l1 } of next) {
       joins.setJoin(d.joins, n, tp, l0, l1, { mode: r.mode, ...(r.radius !== undefined ? { radius: r.radius } : {}) })
-      // the manual zone of this view comes along; none = automatic here (J1)
-      joins.setZoneHere(d.joins, n, tp, l0, l1, r.zone ?? null)
+      // the manual zone comes along, for every view; none = automatic (J1)
+      joins.setZone(d.joins, tp, l0, l1, r.zone ?? null)
     }
     // the copied joins in the source's list order, only when they are the target point's whole list (J1; a partial apply may not keep it: ledger row 19)
     const here = joins.rowsAt(d.joins, n, tp)

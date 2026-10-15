@@ -40,10 +40,13 @@ function alone(n: net.NetworkState, key: string): net.NetworkState {
   d.shapes.layers = d.shapes.layers.filter(l => l.key === key).map(l => ({ ...l, key: views.FRONT }))
   return net.restore(d, views.FRONT)
 }
+/** A layer's own data: positions and handles (strokes are one for every view, bowen 1792057731: compared on their own). */
 const layerOf = (n: net.NetworkState, key: string) => {
   const h = net.of(n, key)
-  return { points: net.points(h).map(p => [p.id, p.position]), lines: net.lines(h).map(l => [l.id, l.a, l.b, l.ha, l.hb, l.stroke]) }
+  return { points: net.points(h).map(p => [p.id, p.position]), lines: net.lines(h).map(l => [l.id, l.a, l.b, l.ha, l.hb]) }
 }
+/** The strokes, the same in every layer: each line's stroke, read in every layer. */
+const strokesOf = (n: net.NetworkState) => layers(n).map(key => net.lines(net.of(n, key)).map(l => [l.id, l.stroke]))
 const layers = (n: net.NetworkState) => net.shapeLayers(n).map(l => l.key)
 /** Every layer holds exactly the structure's points and lines (the saved form checks it). */
 const covered = (n: net.NetworkState) => expect(() => net.restore(net.exportData(n), views.FRONT)).not.toThrow()
@@ -93,9 +96,10 @@ describe('split on several layers (same t; proposal)', () => {
       net.splitLine(single, net.emptyChanges(), 'l1', 0.3, 'm', 'p1', 'p2')
       expect(layerOf(n, key)).toEqual(layerOf(single, views.FRONT))
     }
-    // the side layer's stroke went to both pieces there, the front's in the front
-    expect(net.line(net.of(n, SIDE), 'p1').stroke.width).toBe(3)
-    expect(net.line(n, 'p2').stroke.width).toBe(1)
+    // one stroke for every view: l1 was 3 wide at a and b (set in the side view); both pieces and m take 3, in every layer
+    expect(new Set(strokesOf(n).map(x => JSON.stringify(x))).size).toBe(1)
+    expect(net.line(n, 'p1').stroke.width).toBe(3)
+    expect(net.line(net.of(n, SIDE), 'p2').stroke.width).toBe(3)
     expect(ch.addedPoints).toEqual(['m'])
     expect(ch.addedLines).toEqual(['p1', 'p2'])
     covered(n)
@@ -156,7 +160,9 @@ describe('insert (paste) on several layers', () => {
     expect(at(SIDE, 'x/a')).toEqual({ x: 102, y: 3 })
     expect(at(TOP, 'x/a')).toEqual({ x: 102, y: 3 })                  // as the caller named: TOP ← SIDE
     expect(net.line(net.of(dst, TOP), 'x/l1').ha).toEqual({ x: 1, y: 5 })
-    expect(net.line(dst, 'x/l1').stroke.width).toBe(1)
+    // the copy's one stroke (set in the side view, so 3 for every view)
+    expect(new Set(strokesOf(dst).map(x => JSON.stringify(x))).size).toBe(1)
+    expect(net.line(dst, 'x/l1').stroke.width).toBe(3)
     expect(ch.addedPoints.sort()).toEqual(['x/a', 'x/b'])
     expect(ch.addedLines).toEqual(['x/l1'])
     covered(dst)
@@ -174,7 +180,7 @@ describe('insert (paste) on several layers', () => {
   })
 
   it('a paste refuses a clip whose layers would be left over: an expression or record layer, or a view the drawing lacks (dot 1791653018)', () => {
-    const clipOf = (n: net.NetworkState) => ({ network: net.linesData(n, ['l1']), joins: { rows: [], layers: [] }, fills: [], names: { lines: [], groups: [] } })
+    const clipOf = (n: net.NetworkState) => ({ network: net.linesData(n, ['l1']), joins: { rows: [], endStrokes: [] }, fills: [], names: { lines: [], groups: [] } })
     const parts = (n: net.NetworkState) => ({ network: n }) as unknown as clipboard.Parts
     const target = () => { const t = net.create(FRONT); net.addLayer(t, 'M'); return t }
     // the clip carries a record layer; the drawing has only views
@@ -189,7 +195,7 @@ describe('insert (paste) on several layers', () => {
   })
 
   it('a document paste maps view layers by the same key only; a record layer, or a view layer the clip lacks, is refused', () => {
-    const src = threeLayers(), clip = { network: net.linesData(src, ['l1']), joins: { rows: [], layers: [] }, fills: [], names: { lines: [], groups: [] } }
+    const src = threeLayers(), clip = { network: net.linesData(src, ['l1']), joins: { rows: [], endStrokes: [] }, fills: [], names: { lines: [], groups: [] } }
     const parts = (n: net.NetworkState) => ({ network: n }) as unknown as clipboard.Parts
     const viewsOnly = net.create(FRONT); net.addShapeLayer(viewsOnly, SIDE, 'view', views.FRONT)
     expect([...clipboard.viewLayerMap(parts(viewsOnly), clip)]).toEqual([[views.FRONT, views.FRONT], [SIDE, SIDE]])
@@ -206,11 +212,11 @@ describe('insert (paste) on several layers', () => {
     expect(() => clipboard.check(clip)).not.toThrow()
     const bad = (f: (c: any) => void) => { const c = structuredClone(clip) as any; f(c); return () => clipboard.check(c) }
     expect(bad(c => { c.network.layers[0].points.pop() })).toThrow(/exactly the clip's points/)
-    expect(bad(c => { c.network.layers[0].points.push({ id: 'ghost', position: { x: 0, y: 0 }, width: 1 }) })).toThrow(/exactly the clip's points/)
+    expect(bad(c => { c.network.layers[0].points.push({ id: 'ghost', position: { x: 0, y: 0 } }) })).toThrow(/exactly the clip's points/)
     expect(bad(c => { c.network.layers[0].lines = [] })).toThrow(/exactly the clip's lines/)
     expect(bad(c => { c.network.layers.push(structuredClone(c.network.layers[0])) })).toThrow(/appears twice/)
     expect(bad(c => { delete c.network.source })).toThrow(/source layer is not text/)
-    expect(bad(c => { c.network.layers[0].points[0].width = 'wide' })).toThrow(/width is not a finite number/)
+    expect(bad(c => { c.network.points[0].width = 'wide' })).toThrow(/width is not a finite number/)
     expect(bad(c => { c.network.layers[0].kind = 'magic' })).toThrow(/unknown kind/)
   })
 })
@@ -261,8 +267,13 @@ describe('random structural edits on three layers', () => {
           const l = pick(ls).id
           op = h => { net.deleteLine(h, net.emptyChanges(), l); net.removeIsolated(h, net.emptyChanges()) }
         }
-        op(net.of(n, pick(layers(n))))
+        const at = pick(layers(n))
+        op(net.of(n, at))
         for (const [key, single] of before) { op(single); expect(layerOf(n, key)).toEqual(layerOf(single, views.FRONT)) }
+        // the strokes: one for every layer, as the edited layer alone gives them (a split's width is measured there)
+        const edited = before.get(at)!
+        expect(new Set(strokesOf(n).map(x => JSON.stringify(x))).size).toBe(1)
+        expect(strokesOf(n)[0]).toEqual(net.lines(edited).map(l => [l.id, l.stroke]))
         covered(n)
         k++
       }

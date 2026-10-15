@@ -50,8 +50,6 @@ export interface Interaction {
   mirrorLink(): void
   undo(): void
   redo(): void
-  /** Stroke broadcast (step 6): the selected lines' strokes, as in the current view, to every other view. */
-  broadcastStroke(): void
   /** Shape broadcast (stage 2): the selected lines' pending change from the front to every other view (front view only). */
   broadcastShape(): void
   /** Fit (stage 2): the selected lines' baseline takes the front; no view changes. */
@@ -189,7 +187,6 @@ export function createInteraction(env: Env): Interaction {
     mirrorLink: () => act(() => mr.apply(true)),
     undo: () => act(undo),
     redo: () => act(redo),
-    broadcastStroke: () => act(() => { ctx.commit(e => e.broadcastStroke(ctx.selection())) }),
     broadcastShape: () => act(() => { ctx.commit(e => e.broadcastShape(ctx.selection())) }),
     fit: () => act(() => { ctx.commit(e => e.fit(ctx.selection())) }),
     draftCorners: () => act(() => { ctx.commit(e => e.draftCorners(ctx.selection())) }),
