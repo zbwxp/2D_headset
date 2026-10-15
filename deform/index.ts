@@ -53,6 +53,12 @@ export interface Field {
   denominator(p: Vec): number
   /** True when the field is affine: control points map exactly. */
   readonly affine: boolean
+  /**
+   * True when a Bézier handle may lie where the field is not defined (the sphere frame: a handle off the sphere does
+   * not put the curve off it; dot 1792054665 #5): the fit then maps only the end points and checks the handles for
+   * finiteness; the curve itself is checked through its own samples. Absent for 四角, whose guard maps all four.
+   */
+  readonly controlsOffField?: boolean
 }
 
 /** The unit square's homography onto `quad`, normalized before solving to avoid document-coordinate conditioning. */
@@ -245,7 +251,7 @@ export function sphereField(s: Sphere): Field {
     const { qx, qy, z } = lift(p), dz = -(qx * v.x + qy * v.y) / z, t = turn(v.x, v.y, dz)
     return fv(place({ x: t.x, y: t.y }))
   }
-  return { map, vector, denominator: () => 1, affine: false }
+  return { map, vector, denominator: () => 1, affine: false, controlsOffField: true }
 }
 
 // ---- one cubic per source cubic (cubicDeformation.ts) ------------------------------------------
@@ -332,7 +338,8 @@ export function fitCubicTarget(target: CubicFitTarget) {
 }
 /** One cubic per source cubic under the field (bowen 1791891109, "A"): affine → the control points mapped exactly; otherwise the fit. */
 export function fitDeformedCubic(shape: Cubic, field: Field) {
-  shape.forEach(field.map) // also guards control points outside the frame
+  if (field.controlsOffField) { field.map(shape[0]); field.map(shape[3]); shape.forEach(fv) }
+  else shape.forEach(field.map) // also guards control points outside the frame
   return fitCubicTarget({
     point: t => field.map(point(shape, t)),
     parameterScale: Math.cbrt(field.denominator(shape[3]) / field.denominator(shape[0])),

@@ -4,8 +4,8 @@
 // dragged (v103 7205381 src/ui/drawing/{cageEditorController.ts, DeformCageOverlay.tsx}). The same operation is
 // previewed (core.preview) and committed (core.editIn), so the preview is the commit's pipeline.
 import {
-  bendEdges, deformField, deformPlan, inverse3, map3, neutralBend, quadProjection, rectQuad,
-  type Bend, type BendHandles, type Cubic, type Plan, type PlanLine, type Quad, type Rect,
+  bendEdges, deformField, deformPlan, inverse3, map3, neutralBend, quadProjection, rectQuad, sphereField,
+  type Bend, type BendHandles, type Cubic, type Field, type Plan, type PlanLine, type Quad, type Rect, type Sphere,
 } from '../../deform'
 import type { Core, Editor, Vec } from '../../src'
 import type { Ctx, Flow, Owned, Preview } from '../base'
@@ -31,7 +31,11 @@ export function planLines(core: Core, view: string, lines: readonly string[]): P
 }
 /** The deform of these frozen curves: the field of `rect` taken to `quad` and bent by `bend`; the plan is computed here, once. */
 export function deformOpFrom(lines: readonly PlanLine[], rect: Rect, quad: Quad, bend?: Bend): DeformOp {
-  const plan: Plan = deformPlan(lines, deformField(rect, quad, bend))
+  return fieldOpFrom(lines, deformField(rect, quad, bend))
+}
+/** These frozen curves under any field (四角's, the sphere frame's; docs/sphere-frame-checklist.md §2): one plan, computed here, once. */
+export function fieldOpFrom(lines: readonly PlanLine[], field: Field): DeformOp {
+  const plan: Plan = deformPlan(lines, field)
   return {
     run: e => {
       e.move(plan.points)
@@ -47,6 +51,10 @@ export function deformOpFrom(lines: readonly PlanLine[], rect: Rect, quad: Quad,
  */
 export function deformOp(core: Core, view: string, lines: readonly string[], rect: Rect, quad: Quad, bend?: Bend): DeformOp {
   return deformOpFrom(planLines(core, view, lines), rect, quad, bend)
+}
+/** The sphere frame's edit of `lines` in `view`: their stored curves read now and frozen, then the sphere's field (bowen 1792054134: an edit). */
+export function sphereOp(core: Core, view: string, lines: readonly string[], sphere: Sphere): DeformOp {
+  return fieldOpFrom(planLines(core, view, lines), sphereField(sphere))
 }
 
 // ---- the tool's session (package 3) ------------------------------------------------------------------
