@@ -1055,7 +1055,7 @@ export function App() {
    */
   const startPose = () => {
     gesture.current?.cancel('entering playback')
-    ix.cancelAll(); setApplyFrom(false)
+    ix.cancelAll(); setApplyFrom(false); setBgPick(null) // an unfinished 视角背景 pick ends too (dot)
     posing.current = true; poseGen.current++; refGen.current++
     changeBase.current = { core, model: core.model() }
     const [yaw, pitch] = shown.slice('view:'.length).split(',').map(Number)
@@ -1486,7 +1486,7 @@ export function App() {
         </div>
         {bgViews.length > 0 && <div data-testid="view-backgrounds" style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
           {bgViews.map(v => <span key={v} data-view-background-chip={v} style={{ display: 'inline-flex', alignItems: 'center', gap: 2, border: `2px solid ${VIEW_COLOUR[v] ?? '#888'}`, borderRadius: 4, padding: '0 2px' }}>
-            {v.slice(5)}{v === shown && !pose ? '（当前，不画）' : ''}
+            {v.slice(5)}{v === (pose ? viewAtPose(pose) : shown) ? '（当前，不画）' : ''}
             <button data-remove-view-background={v} title="移除这个视角背景" style={{ border: 0, background: 'none', padding: '0 2px', cursor: 'pointer' }} onClick={() => setBgViews(x => x.filter(y => y !== v))}>×</button>
           </span>)}
         </div>}
@@ -1689,7 +1689,8 @@ export function App() {
           <line x1={s.axis} x2={s.axis} y1={box.y - 1e4} y2={box.y + 1e4} stroke="#9cf" strokeDasharray={`${6 * px} ${4 * px}`} strokeWidth={px} />
           {/* 视角背景: other views' visible centre lines in their colour, under the drawing; never hit (pointer-events none, and
               picking reads the core, not the DOM). The current view itself is not drawn over itself. */}
-          {bgViews.filter(v => v !== shown || !!pose).map(v => {
+          {/* a view is not drawn over itself: at that view, or in playback at exactly that view's pose (dot) */}
+          {bgViews.filter(v => v !== (pose ? viewAtPose(pose) : shown)).map(v => {
             const r = core.in(v), visible = new Set(r.snapshot().lines.filter(l => l.state.visible).map(l => l.id)), gv = r.geometry()
             return <g key={v} data-view-background={v} pointerEvents="none" fill="none" stroke={VIEW_COLOUR[v] ?? '#888'} strokeWidth={1.5 * px} strokeOpacity={0.85} strokeLinecap="round">
               {gv.lines.filter(G => visible.has(G.id)).map(G => <path key={G.id} d={path(G.curve)} />)}

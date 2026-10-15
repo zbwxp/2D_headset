@@ -110,4 +110,26 @@ describe('the view background', () => {
     await t.click('[data-view="view:90,0"]') // no pick left: this chooses the view
     expect(bench().view()).toBe('view:90,0')
   })
+
+  it('playback (dot): entering it ends an unfinished pick; at exactly a background\'s own view pose it is not drawn, between the views it is', async () => {
+    const t = await setup()
+    const button = (label: string) => [...t.host.querySelectorAll('button')].find(x => x.textContent === label)!
+    await t.click('[data-testid="add-view-background"]')
+    await act(async () => { button('Playback').click() })
+    await act(async () => { button('Leave playback').click() }) // out again
+    await t.click('[data-view="view:90,0"]')
+    expect(bench().view()).toBe('view:90,0') // the pick had ended: this chose the view
+    expect(t.host.querySelectorAll('[data-view-background]').length).toBe(0)
+    // a background of 90,0, then playback from that view: the pose is 90,0 exactly, so it is not drawn over itself
+    await act(async () => { bench().chooseView('view:0,0') })
+    await t.click('[data-testid="add-view-background"]'); await t.click('[data-view="view:90,0"]')
+    await act(async () => { bench().chooseView('view:90,0') })
+    expect(t.q('[data-view-background="view:90,0"]')).toBeNull()
+    await act(async () => { button('Playback').click() })
+    expect((bench() as unknown as { pose(): unknown }).pose()).toEqual({ yaw: 90, pitch: 0 })
+    expect(t.q('[data-view-background="view:90,0"]')).toBeNull()
+    const yaw = t.q('[data-testid="yaw-text"]') as HTMLInputElement
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(yaw, '30'); yaw.dispatchEvent(new Event('input', { bubbles: true })) })
+    expect(t.q('[data-view-background="view:90,0"]')).not.toBeNull()
+  })
 })
