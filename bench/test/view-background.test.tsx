@@ -4,6 +4,9 @@ import { describe, it, expect } from 'vitest'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Core, save } from '../../src'
+const wait = (ms: number) => new Promise(r => setTimeout(r, ms))
+// jsdom's Blob has no text(); the app reads opened files with it
+if (!Blob.prototype.text) Blob.prototype.text = function (this: Blob) { return new Promise<string>(res => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.readAsText(this) }) }
 import { App } from '../src/app'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -86,5 +89,25 @@ describe('the view background', () => {
     expect(t.q('[data-view-background="view:0,45"]')).toBeNull()
     expect(t.q('[data-view-background-chip="view:0,45"]')).toBeNull()
     expect(t.q('[data-view-background-chip="view:90,0"]')).not.toBeNull()
+  })
+
+  it('another drawing opened: the backgrounds and an unfinished pick end; the pick does not interfere with 从视角应用 (dot)', async () => {
+    const t = await setup()
+    await t.click('[data-testid="add-view-background"]'); await t.click('[data-view="view:90,0"]')
+    // the two pick modes exclude each other: starting one ends the other
+    await t.click('[data-testid="add-view-background"]'); await t.click('[data-testid="apply-from"]')
+    expect(t.q('[data-testid="add-view-background"]')!.style.fontWeight).toBe('400')
+    await t.click('[data-testid="add-view-background"]')
+    expect(t.q('[data-testid="apply-from"]')!.style.fontWeight).toBe('400')
+    const input = t.q('[data-testid="open"]') as HTMLInputElement
+    Object.defineProperty(input, 'files', { value: [new File([save(Core.newDocument())], 'other.json', { type: 'application/json' })], configurable: true })
+    const was = bench().core
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); await wait(50) })
+    expect(bench().core).not.toBe(was)
+    expect(t.host.querySelectorAll('[data-view-background]').length).toBe(0)
+    expect(t.q('[data-testid="view-backgrounds"]')).toBeNull()
+    expect(t.q('[data-testid="add-view-background"]')!.style.fontWeight).toBe('400')
+    await t.click('[data-view="view:90,0"]') // no pick left: this chooses the view
+    expect(bench().view()).toBe('view:90,0')
   })
 })

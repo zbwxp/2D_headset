@@ -482,6 +482,8 @@ export function App() {
   const bgViews = bgAt && bgAt.core === core ? bgAt.views : [], bgPicking = bgPick === core
   bgPickOn.current = bgPicking
   const setBgViews = (f: (v: string[]) => string[]) => setBgAt({ core, views: f(bgViews) })
+  // ended with its drawing, not paused: coming back to that drawing does not bring them back (as 从视角应用, dot 1791879765)
+  useEffect(() => { if (bgAt && bgAt.core !== core) setBgAt(null); if (bgPick && bgPick !== core) setBgPick(null) })
   // ended, not paused: coming back to that drawing or view does not bring it back (dot 1791879765)
   useEffect(() => { if (applyFromAt && !applyFrom) setApplyFromAt(null) })
   // lines whose front differs from the angle baseline (stage 2): marked on the canvas
