@@ -46,7 +46,7 @@ For a front point p:
 5. Result: anchor + offset + scale · Rot(roll) · d.
 
 - **Identity check:** yaw = pitch = roll = 0, scale 1, offset 0 → d = q → the point itself, for any r.
-- **Yaw sign:** positive sphere yaw turns the sphere the way a positive view yaw turns the head (checked visually in the bench; flipped if it reads backwards).
+- **The sphere's yaw / pitch have nothing to do with the view's yaw / pitch** (bowen 1792053508). Sign: positive yaw moves the front of the sphere toward +x, positive pitch toward −y (up on screen).
 - **Curves:** each line's cubic is refitted with `deform/`'s `fitDeformedCubic`:
   - end points exact;
   - tangent directions from the map's Jacobian (analytic);
@@ -80,12 +80,14 @@ At read time only. The stored positions of the domain layer in views other than 
 - `legacy.fromV13`: identity (no domains).
 
 ## 7. Bench (first version)
+bowen 1792053508: the sphere is modelled in the background; what he sees is one "sphere deform" frame, like the selection box (move, corner scale, rotate), plus two sliders yaw and pitch; the layer's lines follow. (r as a third slider 「弧度」 or fixed: asked in Claude 1792053576.)
+
 - Layers panel: 「加球面域」 / 「去掉球面域」 on the current layer.
-- At a view ≠ front, a small panel for that view's set:
-  - sliders r, scale, yaw, pitch, roll;
-  - offset x / y;
-  - the anchor and the sphere outline drawn on the canvas;
-  - the largest fitting error shown.
+- At a view ≠ front, the frame for that view's set:
+  - drag inside: offset; corner handles: scale (uniform); rotate handle: roll;
+  - sliders yaw, pitch (and 「弧度」 = r if bowen wants it);
+  - the sphere itself is not drawn;
+  - the largest fitting error shown beside the sliders.
 - At the front: the anchor field only.
 
 ## 8. Evidence
