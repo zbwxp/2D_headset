@@ -95,9 +95,11 @@ export const EFFECTS: Record<string, Effect> = {
   removeJoin: full({ reads: 'draft', shared: ['joins'] }),
   // the order of a point's join list: shared by every view, no shape written
   joinOrder: full({ reads: 'draft', shared: ['joins'] }),
-  // a point's end stroke and a join's manual zone: one value for every view, in the joins
-  endStroke: full({ reads: 'draft', shared: ['joins'] }),
-  zone: full({ reads: 'draft', shared: ['joins'] }),
+  // a point's end stroke and a join's manual zone: one value for every view, in the joins; a stroke changes no
+  // geometry, so an edit of strokes alone settles nothing and binds nothing (dot, after 5a2a6c2: a side view's legal
+  // coincidence must not turn a width change into a bind); the lock check still runs
+  endStroke: full({ reads: 'draft', shared: ['joins'], autoStructure: false, settle: 'none' }),
+  zone: full({ reads: 'draft', shared: ['joins'], autoStructure: false, settle: 'none' }),
   // links: a link moves the second point onto the first in every view
   // a link merges the two components' responses (stage 3b package 2)
   link: full({ reads: 'settled-trial', intents: 'all-views', shapes: 'all-views', shared: ['links', 'animation'] }),
@@ -105,10 +107,11 @@ export const EFFECTS: Record<string, Effect> = {
   linkJoin: full({ reads: 'draft', intents: 'all-views', shared: ['links'] }),
   removeLinkJoin: full({ reads: 'draft', shared: ['links'] }),
   // strokes, groups, fills
-  // a point's width and a line's profile: one value for every view, in the structure (bowen 1792057731)
-  lineStroke: full({ reads: 'draft', shared: ['structure'] }),
-  pointWidth: full({ reads: 'draft', shared: ['structure'] }),
-  stroke: full({ reads: 'draft', shared: ['structure'] }),
+  // a point's width and a line's profile: one value for every view, in the structure (bowen 1792057731); settle-free
+  // as endStroke / zone above
+  lineStroke: full({ reads: 'draft', shared: ['structure'], autoStructure: false, settle: 'none' }),
+  pointWidth: full({ reads: 'draft', shared: ['structure'], autoStructure: false, settle: 'none' }),
+  stroke: full({ reads: 'draft', shared: ['structure'], autoStructure: false, settle: 'none' }),
   reorderGroup: full({ reads: 'draft', shared: ['groups'] }),
   moveGroup: full({ reads: 'draft', shared: STRUCTURAL }),
   fill: full({ reads: 'draft', shared: ['fills'] }),

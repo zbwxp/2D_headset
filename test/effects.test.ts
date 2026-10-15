@@ -282,8 +282,8 @@ describe('the merged commit is today\'s, operation by operation (no behaviour ch
     try { d.editIn(layer, fn) } finally { off() }
     return m
   }
-  it('select, selectGroup and fit skip settling; broadcastShape and draftCorners settle the non-front views; everything else, and an empty edit, settles fully', () => {
-    const today: Record<string, string> = { placeReference: 'keeps', setReference: 'keeps', removeReference: 'keeps', addAsset: 'keeps', renameAsset: 'keeps', removeAsset: 'keeps', mask: 'keeps', removeMask: 'keeps', uncorrect: 'keeps', clearCorrections: 'keeps', select: 'keeps', selectGroup: 'keeps', fit: 'keeps', correct: 'views', broadcastShape: 'views', draftCorners: 'views' }
+  it('select, selectGroup, fit and the stroke calls skip settling; broadcastShape and draftCorners settle the non-front views; everything else, and an empty edit, settles fully', () => {
+    const today: Record<string, string> = { placeReference: 'keeps', setReference: 'keeps', removeReference: 'keeps', addAsset: 'keeps', renameAsset: 'keeps', removeAsset: 'keeps', mask: 'keeps', removeMask: 'keeps', uncorrect: 'keeps', clearCorrections: 'keeps', select: 'keeps', selectGroup: 'keeps', fit: 'keeps', lineStroke: 'keeps', pointWidth: 'keeps', stroke: 'keeps', endStroke: 'keeps', zone: 'keeps', correct: 'views', broadcastShape: 'views', draftCorners: 'views' }
     for (const c of CASES) for (const layer of c.views ?? [FRONT]) {
       const d = fixture()
       c.setup?.(d)
@@ -297,7 +297,9 @@ describe('the merged commit is today\'s, operation by operation (no behaviour ch
     const d = fixture()
     expect(mode(d, FRONT, e => { e.select(sel('ab')); e.fit(sel('ab')) })).toBe('keeps')
     expect(mode(fixture(), FRONT, e => { e.select(sel('ab')); e.broadcastShape(sel('ab')) })).toBe('views')
-    expect(mode(fixture(), FRONT, e => { e.select(sel('ab')); e.lineStroke('ab', { width: 2, profile: 'uniform' }) })).toBe('full')
+    // a stroke changes no geometry: with a selection it settles nothing; with a move, the move's full settle
+    expect(mode(fixture(), FRONT, e => { e.select(sel('ab')); e.lineStroke('ab', { width: 2, profile: 'uniform' }) })).toBe('keeps')
+    expect(mode(fixture(), FRONT, e => { e.lineStroke('ab', { width: 2, profile: 'uniform' }); e.move([{ id: 'a', target: P(1, 1) }]) })).toBe('full')
     const f = fixture(), clip = f.copy(['qr'])
     expect(mode(f, FRONT, e => e.paste(clip, 'L', P(5, 5), 'p'))).toBe('full') // paste calls select inside: full, as today
     expect(() => fixture().edit(e => { e.fit(sel('ab')); e.broadcastShape(sel('ab')) })).toThrow(/stage2-alone/)

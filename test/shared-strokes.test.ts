@@ -77,6 +77,59 @@ describe('one value for every view and pose', () => {
   })
 })
 
+describe('an edit of strokes alone settles nothing (dot, after 5a2a6c2)', () => {
+  /** Two mirror-linked lines; in the side view a is moved onto an unrelated line's end drawn later at the front: a legal coincidence there. */
+  function mirroredWithCoincidence() {
+    const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })
+    d.edit(e => {
+      e.line('l', { id: 'a', layer: 'L', position: P(-20) }, { id: 'b', layer: 'L', position: P(-10, 5) })
+      e.line('r', { id: 's', layer: 'L', position: P(20) }, { id: 't', layer: 'L', position: P(10, 5) })
+    })
+    const g = (id: string) => d.snapshot().groups.find(x => x.lines.includes(id))!.id
+    d.edit(e => e.mirrorLink([g('l')], [g('r')]))
+    d.editIn(SIDE, e => e.move([{ id: 'a', target: P(-70, 40) }]))
+    d.edit(e => e.line('x', { id: 'x0', layer: 'L', position: P(-70, 40) }, { id: 'x1', layer: 'L', position: P(-90, 60) }))
+    return d
+  }
+  const at = (d: Core, k: string, id: string) => d.in(k).snapshot().points.find(p => p.id === id)!.position
+
+  it('each of the five calls in the side view: written for both mirror sides, no bind of the coincident points', () => {
+    type E = Parameters<Parameters<Core['edit']>[0]>[0]
+    const calls: [string, (d: Core) => (e: E) => unknown][] = [
+      ['pointWidth', () => e => e.pointWidth('a', 4)],
+      ['lineStroke', () => e => e.lineStroke('l', { width: 4, profile: 'uniform' })],
+      ['stroke', d => { const g = d.snapshot().groups.find(x => x.lines.includes('l'))!.id; return e => e.stroke(g, { width: 4, profile: 'uniform' }) }],
+      ['endStroke', () => e => e.endStroke('a', { taper: 5 })],
+    ]
+    for (const [name, fn] of calls) {
+      const d = mirroredWithCoincidence()
+      expect(at(d, SIDE, 'a')).toEqual(at(d, SIDE, 'x0')) // the coincidence, not bound
+      d.editIn(SIDE, fn(d))
+      const s = d.in(FRONT).snapshot(), pa = s.points.find(p => p.id === 'a')!, ps = s.points.find(p => p.id === 's')!
+      expect([name, pa.width, ps.width, pa.endStroke ?? null, ps.endStroke ?? null]).toEqual(name === 'endStroke' ? [name, 1, 1, { taper: 5 }, { taper: 5 }] : [name, 4, 4, null, null])
+      expect([name, d.in(SIDE).snapshot().points.map(p => p.id).sort()]).toEqual([name, ['a', 'b', 's', 't', 'x0', 'x1']])
+    }
+    // the zone, on a join at a mirror-linked point (the new line l2 has no mirror partner, so its join is this side's only)
+    const d = mirroredWithCoincidence()
+    d.edit(e => e.line('l2', 'b', { id: 'c', layer: 'L', position: P(-5, 20) }))
+    d.edit(e => e.join('b', 'l', 'l2', { mode: 'smooth' }))
+    d.editIn(SIDE, e => e.zone('b', 'l', 'l2', 6))
+    expect(d.snapshot().joins.filter(j => j.zone === 6).map(j => j.point)).toEqual(['b'])
+    expect(d.in(SIDE).snapshot().points.map(p => p.id)).toContain('x0')
+  })
+
+  it('a stroke together with a move still settles fully (the move\'s bind applies); a locked line still refuses its width', () => {
+    const d = mirroredWithCoincidence()
+    d.edit(e => e.lineState('x', { locked: true }))
+    const before = save(d)
+    expect(() => d.editIn(SIDE, e => e.pointWidth('x0', 3))).toThrow(/Locked lines would change \(x\)/)
+    expect(save(d)).toBe(before)
+    // geometry in the same edit: the full flow as before (a side-view bind of a mirror-linked point is refused there)
+    expect(() => d.editIn(SIDE, e => { e.pointWidth('a', 4); e.move([{ id: 'b', target: P(-12, 7) }]) })).toThrow(/mirror-front-only/)
+    expect(save(d)).toBe(before)
+  })
+})
+
 describe('structure carries the one value', () => {
   it('split in the side view: the new point\'s width is linear in arc length measured on the side view\'s curve, one width for every view', () => {
     const d = corner()
