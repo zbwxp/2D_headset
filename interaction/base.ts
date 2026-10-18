@@ -32,6 +32,11 @@ export interface Env {
    * only asks; without it, picking is by geometry.
    */
   cut?: (target: { kind: 'line' | 'fill'; id: Id }, at: Vec, reach: number) => boolean
+  /**
+   * What the app does not show at all, and so never offers to a pick (a bone hidden in playback; docs/bone-lines-checklist.md
+   * §5, dot 1792301703): a line, a point or a handle. Without it, everything visible is offered.
+   */
+  hidden?: (target: { kind: 'line' | 'point'; id: Id } | { kind: 'handle'; line: Id; end: 'a' | 'b' }) => boolean
 }
 
 /**
@@ -218,6 +223,7 @@ export function createCtx(env: Env, state: { tool(): Tool; options(): Options })
       const layer = (x: ReturnType<Core['nearby']>[number]) => (x.kind === 'point' ? of.point(x.id) : of.line(x.kind === 'line' ? x.id : x.line))
       return ctx.reader().nearby(at, Math.max(REACH.point, REACH.handle, REACH.line) * px)
         .filter(x => x.visible && x.distance <= REACH[x.kind] * px && ctx.inScope(layer(x)))
+        .filter(x => !env.hidden?.(x.kind === 'handle' ? { kind: 'handle', line: x.line, end: x.end } : { kind: x.kind, id: x.id }))
         // a line cut away where the pointer is drops out, so what lies under it can be picked (docs/mask-p3-checklist.md §2)
         .filter(x => x.kind !== 'line' || !env.cut?.({ kind: 'line', id: x.id }, at, REACH.line * px))
         .sort((a, b) => ORDER[a.kind] - ORDER[b.kind] || a.distance - b.distance)

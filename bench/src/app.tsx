@@ -549,9 +549,17 @@ export function App() {
   const env = useRef({ layer: drawLayer, layers: selLayers, px, view: editView, masks: masksOn && inkOn, hiddenBones: new Set<Id>() })
   env.current = { layer: drawLayer, layers: selLayers, px, view: editView, masks: masksOn && inkOn, hiddenBones: new Set(s.bones.filter(boneHidden)) }
   const ix = useRef(createInteraction({ core: () => logged(core), view: () => env.current.view, newId: nid, layer: () => env.current.layer || undefined, layers: () => env.current.layers, pixel: () => env.current.px,
+    // a bone hidden in playback is out of reach as it is out of sight (dot 1792301418, 1792301703): its line, its handles,
+    // and its points unless a line still shown uses them
+    hidden: t => {
+      const h = env.current.hiddenBones
+      if (!h.size) return false
+      if (t.kind === 'line') return h.has(t.id)
+      if (t.kind === 'handle') return h.has(t.line)
+      const at = core.snapshot().lines.filter(l => l.a === t.id || l.b === t.id)
+      return at.length > 0 && at.every(l => h.has(l.id))
+    },
     cut: (t, at, reach) => {
-      // a bone hidden in playback is out of reach as it is out of sight (dot 1792301418)
-      if (t.kind === 'line' && env.current.hiddenBones.has(t.id)) return true
       if (!env.current.masks) return false
       let c = cutRef.current
       // dropped by a write (or another drawing or view): computed again from the drawing as it is now, never skipped

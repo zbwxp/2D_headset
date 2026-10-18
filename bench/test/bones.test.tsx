@@ -224,6 +224,27 @@ describe('bones in the bench', () => {
     await act(async () => { button('Leave playback').click() })
   })
 
+  it('playback with bones hidden: A reaches neither the bone\'s own end point nor its handle; a point a shown line shares stays reachable (dot 1792301703)', async () => {
+    const t = await setup()
+    // a short ordinary line from the bone's start b0: that point is shared
+    await act(async () => { bench().core.edit(e => { (e as unknown as { line(...a: unknown[]): void }).line(t.id('s'), t.id('b0'), { id: t.id('s1'), layer: 'layer-1', position: P(-30, t.Y) }) }); bench().refresh() })
+    await t.select(t.id('B')); await t.click('[data-testid="bone-mark"]')
+    await t.select(t.id('B'))
+    const button = (label: string) => [...t.host.querySelectorAll('button')].find(x => x.textContent === label)!
+    await act(async () => { button('Playback').click() })
+    await act(async () => { bench().ix.setTool('A'); bench().refresh() })
+    const picked = () => snap().selection.map(u => (u.kind === 'handle' ? `${u.line}:${u.end}` : u.id))
+    await t.press(40, t.Y) // b1: the bone's own end
+    expect(picked()).not.toContain(t.id('b1'))
+    // the a handle's tip in the view: b0 + (10, −10) — a fresh pick from an empty selection
+    await t.select()
+    await t.press(10, t.Y - 10)
+    expect(picked()).not.toContain(`${t.id('B')}:a`)
+    await t.press(0, t.Y) // b0: shared with the shown line s
+    expect(picked()).toContain(t.id('b0'))
+    await act(async () => { button('Leave playback').click() })
+  })
+
   it('a bone never takes the pick of an ordinary line away: V on the far line selects it', async () => {
     const t = await setup()
     await t.select(t.id('B')); await t.click('[data-testid="bone-mark"]')
