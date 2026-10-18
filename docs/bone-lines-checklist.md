@@ -36,6 +36,14 @@ Evidence so far (throwaway scripts, not in the repo): bowen's 165.json left eye,
 5. each attached line refit with fixed ends;
 6. existing link align and `joins.solve` must not move an attached line's points or handles; if they would, refuse.
 One undo step reverts all of it. Results are written into the views' positions — playback reads ordinary nine-view lines, unchanged.
+**Wiring (dot 1792298028):**
+- Illegal side-view intents are refused in `runEdit` **before** the settle (where `undeclared-write` is checked), so a derivation never hides them.
+- The derivation is part of the shared settle path, not only the final commit: at the end of `settle()` (the full commit, the exactness check of 从视角应用, `afterApply`) and in `Editor.view()`'s trial after `settleLayerPositions` (which `correct()` reads). Preview, trial and commit see the same lines.
+- It writes through `net.move` / `net.moveHandle` into the edit's Changes (derived points are targets, derived handles held), so `joins.solve` treats them as acted on: it does not move them and adjusts neighbouring ordinary lines as usual. `settleLayerPositions` then runs again on the real state for the views written; ordinary lines' spring adjustments are committed; an attached line moved by it refuses the step (`bone-settle-conflict`).
+- **同步广播基线**: after a successful derivation the angle baseline of attached lines takes their front (as `animation.fit`); responses read the nine views and corrections, not the baseline (dot checked), so corrections keep their reference.
+- `importState`'s "settling again changes nothing" includes the derivation.
+- The 「摆放骨骼」 mark lives on the edit's transaction and is cleared before publishing (never saved).
+- Not in B1: side bones from a standard in 捏脸 (step 3) — the data shape is in B1, the behaviour in B3.
 
 ## 4. Boundaries (each one a test)
 - **Side views**: attached lines — direct geometry edits (move point, move handle, transform, 四角/曲边, 球面框) refused in both modes (`bone-derived`, "generated from the bone — edit at 0,0"); bones — editable in 录制标准, refused in 捏脸 (`bone-standard`, "the side views come from 标准X — change it in 录制标准"). Strokes, visibility and names stay editable.
