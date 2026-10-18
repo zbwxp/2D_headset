@@ -229,24 +229,27 @@ function fitSamples(samples: readonly Vec[], ta: Vec, tb: Vec, dense: readonly V
   if (maxError > limit && maxError > 1.5 * err()) {
     const before = { shape, t: [...t], maxError }
     let la = len(sub(shape[1], a)), lb = len(sub(shape[2], b))
-    // both ways against polylines (no sample parameters to go stale): the samples to the cubic, the cubic to the carried curve
-    const score = (x: number, y: number) => {
+    // both ways against polylines (no sample parameters to go stale): the cubic to the carried curve, the samples to the
+    // cubic. A candidate is dropped as soon as it is no better than `bound` (the same choices, far fewer distances —
+    // dot 1792304089 measured the search)
+    const near = (p: Vec, poly: readonly Vec[]) => { let best = Infinity; for (let i = 0; i + 1 < poly.length; i++) { const a0 = poly[i]!, ab = sub(poly[i + 1]!, a0), l2 = dot(ab, ab), u0 = l2 > 0 ? Math.max(0, Math.min(1, dot(sub(p, a0), ab) / l2)) : 0; best = Math.min(best, len(sub(p, add(a0, mul(ab, u0))))) } return best }
+    const score = (x: number, y: number, bound: number) => {
       shape = make(x, y)
       const poly = Array.from({ length: 4 * n + 1 }, (_, k) => point(shape, k / (4 * n)))
       let e = 0
-      for (const p of poly) e = Math.max(e, toPolyline(p))
-      for (const p of samples) { let best = Infinity; for (let i = 0; i + 1 < poly.length; i++) { const a0 = poly[i]!, ab = sub(poly[i + 1]!, a0), l2 = dot(ab, ab), u0 = l2 > 0 ? Math.max(0, Math.min(1, dot(sub(p, a0), ab) / l2)) : 0; best = Math.min(best, len(sub(p, add(a0, mul(ab, u0))))) } e = Math.max(e, best) }
+      for (const p of poly) { e = Math.max(e, near(p, dense)); if (e >= bound) return Infinity }
+      for (const p of samples) { e = Math.max(e, near(p, poly)); if (e >= bound) return Infinity }
       return e
     }
     // started from the best of a coarse grid of lengths (a twentieth of the carried length up to all of it), the
-    // search's valleys being several
-    for (let i = 1; i <= 20; i++) for (let k = 1; k <= 20; k++) { const e = score((i / 20) * total, (k / 20) * total); if (e < maxError) { la = (i / 20) * total; lb = (k / 20) * total; maxError = e } }
-    let step = total / 40
-    for (let evals = 0; step > 1e-4 * chord && evals < 400;) {
+    // search's valleys being several; then a compass search
+    let best = score(la, lb, Infinity)
+    for (let i = 1; i <= 20; i++) for (let k = 1; k <= 20; k++) { const e = score((i / 20) * total, (k / 20) * total, best); if (e < best) { la = (i / 20) * total; lb = (k / 20) * total; best = e } }
+    for (let step = total / 40, evals = 0; step > 1e-4 * chord && evals < 400;) {
       let moved = false
       for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-        const x = Math.max(floor, la + dx * step), y = Math.max(floor, lb + dy * step), e = score(x, y); evals++
-        if (e < maxError) { la = x; lb = y; maxError = e; moved = true; break }
+        const x = Math.max(floor, la + dx * step), y = Math.max(floor, lb + dy * step), e = score(x, y, best); evals++
+        if (e < best) { la = x; lb = y; best = e; moved = true; break }
       }
       if (!moved) step /= 2
     }
