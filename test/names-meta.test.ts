@@ -49,7 +49,9 @@ describe('paste names are decided by the target layer', () => {
     d.edit(e => e.paste(clip, 'M', P(0, 50), 'p1'))
     d.edit(e => e.paste(clip, 'L', P(0, 50), 'p2'))
     expect(lineName(d, 'p1/l1')).toBe('上眼皮')
-    expect(lineName(d, 'p2/l1')).toBe('上眼皮副本')
+    // a pasted line is in a curve of its own: its name is free there (docs/names-scope.md rule 7); its curve's name is not
+    expect(lineName(d, 'p2/l1')).toBe('上眼皮')
+    expect(d.snapshot().groups.find(x => x.lines.includes('p2/l1'))!.name).toMatch(/副本$/)
   })
 
   it('after the original is deleted or renamed, pasting back into its layer keeps the name (dot 1791655111)', () => {
@@ -103,14 +105,14 @@ describe('repro (dot 1791655586)', () => {
 })
 
 describe('moving a curve to another layer (cut and paste keeping ids)', () => {
-  it('default names that collide get 副本; ids and every view stay; one undo restores all (dot 1791655253)', () => {
+  it('a curve name that collides gets 副本, its lines keep theirs (they stay in their curve); ids and every view stay; one undo restores all (dot 1791655253)', () => {
     const d = doc()
     d.edit(e => e.line('m1', { id: 'x', layer: 'M', position: P(0, 40) }, { id: 'y', layer: 'M', position: P(10, 40) }))
     d.editIn(SIDE, e => e.move([{ id: 'a', target: P(-3, 3) }]))
     expect(lineName(d, 'l1')).toBe('曲线1'); expect(lineName(d, 'm1')).toBe('曲线1')
     const g = groupOf(d, 'l1').id, before = JSON.stringify(d.views().map(k => [d.in(k).snapshot(), d.in(k).geometry()]))
     d.edit(e => e.moveGroup(g, 'M'))
-    expect(lineName(d, 'l1')).toBe('曲线1副本')
+    expect(lineName(d, 'l1')).toBe('曲线1')
     expect(groupOf(d, 'l1').name).toBe('连续曲线1副本')
     expect(groupOf(d, 'l1').id).toBe(g)
     expect(d.in(SIDE).snapshot().points.find(p => p.id === 'a')!.position).toEqual(P(-3, 3))
@@ -118,17 +120,18 @@ describe('moving a curve to another layer (cut and paste keeping ids)', () => {
     expect(JSON.stringify(d.views().map(k => [d.in(k).snapshot(), d.in(k).geometry()]))).toBe(before)
   })
 
-  it('names free in the target are reserved for the whole batch before any 副本 is given', () => {
+  it('a moved curve takes the first free 副本 name among the target\'s curves; its lines keep theirs', () => {
     const d = doc()
     d.edit(e => {
       e.line('l2', 'b', { id: 'c', layer: 'L', position: P(20) })
       e.line('m1', { id: 'x', layer: 'M', position: P(0, 40) }, { id: 'y', layer: 'M', position: P(10, 40) })
+      e.line('m2', { id: 'z', layer: 'M', position: P(0, 80) }, { id: 'w', layer: 'M', position: P(10, 80) })
     })
-    // moving lines named 曲线1 (taken in M) and 曲线1副本 (free in M)
-    d.edit(e => e.renameLine('l2', '曲线1副本'))
+    d.edit(e => e.renameGroup(groupOf(d, 'm2').id, '连续曲线1副本'))
+    d.edit(e => e.renameGroup(groupOf(d, 'l1').id, '连续曲线1'))
     d.edit(e => e.moveGroup(groupOf(d, 'l1').id, 'M'))
-    expect(lineName(d, 'l2')).toBe('曲线1副本')
-    expect(lineName(d, 'l1')).toBe('曲线1副本2')
+    expect(groupOf(d, 'l1').name).toBe('连续曲线1副本2')
+    expect(lineName(d, 'l1')).toBe('曲线1'); expect(lineName(d, 'l2')).toBe('曲线2')
   })
 })
 

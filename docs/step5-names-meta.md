@@ -1,3 +1,5 @@
+> Superseded in part by docs/names-scope.md (2026-10-18): a line's name is unique within its 连续曲线, a curve's within its layer.
+
 # Step 5: name scope and meta (plan before code)
 
 **Status:** checked by dot 1791655027 with three corrections, now in the rules below (rules 1, 3, 5, 6, and the wording of 2). Coding starts with them.

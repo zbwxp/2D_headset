@@ -56,9 +56,9 @@ describe('录制标准 and saving a standard', () => {
   it('a standard holds every view of the layer\'s bones, by name with a stable key; the snapshot lists it without shapes', () => {
     const d = recorded(), [t] = d.standardsData()
     expect(t!.name).toBe('S1'); expect(t!.layer).toBe('L')
-    expect(t!.bones.map(b => b.name).sort()).toEqual(['上骨', '下骨'])
+    expect(t!.bones.map(b => b.name).sort()).toEqual(['连续曲线1·上骨', '连续曲线1·下骨'])
     for (const b of t!.bones) expect(Object.keys(b.views).sort()).toEqual([...d.views()].sort())
-    expect(t!.bones.find(b => b.name === '上骨')!.views[SIDE]).toEqual(cubic(d, SIDE, 'U'))
+    expect(t!.bones.find(b => b.name === '连续曲线1·上骨')!.views[SIDE]).toEqual(cubic(d, SIDE, 'U'))
     expect(d.snapshot().standards).toEqual([{ id: t!.id, name: 'S1', layer: 'L', bones: t!.bones.map(b => ({ key: b.key, name: b.name })) }])
     expect(d.snapshot().boneMode).toBe('record')
   })
@@ -70,7 +70,7 @@ describe('录制标准 and saving a standard', () => {
     const now = d.standardsData()[0]!
     expect(now.id).toBe(was.id)
     expect(now.bones.map(b => [b.name, b.key])).toEqual(was.bones.map(b => [b.name, b.key]))
-    expect(now.bones.find(b => b.name === '上骨')!.views[SIDE]).toEqual(cubic(d, SIDE, 'U'))
+    expect(now.bones.find(b => b.name === '连续曲线1·上骨')!.views[SIDE]).toEqual(cubic(d, SIDE, 'U'))
     expect(code(() => d.edit(e => e.saveStandard('L', ' ')))).toBe('standard-name')
   })
   it('a layer without bones has nothing to save; a standard in use is not removed', () => {
@@ -211,7 +211,7 @@ describe('dot 1792304023', () => {
     B.edit(e => e.boneMode('record'))
     B.edit(e => e.renameLine('U', '上眼睑骨'))
     B.edit(e => e.saveStandard('L', data.name, true))
-    expect(B.standardsData()[0]!.bones.map(b => [b.key, b.name]).sort()).toEqual([['src-D', '下骨'], ['src-U', '上眼睑骨']])
+    expect(B.standardsData()[0]!.bones.map(b => [b.key, b.name]).sort()).toEqual([['src-D', '连续曲线1·下骨'], ['src-U', '连续曲线1·上眼睑骨']])
     expect(json(B.snapshot().standardChoices)).toBe(pairs)
     // still generated from it in 捏脸
     B.edit(e => e.boneMode('make'))
@@ -237,6 +237,50 @@ describe('a face far from its standard (bowen 1792304469: made faces are edited 
     const C = face(3)
     C.edit(e => { const id = e.addStandard('L', data); e.useStandard('L', id); e.boneMode('make') })
     expect(C.snapshot().boneMode).toBe('make')
+  })
+})
+
+describe('names 图层·连续曲线·线 (bowen 1792308208, docs/names-scope.md rule 9)', () => {
+  it('two bones of one line name in different curves pair each with its own; a standard bone saved before (line name only) pairs when unique', () => {
+    const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })
+    d.edit(e => {
+      e.line('A', { id: 'a0', layer: 'L', position: P(0, 0) }, { id: 'a1', layer: 'L', position: P(40, 0) }, { ha: P(10, -10), hb: P(-10, -10) })
+      e.line('B', { id: 'b0', layer: 'L', position: P(0, 60) }, { id: 'b1', layer: 'L', position: P(40, 60) }, { ha: P(10, -10), hb: P(-10, -10) })
+      e.line('C', { id: 'c0', layer: 'L', position: P(0, 120) }, { id: 'c1', layer: 'L', position: P(40, 120) }, { ha: P(10, -10), hb: P(-10, -10) })
+    })
+    const gid = (l: string) => d.snapshot().groups.find(x => x.lines.includes(l))!.id
+    d.edit(e => { e.renameGroup(gid('A'), '左眼'); e.renameGroup(gid('B'), '右眼'); e.renameGroup(gid('C'), '眉'); e.renameLine('A', '骨'); e.renameLine('B', '骨'); e.renameLine('C', '眉骨') })
+    d.edit(e => e.markBone(['A', 'B', 'C']))
+    d.edit(e => e.saveStandard('L', 'S'))
+    expect(d.standardsData()[0]!.bones.map(b => b.name).sort()).toEqual(['右眼·骨', '左眼·骨', '眉·眉骨'])
+    d.edit(e => e.useStandard('L', d.snapshot().standards[0]!.id))
+    expect(d.snapshot().standardChoices[0]!.pairs.map(p => p.bone).sort()).toEqual(['A', 'B', 'C'])
+    // an old standard (line names only): 「眉骨」 is unique → paired; 「骨」 is held by two bones → unpaired
+    const v = { [FRONT]: [P(0), P(1, -1), P(2, -1), P(3)] as Cubic }
+    d.edit(e => { const id = e.addStandard('L', { name: 'old', bones: [{ key: 'k1', name: '骨', views: v }, { key: 'k2', name: '眉骨', views: v }] }); e.useStandard('L', id) })
+    expect(d.snapshot().standardChoices[0]!.pairs).toEqual([{ bone: 'C', key: 'k2' }])
+  })
+  it('joining two curves with same-named lines: the later line becomes 副本 (rule 6); undo restores', () => {
+    const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })
+    d.edit(e => { e.line('p', { id: 'p0', layer: 'L', position: P(0) }, { id: 'p1', layer: 'L', position: P(10) }); e.line('q', { id: 'q0', layer: 'L', position: P(20) }, { id: 'q1', layer: 'L', position: P(30) }) })
+    d.edit(e => { e.renameLine('p', '上缘'); e.renameLine('q', '上缘') })
+    const was = save(d)
+    d.edit(e => e.move([{ id: 'q0', target: P(10) }]))
+    const gr = d.snapshot().groups.find(x => x.lines.includes('p'))!
+    expect(gr.lines).toContain('q')
+    const nm = (id: string) => d.snapshot().lines.find(l => l.id === id)!.name
+    expect([nm(gr.lines[0]!), nm(gr.lines[1]!)]).toEqual(['上缘', '上缘副本'])
+    d.undo()
+    expect(save(d)).toBe(was)
+  })
+  it('a file with 「·」 in names opens with it removed (bowen 1792308685); a collision that makes gets 副本', () => {
+    const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })
+    d.edit(e => { e.line('p', { id: 'p0', layer: 'L', position: P(0) }, { id: 'p1', layer: 'L', position: P(10) }, ); e.line('q', 'p1', { id: 'q1', layer: 'L', position: P(20) }) })
+    d.edit(e => { e.renameLine('p', '上缘'); e.renameLine('q', '上缘x') })
+    const file = JSON.parse(save(d))
+    for (const e of file.document.names.line) if (e[1] === '上缘x') e[1] = '上·缘'
+    const back = open(JSON.stringify(file)), names = back.snapshot().lines.map(l => l.name).sort()
+    expect(names).toEqual(['上缘', '上缘副本'])
   })
 })
 
@@ -326,10 +370,10 @@ describe('v15 files made before B3 (dot 1792302329)', () => {
     for (const t of file.document.bones.standards) for (const b of t.bones) delete b.key
     for (const c of file.document.bones.choice) delete c.pairs
     const back = open(JSON.stringify(file))
-    expect(back.snapshot().standards[0]!.bones.map(b => [b.key, b.name]).sort()).toEqual([['上骨', '上骨'], ['下骨', '下骨']])
+    expect(back.snapshot().standards[0]!.bones.map(b => [b.key, b.name]).sort()).toEqual([['连续曲线1·上骨', '连续曲线1·上骨'], ['连续曲线1·下骨', '连续曲线1·下骨']])
     expect(back.snapshot().standardChoices).toEqual([{ layer: 'L', standard: stdId(d, 'S1'), pairs: [] }])
     // choosing the standard again pairs by name
     back.edit(e => e.useStandard('L', stdId(d, 'S1')))
-    expect(back.snapshot().standardChoices[0]!.pairs.map(p => p.key).sort()).toEqual(['上骨', '下骨'])
+    expect(back.snapshot().standardChoices[0]!.pairs.map(p => p.key).sort()).toEqual(['连续曲线1·上骨', '连续曲线1·下骨'])
   })
 })

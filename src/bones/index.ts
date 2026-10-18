@@ -107,8 +107,11 @@ export function useStandard(s: BonesState, front: net.NetworkState, layer: Id, i
   const std = S(s).standards.find(t => t.id === id)
   if (!std) throw new Error(`No standard ${id}`)
   const list = namedBones(s, front, layer, nameOf, 'standard-names')
-  const byName = new Map(std.bones.map(b => [b.name, b.key] as const))
-  S(s).choice.push({ layer, standard: id, pairs: list.flatMap(x => (byName.has(x.name) ? [{ bone: x.bone, key: byName.get(x.name)! }] : [])) })
+  // by 「连续曲线·线」; a standard bone saved before (a line name, no 「·」) by the line part, when exactly one bone of
+  // the layer has it (docs/names-scope.md rule 9)
+  const byName = new Map(std.bones.map(b => [b.name, b.key] as const)), linePart = (x: string) => x.slice(x.lastIndexOf('·') + 1)
+  const old = (x: string) => { const b = std.bones.filter(t => !t.name.includes('·') && t.name === linePart(x)); return b.length === 1 && list.filter(y => linePart(y.name) === b[0]!.name).length === 1 ? b[0]!.key : undefined }
+  S(s).choice.push({ layer, standard: id, pairs: list.flatMap(x => { const key = byName.get(x.name) ?? old(x.name); return key === undefined ? [] : [{ bone: x.bone, key }] }) })
   S(s).choice.sort((p, q) => (p.layer < q.layer ? -1 : p.layer > q.layer ? 1 : 0))
 }
 /**

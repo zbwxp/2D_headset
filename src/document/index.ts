@@ -437,12 +437,12 @@ export class Editor {
   boneMode(mode: bones.Mode) { bones.setMode(this.s.bones, mode) }
   /** 存为标准: the layer's bones in the nine views under `name`; an existing name only with `overwrite`. */
   saveStandard(layer: Id, name: string, overwrite = false) {
-    bones.saveStandard(this.s.bones, this.s.network, layer, name, overwrite, bones.freshStandardId(this.s.bones), id => names.of(this.s.names, 'line', id))
+    bones.saveStandard(this.s.bones, this.s.network, layer, name, overwrite, bones.freshStandardId(this.s.bones), id => curveLineName(this.s, id))
   }
   /** A standard removed; refused while a layer uses it. */
   removeStandard(id: Id) { bones.removeStandard(this.s.bones, id) }
   /** 用标准: the standard `layer` uses (pairs its bones by name, once), or none. */
-  useStandard(layer: Id, id: Id | null) { bones.useStandard(this.s.bones, net.of(this.s.network, views.FRONT), layer, id, b => names.of(this.s.names, 'line', b)) }
+  useStandard(layer: Id, id: Id | null) { bones.useStandard(this.s.bones, net.of(this.s.network, views.FRONT), layer, id, b => curveLineName(this.s, b)) }
   /** 从文件导入标准: a copy of another drawing's standard into `layer` (a new id; a same-named one only with `overwrite`; the data is checked). Returns its id. */
   addStandard(layer: Id, data: { name: string; bones: readonly bones.StandardBone[] }, overwrite = false): Id {
     if (!net.hasLayer(this.s.network, layer)) throw new Error(`No layer ${layer}`)
@@ -1077,6 +1077,12 @@ export function importState(data: unknown): Core {
     const m = (err as Error).message
     throw new Error(m.startsWith('open-failed') ? m : `open-failed: ${m}`)
   }
+}
+
+/** A line's name within its layer, 「连续曲线·线」 (a standard pairs bones by it; bowen 1792308208, 1792308620). */
+function curveLineName(s: State, line: Id): string | undefined {
+  const gr = groups.list(s.groups, s.network).find(x => x.lines.includes(line)), own = names.of(s.names, 'line', line)
+  return gr && own !== undefined ? `${names.of(s.names, 'group', gr.id)}·${own}` : own
 }
 
 /** In a non-front view: refused when the edit's own intents (targets, held handles, aimed tips) touch an attached line. */

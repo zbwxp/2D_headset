@@ -14,7 +14,9 @@ const groupOf = (d: Core, line: string) => s(d).groups.find(g => g.lines.include
 const scopes = (d: Core) => {
   const snap = s(d), layerOfPoint = new Map(snap.points.map(p => [p.id, p.layer]))
   const lineLayer = new Map(snap.lines.map(l => [l.id, layerOfPoint.get(l.a)!]))
-  return [snap.layers.map(l => l.name), ...snap.layers.map(L => [...snap.groups.filter(g => g.layer === L.id).map(g => g.name), ...snap.lines.filter(l => lineLayer.get(l.id) === L.id).map(l => l.name)])]
+  // the scopes (docs/names-scope.md): layers; each layer's curves; each curve's lines
+  void lineLayer
+  return [snap.layers.map(l => l.name), ...snap.layers.map(L => snap.groups.filter(g => g.layer === L.id).map(g => g.name)), ...snap.groups.map(g => g.lines.map(id => snap.lines.find(l => l.id === id)!.name))]
 }
 const unique = (d: Core) => { for (const n of scopes(d)) { expect(new Set(n).size).toBe(n.length); expect(n.every(x => x.trim())).toBe(true) } }
 
@@ -74,13 +76,16 @@ describe('names', () => {
     unique(d)
   })
 
-  it('5. rename refuses an empty name and a name held by any layer, curve or line, saying who holds it', () => {
+  it('5. rename refuses an empty name, a name held in its scope (a line: its curve; a curve: its layer\'s curves; a layer: the layers), saying who holds it, and 「·」', () => {
     const d = doc(); chain(d)
     const g = groupOf(d, 'l1').id
     expect(() => d.edit(e => e.renameLine('l1', ' '))).toThrow(/empty/)
     expect(() => d.edit(e => e.renameLine('l1', '曲线2'))).toThrow(/line l2/)
-    // a line and a curve in one layer share one occupancy check (dot 1791655027)
-    expect(() => d.edit(e => e.renameGroup(g, '曲线3'))).toThrow(/line l3/)
+    expect(() => d.edit(e => e.renameLine('l1', '上·下'))).toThrow(/·/)
+    expect(() => d.edit(e => e.renameGroup(g, '左·眼'))).toThrow(/·/)
+    // a line and a curve never collide (图层·连续曲线·线, bowen 1792308208)
+    d.edit(e => e.renameGroup(g, '曲线3'))
+    expect(groupOf(d, 'l1').name).toBe('曲线3')
     expect(() => d.edit(e => e.layer('N', 'L'))).toThrow(/Layer name "L" is already used/)
     d.edit(e => e.renameLine('l1', '曲线1')) // its own name: allowed, no change
     expect(lineName(d, 'l1')).toBe('曲线1')

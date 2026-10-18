@@ -15,11 +15,12 @@ line names and continuous-curve names share one occupancy check" (docs/step5-nam
 7. Paste / layer copy (unchanged in spirit): a copied line keeps its name if free in its new curve, else 副本; a copied
    curve keeps its name if free among its layer's curves, else 副本.
 8. A curve moved to another layer keeping ids: its name free among the target's curves, else 副本; its lines keep theirs.
-9. Standards (骨骼标准): a standard bone stores its curve name and its line name as two fields (dot 1792308510: no joined
-   string). Pairing (once, at 用标准) by both. A standard bone saved before (no curve field) pairs by its line name when
+9. Standards (骨骼标准): a standard bone stores 「连续曲线·线」 as its name — names never contain 「·」 (bowen 1792308620:
+   rename refuses it; names saved before have it removed on open, bowen 1792308685, a collision that makes gets 副本), so
+   the joined form is unambiguous. Pairing (once, at 用标准) by it. A standard bone saved before (no curve field) pairs by its line name when
    exactly one bone of the layer has that line name, else it stays unpaired. Stored keys and pairs are untouched.
-10. Archive: the names part keeps its shape (old files are valid under the wider rule); a standard bone's `curve` is an
-    optional field (v15).
+10. Archive: the names part keeps its shape (old files are valid under the wider rule, after 「·」 is removed); standards
+    keep theirs (v15).
 
 ## Tests
 Same line name in two curves of a layer; rename refused only within a curve; a curve name equal to a line name; join of
