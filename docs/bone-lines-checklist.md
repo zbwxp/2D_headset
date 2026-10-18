@@ -15,11 +15,11 @@ Evidence so far (throwaway scripts, not in the repo): bowen's 165.json left eye,
 - **挂接基准 (hang base)** per hung line: its 0,0 shape and the 0,0 bone's shape at the moment of hanging, plus the bone coordinates of its sample points computed once on that base bone. Every derivation starts from the base (§2), never from the last fitted result.
 - **部位 (part)**: a name and the set of bones in it (chosen when the part is made; the two eye bones are one part).
 - **标准 (standard)**: `{ name, part, bones: [{ boneName, nine view shapes }] }`, written only by 「存为标准…」. Several per part. Stored where bowen decides (§7) — by default in the default-face drawing; a made face imports a **copy**, so nothing done in the made face changes the source.
-- **Choice** per part in a made face: which standard (by name) it uses.
+- **Choice** per part in a made face: which standard it uses, by the standard's stable id (dot 1792296507) — the name is for display and import matching only, so renaming a standard never breaks the choice.
 - Ids are stable inside a drawing; names (part, standard, bone) are used only to match on import — renaming inside a drawing never breaks a relation.
 
 ## 2. Derivation (pure functions in `deform/`, next to `Field`, `deformPlan`, `fit`)
-- **贴着跟** = bone coordinates: a point is (fraction along the bone, signed distance from it); in another view: the same fraction along that view's bone, distance × (that bone's length / base bone length). **Past a bone end** (dot 1792296347) the fraction is clamped to 0 or 1 and the rest is kept as a distance along the end tangent: the bone is extended straight past its ends, so a point beyond an end is (end, along-tangent distance, normal distance), scaled by the same length ratio. With the bone unchanged the map is the identity; and the 0,0 lines are not rewritten at all when hanging, on 「摆放骨骼」, or when the bone did not move (no refit of an unchanged line). Along-the-bone correspondence = **fraction of length** (bowen 1792251439). *Experiments used Bézier t (a tie on the data, my choice, not confirmed) — bowen to confirm length.*
+- **贴着跟** = bone coordinates: a point is (fraction along the bone, signed distance from it); in another view: the same fraction along that view's bone, distance × (that bone's length / base bone length). **Past a bone end** (dot 1792296347) the fraction is clamped to 0 or 1 and the rest is kept as a distance along the end tangent: the bone is extended straight past its ends, so a point beyond an end is (end, along-tangent distance, normal distance), scaled by the same length ratio. With the bone unchanged the map is the identity; and the 0,0 lines are not rewritten at all when hanging, on 「摆放骨骼」, or when the bone did not move (no refit of an unchanged line). Along-the-bone correspondence = **fraction of length** (bowen 1792251439 — decided; the experiments' Bézier t was my throwaway choice).
 - **整体跟** = the best affine map of pins on the bone.
 - **Side bones in 捏脸**: each point of the current 0,0 bone in bone coordinates of the standard's 0,0 bone, placed on the standard's bone in that view (the same rule as 贴着跟, applied to the bone itself). Ends shared by two bones of the part get one target (§7.2).
 - Each hung line is mapped as sampled points, then refit with the existing fit (end points exact; whole-line shape error measured as the symmetric Hausdorff distance over dense samples, reported).
@@ -68,8 +68,7 @@ If a view looks wrong for this eye shape: 录制标准, adjust the bones in that
 5. Bones in playback [hidden; debug switch].
 6. A standard per part or per whole face [per part: a face may use 标准2 for the eyes and 标准1 for the brows].
 7. Where standards live [in the default-face drawing; made faces import copies].
-8. Along-the-bone correspondence: fraction of length (bowen's choice) or Bézier t [length].
-Decided: two modes (1792296232); in 录制标准 the side views adjust bones only (1792296313); hence no stored side-bone offsets and no contour hand-fixes in the nine views.
+Decided: two modes (1792296232); in 录制标准 the side views adjust bones only (1792296313); along-the-bone correspondence by fraction of length (1792251439). Hence no stored side-bone offsets, and **the geometry of hung lines cannot be edited directly in non-front views** — 0,0 editing, lines not hung on a bone, and the shared strokes stay as they are (dot 1792296507).
 
 ## 8. Evidence (tests; dot's four first)
 - Generate twice without changes → the second changes nothing; also after save and reopen.
