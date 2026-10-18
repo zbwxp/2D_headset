@@ -15,10 +15,14 @@ line names and continuous-curve names share one occupancy check" (docs/step5-nam
 7. Paste / layer copy (unchanged in spirit): a copied line keeps its name if free in its new curve, else 副本; a copied
    curve keeps its name if free among its layer's curves, else 副本.
 8. A curve moved to another layer keeping ids: its name free among the target's curves, else 副本; its lines keep theirs.
+0. 「·」 is in no name — layer, curve or line: refused when made or renamed; removed when a file is opened or an older
+   clipboard pasted; only a name it changed is given 副本 where it now repeats another (dot 1792309259, 1792309343).
 9. Standards (骨骼标准): a standard bone stores 「连续曲线·线」 as its name — names never contain 「·」 (bowen 1792308620:
    rename refuses it; names saved before have it removed on open, bowen 1792308685, a collision that makes gets 副本), so
-   the joined form is unambiguous. Pairing (once, at 用标准) by it. A standard bone saved before (no curve field) pairs by its line name when
-   exactly one bone of the layer has that line name, else it stays unpaired. Stored keys and pairs are untouched.
+   the joined form is unambiguous; such a standard is marked `naming: 'curve·line'`. Pairing (once, at 用标准) by it. A
+   standard without the marker was saved before: its bones hold line names (「·」 removed on reading) and pair by the
+   bone's line name when exactly one bone of the layer has it, else stay unpaired — the marker decides, never a 「·」 in a
+   name (dot 1792309220). Stored keys and pairs are untouched.
 10. Archive: the names part keeps its shape (old files are valid under the wider rule, after 「·」 is removed); standards
     keep theirs (v15).
 

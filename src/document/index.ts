@@ -444,7 +444,7 @@ export class Editor {
   /** 用标准: the standard `layer` uses (pairs its bones by name, once), or none. */
   useStandard(layer: Id, id: Id | null) { bones.useStandard(this.s.bones, net.of(this.s.network, views.FRONT), layer, id, b => curveLineName(this.s, b)) }
   /** 从文件导入标准: a copy of another drawing's standard into `layer` (a new id; a same-named one only with `overwrite`; the data is checked). Returns its id. */
-  addStandard(layer: Id, data: { name: string; bones: readonly bones.StandardBone[] }, overwrite = false): Id {
+  addStandard(layer: Id, data: { name: string; bones: readonly bones.StandardBone[]; naming?: 'curve·line' }, overwrite = false): Id {
     if (!net.hasLayer(this.s.network, layer)) throw new Error(`No layer ${layer}`)
     return bones.addStandard(this.s.bones, layer, structuredClone(data), overwrite, bones.freshStandardId(this.s.bones))
   }

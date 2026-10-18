@@ -371,7 +371,7 @@ export function App() {
   // a confirmation belongs to the drawing and the standard it was asked for (dot 1792304485): another drawing, another
   // standard or another name never inherits it
   const [stdConfirm, setStdConfirm] = useState<{ core: Core; layer: Id; name: string; id: Id } | null>(null)
-  const [stdImport, setStdImport] = useState<{ core: Core; file: string; list: { name: string; layerName: string; bones: ReturnType<Core['standardsData']>[number]['bones'] }[]; pick: number; confirm: Id | null } | null>(null)
+  const [stdImport, setStdImport] = useState<{ core: Core; file: string; list: { name: string; layerName: string; bones: ReturnType<Core['standardsData']>[number]['bones']; naming?: 'curve·line' }[]; pick: number; confirm: Id | null } | null>(null)
   // file reads for 从文件导入标准 are numbered: only the latest read for the drawing it was started in may show its
   // standards; 取消 and a later read make an earlier one stale (dot 1792304485)
   const stdReadSeq = useRef(0)
@@ -1590,7 +1590,7 @@ export function App() {
                     const text = await f.text()
                     if (stale()) { log.unshift({ calls: `standards of ${f.name}`, result: '✗ dropped: cancelled, a later file, or another drawing' }); bump(); return }
                     const other = open(text), layerName = new Map(other.snapshot().layers.map(l => [l.id, l.name] as const))
-                    const list = other.standardsData().map(t => ({ name: t.name, layerName: layerName.get(t.layer) ?? t.layer, bones: t.bones }))
+                    const list = other.standardsData().map(t => ({ name: t.name, layerName: layerName.get(t.layer) ?? t.layer, bones: t.bones, naming: t.naming }))
                     if (!list.length) { log.unshift({ calls: `standards of ${f.name}`, result: '✗ 这个文件里没有标准' }); bump(); return }
                     setStdImport({ core: mine, file: f.name, list, pick: 0, confirm: null })
                   } catch (err) { if (!stale()) { log.unshift({ calls: `standards of ${f.name}`, result: '✗ ' + (err as Error).message }); bump() } }
@@ -1607,7 +1607,7 @@ export function App() {
                 <button data-testid="std-import-go" disabled={!target} onClick={() => {
                   if (was && !confirmed) { setStdImport({ ...stdImport, confirm: was.id }); return }
                   // import + use (+ the derivation, in 捏脸) in one edit: one undo, a refusal rolls it all back
-                  if (run(ed => { const id = ed.addStandard(target, { name: t.name, bones: t.bones }, exists); ed.useStandard(target, id) })) setStdImport(null)
+                  if (run(ed => { const id = ed.addStandard(target, { name: t.name, bones: t.bones, naming: t.naming }, exists); ed.useStandard(target, id) })) setStdImport(null)
                 }}>{exists ? (confirmed ? `确认覆盖「${t.name}」并选用` : `覆盖「${t.name}」并选用…`) : '导入并选用'}</button>
                 <button data-testid="std-import-cancel" onClick={() => { stdReadSeq.current++; setStdImport(null) }}>取消</button>
               </div>

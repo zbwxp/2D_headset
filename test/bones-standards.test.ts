@@ -205,7 +205,7 @@ describe('dot 1792304023', () => {
   it('an imported standard (keys from its source), chosen, a local bone renamed, then overwritten: the keys and the pairs stay', () => {
     const A = recorded(), data = A.standardsData()[0]!
     const B = face()
-    B.edit(e => { const id = e.addStandard('L', { name: data.name, bones: data.bones.map(b => ({ ...b, key: `src-${b.key}` })) }); e.useStandard('L', id); e.boneMode('make') })
+    B.edit(e => { const id = e.addStandard('L', { name: data.name, naming: data.naming, bones: data.bones.map(b => ({ ...b, key: `src-${b.key}` })) }); e.useStandard('L', id); e.boneMode('make') })
     const pairs = json(B.snapshot().standardChoices)
     expect(B.snapshot().standardChoices[0]!.pairs.map(p => p.key).sort()).toEqual(['src-D', 'src-U'])
     B.edit(e => e.boneMode('record'))
@@ -281,6 +281,66 @@ describe('names 图层·连续曲线·线 (bowen 1792308208, docs/names-scope.md
     for (const e of file.document.names.line) if (e[1] === '上缘x') e[1] = '上·缘'
     const back = open(JSON.stringify(file)), names = back.snapshot().lines.map(l => l.name).sort()
     expect(names).toEqual(['上缘', '上缘副本'])
+  })
+})
+
+describe('dot 1792309220 / 1792309259: old names and old standards', () => {
+  it('an old standard (unmarked) holding 「左眼·骨」 pairs with the bone whose line was 「左眼·骨」 (now 「左眼骨」), never with 左眼 · 骨', () => {
+    const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })
+    d.edit(e => {
+      e.line('A', { id: 'a0', layer: 'L', position: P(0, 0) }, { id: 'a1', layer: 'L', position: P(40, 0) }, { ha: P(10, -10), hb: P(-10, -10) })
+      e.line('B', { id: 'b0', layer: 'L', position: P(0, 60) }, { id: 'b1', layer: 'L', position: P(40, 60) }, { ha: P(10, -10), hb: P(-10, -10) })
+    })
+    d.edit(e => { e.renameGroup(d.snapshot().groups.find(x => x.lines.includes('B'))!.id, '左眼'); e.renameLine('B', '骨'); e.renameLine('A', '左眼骨') })
+    d.edit(e => e.markBone(['A', 'B']))
+    const v = { [FRONT]: [P(0), P(1, -1), P(2, -1), P(3)] as Cubic }
+    // as an old file holds it: line names, no naming marker
+    const file = JSON.parse(save(d))
+    file.document.bones.standards = [{ id: 'std-9', name: 'old', layer: 'L', bones: [{ key: 'kA', name: '左眼·骨', views: v }] }]
+    const back = open(JSON.stringify(file))
+    expect(back.standardsData()[0]!.bones[0]!.name).toBe('左眼骨')
+    back.edit(e => e.useStandard('L', 'std-9'))
+    expect(back.snapshot().standardChoices[0]!.pairs).toEqual([{ bone: 'A', key: 'kA' }])
+    // imported directly (unmarked data): the same
+    const C = open(save(d))
+    C.edit(e => { const id = e.addStandard('L', { name: 'old', bones: [{ key: 'kA', name: '左眼·骨', views: v }] }); e.useStandard('L', id) })
+    expect(C.snapshot().standardChoices[0]!.pairs).toEqual([{ bone: 'A', key: 'kA' }])
+    // a marked standard is paired by 「连续曲线·线」 only
+    C.edit(e => { const id = e.addStandard('L', { name: 'new', naming: 'curve·line', bones: [{ key: 'kB', name: '左眼·骨', views: v }] }); e.useStandard('L', id) })
+    expect(C.snapshot().standardChoices[0]!.pairs).toEqual([{ bone: 'B', key: 'kB' }])
+  })
+  it('opening: only names that held 「·」 are repaired; a repeat or an empty name otherwise is still refused', () => {
+    const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })
+    d.edit(e => { e.line('p', { id: 'p0', layer: 'L', position: P(0) }, { id: 'p1', layer: 'L', position: P(10) }); e.line('q', 'p1', { id: 'q1', layer: 'L', position: P(20) }) })
+    const file = JSON.parse(save(d))
+    for (const e of file.document.names.line) e[1] = 'N'
+    for (const e of file.document.names.group) e[1] = '左·眼'
+    expect(() => open(JSON.stringify(file))).toThrow(/N/)
+    const f2 = JSON.parse(save(d))
+    f2.document.names.line[0][1] = ' '
+    expect(() => open(JSON.stringify(f2))).toThrow()
+  })
+  it('layer names: 「·」 refused when made or renamed, removed on opening (dot 1792309343)', () => {
+    const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })
+    expect(code(() => d.edit(e => e.layer('M', '左·脸')))).toBe('name-dot')
+    expect(code(() => d.edit(e => e.renameLayer('L', '左·脸')))).toBe('name-dot')
+    d.edit(e => e.layer('M', '左脸'))
+    const file = JSON.parse(save(d))
+    file.document.network.layers = file.document.network.layers.map((l: { id: string; name: string }) => (l.id === 'L' ? { ...l, name: '左·脸' } : l))
+    expect(open(JSON.stringify(file)).snapshot().layers.map(l => l.name).sort()).toEqual(['左脸', '左脸副本'])
+  })
+  it('pasting from an older clipboard with 「·」 in names: removed at once, the same as after save / open', () => {
+    const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })
+    d.edit(e => e.line('p', { id: 'p0', layer: 'L', position: P(0) }, { id: 'p1', layer: 'L', position: P(10) }))
+    const clip = d.copy(['p']) as unknown as { names: { lines: [string, string][]; groups: { name: string }[] } }
+    clip.names.lines = clip.names.lines.map(([id]) => [id, '上·缘'])
+    clip.names.groups = clip.names.groups.map(g => ({ ...g, name: '左·眼' }))
+    d.edit(e => e.paste(clip as never, 'L', P(0, 50), 'c'))
+    const names = () => d.snapshot().lines.map(l => l.name).concat(d.snapshot().groups.map(g => g.name)).sort()
+    expect(names().some(x => x.includes('·'))).toBe(false)
+    expect(names()).toContain('上缘')
+    const text = save(d)
+    expect(save(open(text))).toBe(text)
   })
 })
 

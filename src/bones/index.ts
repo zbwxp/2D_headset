@@ -16,7 +16,11 @@ export interface Attachment { readonly line: Id; readonly bone: Id; readonly bas
  * made face refers to; each bone has a stable `key` (pairs refer to it — names are only for the first pairing).
  */
 export interface StandardBone { readonly key: string; readonly name: string; readonly views: Readonly<Record<string, Cubic>> }
-export interface Standard { readonly id: Id; readonly name: string; readonly layer: Id; readonly bones: readonly StandardBone[] }
+/**
+ * A standard; `naming: 'curve·line'` marks its bones' names as 「连续曲线·线」 (docs/names-scope.md rule 9). A standard
+ * without it was saved before (its bones by line name alone, 「·」 removed on reading, dot 1792309220).
+ */
+export interface Standard { readonly id: Id; readonly name: string; readonly layer: Id; readonly bones: readonly StandardBone[]; readonly naming?: 'curve·line' }
 /** A layer's chosen standard and its stored pairs (bone id ↔ standard key), made once when choosing. */
 export interface Choice { readonly layer: Id; readonly standard: Id; readonly pairs: readonly { readonly bone: Id; readonly key: string }[] }
 
@@ -84,7 +88,7 @@ export function saveStandard(s: BonesState, network: net.NetworkState, layer: Id
   const keyFor = (bone: Id, n: string) => { const w = wanted(bone, n); let k = w; for (let i = 2; used.has(k); i++) k = `${w}~${i}`; used.add(k); return k }
   const viewKeys = net.shapeLayers(network).filter(l => l.kind === 'view').map(l => l.key)
   const bones = list.map(x => ({ key: keyFor(x.bone, x.name), name: x.name, views: Object.fromEntries(viewKeys.map(k => [k, cubicOf(net.of(network, k), x.bone)])) }))
-  const std: Standard = { id: was?.id ?? id, name, layer, bones }
+  const std: Standard = { id: was?.id ?? id, name, layer, bones, naming: 'curve·line' }
   S(s).standards = was ? S(s).standards.map(t => (t.id === was.id ? std : t)) : [...S(s).standards, std]
   // a layer using the replaced standard keeps its pairs where the key still exists
   S(s).choice = S(s).choice.map(c => (c.standard === std.id ? { ...c, pairs: c.pairs.filter(p => bones.some(b => b.key === p.key)) } : c))
@@ -107,26 +111,27 @@ export function useStandard(s: BonesState, front: net.NetworkState, layer: Id, i
   const std = S(s).standards.find(t => t.id === id)
   if (!std) throw new Error(`No standard ${id}`)
   const list = namedBones(s, front, layer, nameOf, 'standard-names')
-  // by 「连续曲线·线」; a standard bone saved before (a line name, no 「·」) by the line part, when exactly one bone of
-  // the layer has it (docs/names-scope.md rule 9)
+  // by 「连续曲线·线」; a standard saved before (naming unmarked: its bones by line name) by the bone's line name, when
+  // exactly one bone of the layer has it (docs/names-scope.md rule 9; the marker decides, never a 「·」 in a name)
   const byName = new Map(std.bones.map(b => [b.name, b.key] as const)), linePart = (x: string) => x.slice(x.lastIndexOf('·') + 1)
-  const old = (x: string) => { const b = std.bones.filter(t => !t.name.includes('·') && t.name === linePart(x)); return b.length === 1 && list.filter(y => linePart(y.name) === b[0]!.name).length === 1 ? b[0]!.key : undefined }
-  S(s).choice.push({ layer, standard: id, pairs: list.flatMap(x => { const key = byName.get(x.name) ?? old(x.name); return key === undefined ? [] : [{ bone: x.bone, key }] }) })
+  const old = (x: string) => { const b = std.bones.filter(t => t.name === linePart(x)); return b.length === 1 && list.filter(y => linePart(y.name) === b[0]!.name).length === 1 ? b[0]!.key : undefined }
+  S(s).choice.push({ layer, standard: id, pairs: list.flatMap(x => { const key = std.naming === 'curve·line' ? byName.get(x.name) : old(x.name); return key === undefined ? [] : [{ bone: x.bone, key }] }) })
   S(s).choice.sort((p, q) => (p.layer < q.layer ? -1 : p.layer > q.layer ? 1 : 0))
 }
 /**
  * A standard from elsewhere (从文件导入标准), copied into `layer` as a new standard `id`; a same-named standard of that
  * layer is replaced only with `overwrite` (keeping its id), else refused.
  */
-export function addStandard(s: BonesState, layer: Id, data: { name: string; bones: readonly StandardBone[] }, overwrite: boolean, id: Id): Id {
+export function addStandard(s: BonesState, layer: Id, data: { name: string; bones: readonly StandardBone[]; naming?: 'curve·line' }, overwrite: boolean, id: Id): Id {
   let bones: StandardBone[]
-  try { bones = standardBones(data.bones, 'imported standard') } catch (e) { throw new net.Refusal('standard-data', `standard-data: ${(e as Error).message}`) }
+  const naming = data.naming === 'curve·line' ? data.naming : undefined
+  try { bones = standardBones(data.bones, 'imported standard', naming) } catch (e) { throw new net.Refusal('standard-data', `standard-data: ${(e as Error).message}`) }
   if (typeof data.name !== 'string' || !data.name.trim()) throw new net.Refusal('standard-name', 'standard-name: a standard needs a name')
   if (!bones.length) throw new net.Refusal('standard-empty', 'standard-empty: the standard has no bones')
   const was = S(s).standards.find(t => t.layer === layer && t.name === data.name)
   if (was && !overwrite) throw new net.Refusal('standard-exists', `standard-exists: 「${data.name}」 already exists for this layer; overwrite it explicitly`)
   if (!was && S(s).standards.some(t => t.id === id)) throw new Error(`Standard id ${id} is in use`)
-  const std: Standard = { id: was?.id ?? id, name: data.name, layer, bones }
+  const std: Standard = { id: was?.id ?? id, name: data.name, layer, bones, ...(naming ? { naming } : {}) }
   S(s).standards = was ? S(s).standards.map(t => (t.id === was.id ? std : t)) : [...S(s).standards, std]
   // a layer using the replaced standard keeps its pairs where the key still exists
   S(s).choice = S(s).choice.map(c => (c.standard === std.id ? { ...c, pairs: c.pairs.filter(p => bones.some(b => b.key === p.key)) } : c))
@@ -408,8 +413,12 @@ const same = (p: Cubic, q: Cubic) => p.every((v, i) => v.x === q[i]!.x && v.y ==
 /** As plain data (archive). */
 export const data = (s: BonesState): unknown => structuredClone(S(s))
 
-/** A standard's bones from data, checked: names, finite cubics per view, keys unique (a missing key is the name). */
-function standardBones(v: unknown, what: string): StandardBone[] {
+/**
+ * A standard's bones from data, checked: names, finite cubics per view, keys unique (a missing key is the name). A
+ * standard saved before 「连续曲线·线」 names (`naming` unmarked) holds line names: 「·」 is removed from them as from
+ * the lines' own (bowen 1792308685); a repeat that makes gets 副本, any other repeat is refused.
+ */
+function standardBones(v: unknown, what: string, naming: 'curve·line' | undefined): StandardBone[] {
   const d = net.data
   const cubic = (x: unknown, w: string): Cubic => { const a = d.arr(x, w); if (a.length !== 4) d.fail(`${w} is not a cubic`); return a.map((p, i) => d.vec(p, `${w} ${i}`)) as unknown as Cubic }
   const bones = d.arr(v, `${what} bones`).map((y, k) => {
@@ -422,7 +431,16 @@ function standardBones(v: unknown, what: string): StandardBone[] {
   // a standard pairs by name: none empty, none repeated (dot 1792304023)
   if (bones.some(b => !b.name.trim())) d.fail(`${what} has a bone without a name`)
   d.unique(bones.map(b => b.name), `${what} bone name`)
-  return bones
+  if (naming === 'curve·line') return bones
+  const changed = bones.map(b => b.name.includes('·')), seen = new Set(bones.filter((_, i) => !changed[i]).map(b => b.name))
+  return bones.map((b, i) => {
+    if (!changed[i]) return b
+    const clean = b.name.replaceAll('·', '') || '骨骼'
+    let name = clean
+    for (let k = 1; seen.has(name); k++) name = clean + '副本' + (k > 1 ? k : '')
+    seen.add(name)
+    return { ...b, name }
+  })
 }
 
 /** From saved data, checked: types, references to lines that exist, finite shapes; a bad file is refused, never repaired. */
@@ -448,7 +466,9 @@ export function restore(v: unknown, n: net.NetworkState): BonesState {
   d.unique(S(s).owners.map(x => x.point), 'owned point')
   S(s).standards = d.arr(o.standards, 'bones standards').map((x, i): Standard => {
     const T = d.obj(x, `standard ${i}`)
-    return { id: d.str(T.id, `standard ${i} id`), name: d.str(T.name, `standard ${i} name`), layer: d.str(T.layer, `standard ${i} layer`), bones: standardBones(T.bones, `standard ${i}`) }
+    const naming = T.naming === undefined ? undefined : d.str(T.naming, `standard ${i} naming`)
+    if (naming !== undefined && naming !== 'curve·line') d.fail(`standard ${i}: unknown naming ${naming}`)
+    return { id: d.str(T.id, `standard ${i} id`), name: d.str(T.name, `standard ${i} name`), layer: d.str(T.layer, `standard ${i} layer`), bones: standardBones(T.bones, `standard ${i}`, naming as 'curve·line' | undefined), ...(naming ? { naming: 'curve·line' as const } : {}) }
   })
   d.unique(S(s).standards.map(x => x.id), 'standard')
   S(s).choice = d.arr(o.choice, 'bones choice').map((x, i) => {

@@ -139,11 +139,15 @@ export function update(st: NamesState, n: net.NetworkState, g: groups.GroupsStat
  * order keeps it — a curve's lines in curve order, a layer's curves in layer order — and the later becomes
  * "<name>副本…" (docs/names-scope.md rule 6).
  */
-function dedupe(st: NamesState, n: net.NetworkState, g: groups.GroupsState) {
+function dedupe(st: NamesState, n: net.NetworkState, g: groups.GroupsState, only?: ReadonlySet<string>) {
   const list = groups.list(g, n)
+  // `only`: just these may be renamed; the others keep their names and are seen first (a repeat among them stays, for
+  // the check to refuse)
+  const may = (kind: Kind, id: Id) => !only || only.has(`${kind} ${id}`)
   const one = (kind: Kind, ids: readonly Id[]) => {
-    const seen = new Set<string>(), all = new Set(ids.map(id => of(st, kind, id)!))
+    const all = new Set(ids.map(id => of(st, kind, id)!)), seen = new Set(ids.filter(id => !may(kind, id)).map(id => of(st, kind, id)!))
     for (const id of ids) {
+      if (!may(kind, id)) continue
       const name = of(st, kind, id)!
       if (!seen.has(name)) { seen.add(name); continue }
       const next = copyNameFrom({ has: (q: string) => all.has(q) || seen.has(q) }, name)
@@ -178,11 +182,13 @@ export function copyFrom(st: NamesState, n: net.NetworkState, g: groups.GroupsSt
   // `layer` here is the name's scope (docs/names-scope.md): a curve's layer's curves, a line's curve
   const wanted: { kind: Kind; id: Id; layer: string; name: string }[] = []
   const sc = scopes(n, g)
-  for (const [from, name] of data.lines) { const to = lineMap.get(from); if (to && net.hasLine(n, to)) wanted.push({ kind: 'line', id: to, layer: sc.get(`line ${to}`)!, name }) }
+  // a name from an older clipboard may hold 「·」: removed, as on opening a file (dot 1792309259); nothing left → default
+  const clean = (x: string) => x.replaceAll('·', '')
+  for (const [from, name] of data.lines) { const to = lineMap.get(from); if (to && net.hasLine(n, to) && clean(name).trim()) wanted.push({ kind: 'line', id: to, layer: sc.get(`line ${to}`)!, name: clean(name) }) }
   for (const src of data.groups) {
     const first = lineMap.get(src.lines[0]!)
     const target = first && after.find(x => x.lines.includes(first))
-    if (target && target.lines.every(l => copied.has(l))) wanted.push({ kind: 'group', id: target.id, layer: `curves ${target.layer}`, name: src.name })
+    if (target && target.lines.every(l => copied.has(l)) && clean(src.name).trim()) wanted.push({ kind: 'group', id: target.id, layer: `curves ${target.layer}`, name: clean(src.name) })
   }
   // clear the temporary names of everything that is purely pasted — every new line and every
   // curve made only of new lines, wanted here or not — so no temporary default takes a name
@@ -219,14 +225,17 @@ export function check(st: NamesState, n: net.NetworkState, g: groups.GroupsState
 /** Names from saved data, checked: every line and every group has exactly one name, and no name repeats in its scope. */
 export function restore(v: unknown, n: net.NetworkState, g: groups.GroupsState): NamesState {
   const d = net.data, o = d.obj(v, 'names')
-  let stripped = false
+  const changed = new Set<string>()
   const entries = (kind: Kind, ids: Id[]) => {
     const list = d.arr(o[kind], `${kind} names`).map((x, i): [Id, string] => {
       const e = d.arr(x, `${kind} name ${i}`)
-      // 「·」 joins the parts of a true name: removed from names saved before (bowen 1792308685); empty → the default
-      const name = d.str(e[1], `${kind} name ${i}`), clean = name.replaceAll('·', '')
-      if (clean !== name) stripped = true
-      return [d.str(e[0], `${kind} name ${i} id`), clean.trim() ? clean : DEFAULT[kind]]
+      // 「·」 joins the parts of a true name: removed from names saved before (bowen 1792308685); a name that was only
+      // 「·」 takes the default
+      const id = d.str(e[0], `${kind} name ${i} id`), name = d.str(e[1], `${kind} name ${i}`)
+      if (!name.includes('·')) return [id, name]
+      const clean = name.replaceAll('·', '')
+      changed.add(`${kind} ${id}`)
+      return [id, clean.trim() ? clean : DEFAULT[kind]]
     })
     d.unique(list.map(e => e[0]), `${kind} name for`)
     const have = new Set(list.map(e => e[0]))
@@ -235,8 +244,9 @@ export function restore(v: unknown, n: net.NetworkState, g: groups.GroupsState):
     return list
   }
   const st = { line: entries('line', net.lines(n).map(l => l.id)), group: entries('group', groups.list(g, n).map(x => x.id)) } as Store as unknown as NamesState
-  // only names changed by removing 「·」 may collide here and are repaired; any other repeat is a bad file (refused)
-  if (stripped) dedupe(st, n, g)
+  // only names changed by removing 「·」 are repaired where they now collide; any other repeat or empty name is a bad file
+  // (refused by the check below, dot 1792309259)
+  if (changed.size) dedupe(st, n, g, changed)
   try { check(st, n, g) } catch (err) { d.fail((err as Error).message) }
   return st
 }

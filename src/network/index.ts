@@ -301,7 +301,18 @@ export const data = {
  */
 export function restore(v: unknown, layer: string): NetworkState {
   const d = data, o = d.obj(v, 'network')
-  const layers = d.arr(o.layers, 'layers').map((x, i) => { const L = d.obj(x, `layer ${i}`); const name = d.str(L.name, `layer ${i} name`); if (!name.trim()) d.fail(`layer ${i} has an empty name`); return { id: d.str(L.id, `layer ${i} id`), name } })
+  const raw = d.arr(o.layers, 'layers').map((x, i) => { const L = d.obj(x, `layer ${i}`); const name = d.str(L.name, `layer ${i} name`); if (!name.trim()) d.fail(`layer ${i} has an empty name`); return { id: d.str(L.id, `layer ${i} id`), name } })
+  // 「·」 removed from layer names saved before (bowen 1792308685); only a name it changed is given 副本 where it now
+  // repeats another (an unchanged repeat stays, for the check to refuse)
+  const kept = new Set(raw.filter(l => !l.name.includes('·')).map(l => l.name))
+  const layers = raw.map(l => {
+    if (!l.name.includes('·')) return l
+    const clean = l.name.replaceAll('·', '').trim() ? l.name.replaceAll('·', '') : l.id
+    let name = clean
+    for (let k = 1; kept.has(name); k++) name = clean + '副本' + (k > 1 ? k : '')
+    kept.add(name)
+    return { id: l.id, name }
+  })
   d.unique(layers.map(l => l.id), 'layer')
   const layerIds = new Set(layers.map(l => l.id))
   const points = d.arr(o.points, 'points').map((x, i) => {
@@ -615,6 +626,8 @@ function blockLoops(index: Index, lines: TLine[]): Id[][] {
 
 function checkName(n: NetworkState, name: string, except?: Id) {
   if (!name.trim()) throw new Error('A layer name cannot be empty')
+  // 「·」 joins the parts of a true name (图层·连续曲线·线): never inside one (bowen 1792308620; dot 1792309343)
+  if (name.includes('·')) throw new Refusal('name-dot', 'name-dot: a name cannot contain 「·」 (it joins 图层·连续曲线·线)')
   const holder = S(n).layers.find(l => l.name === name && l.id !== except)
   // a refusal with its holder, as for line and curve names (names.assertFreeIn)
   if (holder) throw new Refusal('name-taken', `Layer name "${name}" is already used by layer ${holder.id}`, [{ kind: 'layer', id: holder.id }])
