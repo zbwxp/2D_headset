@@ -17,6 +17,7 @@ import * as meta from '../meta'
 import * as animation from '../animation'
 import * as reference from '../reference'
 import * as masks from '../masks'
+import * as bones from '../bones'
 import * as evaluate from '../evaluate'
 import { EFFECTS, merge, resolve } from './effects'
 import { bounds as curveBounds, type Vec } from '../geometry'
@@ -44,6 +45,8 @@ export interface State {
   animation: animation.ResponsesState
   /** Reference pictures, one view each, never part of the drawing (owned by reference). */
   reference: reference.ReferenceState
+  /** 骨骼线 and 绑骨 (docs/bone-lines-checklist.md): bones, attached lines with their bases, owners, standards. */
+  bones: bones.BonesState
 }
 
 /** A drawing has its nine view layers from the start (graph "Views"; step 3, Claude 1791653309). */
@@ -55,7 +58,7 @@ function viewedNetwork(): net.NetworkState {
 }
 const createState = (axis = 0): State => ({
   network: viewedNetwork(), groups: groups.create(), joins: joins.create(), links: links.create(), fills: fills.create(), masks: masks.create(), selection: editing.create(),
-  apply: apply.create(axis), names: names.create(), meta: meta.create(), animation: animation.createResponses(), reference: reference.create(),
+  apply: apply.create(axis), names: names.create(), meta: meta.create(), animation: animation.createResponses(), reference: reference.create(), bones: bones.create(),
 })
 
 export interface Snapshot {
@@ -77,6 +80,9 @@ export interface Snapshot {
   /** The document's vertical symmetry axis, x = axis. */
   axis: number
   mirrorPairs: apply.Pair[]
+  /** Bone lines (骨骼线) and the lines attached to each (绑骨), shared by every view. */
+  bones: Id[]
+  attachments: { line: Id; bone: Id }[]
 }
 export type Geometry = derived.Geometry
 export type Zones = derived.Zones
@@ -99,6 +105,8 @@ interface Transaction {
   readonly calls: string[]
   /** For each line an apply locked in this edit: a copy of the state right after that apply (for the lock check). */
   readonly appliedFrom: Map<Id, locks.View>
+  /** 「摆放骨骼」: this edit's bone drags place the bones (attached lines stay, their bases renew); never saved. */
+  placing: boolean
 }
 const transactions = new WeakMap<Editor, Transaction>()
 /** A view at yaw < 0: it stacks and reorders in the left layer order (docs/left-layer-order-checklist.md). */
@@ -108,7 +116,7 @@ export class Editor {
   private constructor() {}
   /** @internal */ static open(state: State, layer: string): Editor {
     const e = new Editor()
-    transactions.set(e, { open: true, cancelled: false, failed: false, state, changes: net.emptyChanges(), appliedFrom: new Map(), layer, calls: [] })
+    transactions.set(e, { open: true, cancelled: false, failed: false, state, changes: net.emptyChanges(), appliedFrom: new Map(), layer, calls: [], placing: false })
     return e
   }
   /**
@@ -132,6 +140,11 @@ export class Editor {
     return tx
   }
   private get s(): State { return this.tx.state }
+  /** Stage 2 broadcast and fit never act on attached lines: their other views and baseline come from the bone. */
+  private notAttached(lines: readonly Id[], what: string) {
+    const hit = [...new Set(lines)].filter(id => bones.isAttached(this.s.bones, id)).sort()
+    if (hit.length) throw new net.Refusal('bone-derived', `bone-derived: ${what} does not take ${hit.join(', ')} — attached lines are generated from their bones (and never pending)`, net.lineObjects(hit))
+  }
 
   private topology(op: (ch: net.Changes) => void) {
     const { state, changes } = this.tx
@@ -254,6 +267,8 @@ export class Editor {
   // Each operation below runs on every item apply's paired plan lists (graph "Mirror link").
   split(line: Id, t: number, mid: Id, first: Id, second: Id) {
     const ops = this.paired(apply.pairedSplits(this.s.apply, line, t, mid, first, second))
+    // a bone is not split in v1 (docs/bone-lines-checklist.md §4)
+    for (const o of ops) if (bones.isBone(this.s.bones, o.line)) throw new net.Refusal('bone-split', `bone-split: ${o.line} is a bone; a bone cannot be split (v1)`, net.lineObjects([o.line]))
     // a split cannot carry responses exactly: refused, never a copied curve posing as shape-preserving (dot 1791687532)
     for (const o of ops) if (animation.splitBlocked(this.s.animation, this.s.network, o.line)) {
       throw new net.Refusal('split-has-responses', `split-has-responses: line ${o.line} or its end points have in-between responses; a split cannot keep them exactly`, net.lineObjects([o.line]))
@@ -318,6 +333,9 @@ export class Editor {
 
   // links (cross-layer relation)
   link(a: Id, b: Id) {
+    // no links on attached lines (docs/bone-lines-checklist.md §4): their other views come from the bone
+    const onAttached = [a, b].flatMap(p => net.linesAt(this.s.network, p).map(x => x.line.id)).filter(id => bones.isAttached(this.s.bones, id))
+    if (onAttached.length) throw new net.Refusal('bone-linked', `bone-linked: ${[...new Set(onAttached)].join(', ')} ${onAttached.length > 1 ? 'are' : 'is'} attached to a bone; a link would move it off its bone`, net.lineObjects([...new Set(onAttached)]))
     const read = this.view().network
     for (const [x, y] of this.paired(apply.pairedPointPairs(this.s.apply, this.s.network, a, b))) {
       // the two link components' responses merge first: exactly equal at the union of knots, which is kept (dot 1791689586)
@@ -395,6 +413,23 @@ export class Editor {
     names.applyPlan(s.names, plan)
   }
 
+  // bones (骨骼线, 绑骨; docs/bone-lines-checklist.md)
+  /** Mark lines as bones (`on`, the default) or not; a bone unmarked releases its attached lines (they keep their positions). */
+  markBone(lines: Id[], on = true) { bones.markBone(this.s.bones, this.s.network, lines, on) }
+  /**
+   * Attach lines to a bone (绑骨): from now on their other views are generated from 0,0 by the bone. Reads the front as
+   * it is in this edit (the base); attaching moves nothing at 0,0. A line with links is refused (unlink first).
+   */
+  attach(lines: Id[], bone: Id) {
+    const front = net.of(this.s.network, views.FRONT)
+    const linked = new Set(lines.filter(id => net.hasLine(front, id) && [net.line(front, id).a, net.line(front, id).b].some(p => links.partners(this.s.links, p).length)))
+    bones.attach(this.s.bones, front, lines, bone, linked)
+  }
+  /** Detach lines (解绑): they stay where they are in every view, as ordinary lines. */
+  detach(lines: Id[]) { bones.detach(this.s.bones, this.s.network, lines) }
+  /** 「摆放骨骼」: in this edit, a bone moved at 0,0 is placed — its attached lines stay where they are (their bases renew). */
+  placeBones() { this.tx.placing = true }
+
   // masks (显隐; graph "显隐 — masks", preliminary; docs/mask-p2-checklist.md)
   /** A mask: `sources` (filled closed curves) hide part of `target` (a line or a filled closed curve) — inverse: inside them; normal: all but inside them. Shared by every view. */
   // locks are not consulted (bowen 1791903940: editing is limited to the selected layers; locks to be removed later)
@@ -464,6 +499,7 @@ export class Editor {
     if (this.tx.layer !== views.FRONT) throw new net.Refusal('broadcast-from-front', 'broadcast-from-front: a shape broadcast runs in the front view, its source')
     const lines = editing.units(this.targets(units, this.s.network)).flatMap(u => (u.kind === 'line' ? [u.id] : []))
     if (!lines.length) throw new net.Refusal('select-lines-to-broadcast', 'select-lines-to-broadcast: the broadcast takes lines; select lines')
+    this.notAttached(lines, 'broadcast')
     animation.broadcast(this.s.network, this.s.links, this.tx.changes, lines)
   }
   /** Diagonal draft (stage 2 rule 6): the four corner views of the chosen lines from the front, yaw and pitch views; it stands alone in its edit. */
@@ -492,6 +528,8 @@ export class Editor {
     if (from === this.tx.layer) return
     const src = net.of(n, from)
     const lines = net.lines(n).filter(l => chosen.has(net.layerOfLine(n, l.id)))
+    // only the lines actually applied are checked (dot 1792295961): attached ones are generated off the front
+    if (this.tx.layer !== views.FRONT) { const hit = lines.filter(l => bones.isAttached(this.s.bones, l.id)).map(l => l.id); if (hit.length) throw new net.Refusal('bone-derived', `bone-derived: in ${this.tx.layer} the lines ${hit.join(', ')} are generated from their bones — apply at 0,0`, net.lineObjects(hit)) }
     const locked = lines.filter(l => l.state.locked).map(l => l.id)
     if (locked.length) throw new net.Refusal('locked', `Locked lines would change (${locked.join(', ')}); nothing was published`, net.lineObjects(locked))
     if (this.tx.layer === views.FRONT) {
@@ -509,7 +547,7 @@ export class Editor {
     for (const h of handles) this.moveHandle(h.id, h.end, h.v)
     // the check: settled as the commit would settle it
     const scratch = structuredClone(this.s), sch = structuredClone(this.tx.changes)
-    settle(scratch, sch, this.tx.layer)
+    settle(scratch, sch, this.tx.layer, this.tx.placing)
     const t = net.of(scratch.network, this.tx.layer), off: string[] = []
     if (structure(scratch) !== shared) off.push('points merged or the structure changed')
     for (const k of viewKeys(scratch)) if (k !== this.tx.layer && shapeIn(scratch, k) !== others.get(k)) off.push(`view ${k} changed`)
@@ -522,6 +560,7 @@ export class Editor {
   fit(units?: readonly editing.Unit[]) {
     const lines = editing.units(this.targets(units, this.s.network)).flatMap(u => (u.kind === 'line' ? [u.id] : []))
     if (!lines.length) throw new net.Refusal('select-lines-to-fit', 'select-lines-to-fit: fit takes lines; select lines')
+    this.notAttached(lines, 'fit')
     animation.fit(this.s.network, this.s.links, lines)
   }
   /**
@@ -599,7 +638,7 @@ export class Editor {
     if (!fresh.length) return
     const scratch = structuredClone(s), scratchChanges = structuredClone(changes)
     // the same rules as the commit (dot 1791653374); mirror applies are front-only
-    settle(scratch, scratchChanges, this.tx.layer)
+    settle(scratch, scratchChanges, this.tx.layer, this.tx.placing)
     const settled = { network: scratch.network, joins: scratch.joins, links: scratch.links } // every view; the check reads each
     for (const id of fresh) appliedFrom.set(id, settled)
   }
@@ -616,6 +655,8 @@ export class Editor {
     // (a split re-expresses each view's curve; a link reads each view's first point), so
     // each must be read as the commit would settle it (dot 1791653958)
     for (const k of viewKeys(scratch)) settleLayerPositions(scratch, ch, k)
+    // the same bone derivation as the commit (dot 1792298028: preview, trial and commit see the same lines)
+    settleBones(scratch, ch, this.tx.placing)
     return scratch
   }
   private loops(loop: Id): Id[] { return this.paired(apply.pairedLoops(this.s.apply, this.s.fills, this.s.network, loop)) }
@@ -636,7 +677,7 @@ export class Editor {
  * public methods, instead of per-operation handling.
  */
 /** @internal Editor members that are not operations (helpers and cancel): not wrapped, not declared. */
-export const UNWRAPPED: readonly string[] = ['constructor', 'topology', 'cancel', 'linesIn', 'fillsOf', 'loops', 'afterApply', 'view', 'insertClip', 'targets', 'paired', 'strokes', 'frontOnly', 'holdEverywhere']
+export const UNWRAPPED: readonly string[] = ['constructor', 'topology', 'cancel', 'linesIn', 'fillsOf', 'loops', 'afterApply', 'view', 'insertClip', 'targets', 'paired', 'strokes', 'frontOnly', 'holdEverywhere', 'notAttached']
 for (const name of Object.getOwnPropertyNames(Editor.prototype)) {
   const d = Object.getOwnPropertyDescriptor(Editor.prototype, name)
   if (!d || typeof d.value !== 'function' || UNWRAPPED.includes(name)) continue
@@ -752,8 +793,11 @@ export class Core {
       const all = viewKeys(draft), allowed = new Set(tx.calls.flatMap(c => resolve(EFFECTS[c]!.intents, layer, all)))
       const outside = [...new Set([...tx.changes.targets, ...tx.changes.held, ...tx.changes.handleTips].map(i => i.layer))].filter(k => !allowed.has(k)).sort()
       if (outside.length) throw new net.Refusal('undeclared-write', `undeclared-write: this edit's geometric intents reach ${outside.join(', ')}, outside what ${[...new Set(tx.calls)].join(', ')} declared; nothing was published`)
+      // a side view's direct geometry intents on attached lines are refused here, before the settle, so a derivation
+      // never hides them (docs/bone-lines-checklist.md §4; dot 1792297919)
+      if (layer !== views.FRONT) bonesIntentCheck(draft, tx.changes, layer)
       beforeSettle?.(structuredClone({ layer, calls: [...tx.calls], mode, draft, published: this.state, changes: tx.changes }))
-      commit(draft, tx.changes, this.state, tx.appliedFrom, layer, mode)
+      commit(draft, tx.changes, this.state, tx.appliedFrom, layer, mode, tx.placing)
       draft.network = net.of(draft.network, views.FRONT) // the stored handle stays the front compatibility entry
     } catch (err) {
       if (err instanceof Cancelled) return null
@@ -865,6 +909,8 @@ export class LayerReader {
       selection: editing.units(s.selection),
       axis: apply.axis(s.apply),
       mirrorPairs: apply.pairs(s.apply),
+      bones: bones.bones(s.bones),
+      attachments: bones.attachments(s.bones).map(x => ({ line: x.line, bone: x.bone })),
     })
   }
 
@@ -927,12 +973,12 @@ export class LayerReader {
 
 // ---- for the archive module only (not exported from the package root) -----------
 
-const PARTS = ['network', 'groups', 'joins', 'links', 'fills', 'masks', 'apply', 'names', 'meta', 'animation', 'reference'] as const
+const PARTS = ['network', 'groups', 'joins', 'links', 'fills', 'masks', 'apply', 'names', 'meta', 'animation', 'reference', 'bones'] as const
 
 /** The document as plain data, without the selection (docs/archive-plan.md). */
 export function exportState(core: Core): Record<string, unknown> {
   const s = core['state']
-  return structuredClone(Object.fromEntries(PARTS.map(k => [k, k === 'network' ? net.exportData(s.network) : s[k]])))
+  return structuredClone(Object.fromEntries(PARTS.map(k => [k, k === 'network' ? net.exportData(s.network) : k === 'bones' ? bones.data(s.bones) : s[k]])))
 }
 
 /**
@@ -960,6 +1006,7 @@ export function importState(data: unknown): Core {
       selection: editing.create(),
       animation: animation.restoreResponses(d.animation, network, l),
       reference: reference.restore(d.reference),
+      bones: bones.restore(d.bones, network),
     }
   } catch (err) {
     const m = (err as Error).message
@@ -984,6 +1031,8 @@ export function importState(data: unknown): Core {
     }
     const again = structuredClone(state)
     for (const k of viewKeys(again)) settleLayerPositions(again, net.emptyChanges(), k)
+    // the attached lines derived again from their bases must be what the file holds (checklist §3)
+    settleBones(again, net.emptyChanges(), false)
     settleShared(again)
     if (JSON.stringify(again) !== JSON.stringify(state)) throw new Error('the drawing is not in a settled state')
     return core
@@ -991,6 +1040,16 @@ export function importState(data: unknown): Core {
     const m = (err as Error).message
     throw new Error(m.startsWith('open-failed') ? m : `open-failed: ${m}`)
   }
+}
+
+/** In a non-front view: refused when the edit's own intents (targets, held handles, aimed tips) touch an attached line. */
+function bonesIntentCheck(s: State, ch: net.Changes, layer: string) {
+  const attached = new Set(bones.attachments(s.bones).map(a => a.line))
+  if (!attached.size) return
+  const n = net.of(s.network, layer), points = new Set(ch.targets.filter(t => t.layer === layer).map(t => t.point))
+  const handles = new Set([...ch.held, ...ch.handleTips].filter(h => h.layer === layer).map(h => h.line))
+  const hit = [...attached].filter(id => net.hasLine(n, id) && (points.has(net.line(n, id).a) || points.has(net.line(n, id).b) || handles.has(id))).sort()
+  if (hit.length) throw new net.Refusal('bone-derived', `bone-derived: in ${layer} the lines ${hit.join(', ')} are generated from their bones — edit them at 0,0; nothing was published`, net.lineObjects(hit))
 }
 
 /** The views of a state as `evaluate` input: per view its angle, positions and handle vectors (strokes are one for every view). */
@@ -1044,6 +1103,7 @@ function applyTopology(state: State, changes: net.Changes, op: (ch: net.Changes)
   links.update(state.links, state.network, ch)
   fills.update(state.fills, ch)
   masks.update(state.masks, ch)
+  bones.update(state.bones, state.network, ch)
   groups.reconcile(state.groups, state.network, ch)
   apply.update(state.apply, ch)
   names.follow(state.names, ch)
@@ -1082,8 +1142,8 @@ const viewKeys = (s: State): string[] => net.shapeLayers(s.network).filter(l => 
  * then fills → groups → names → selection; then the mirror check off the front, names,
  * locks (every view).
  */
-function commit(s: State, ch: net.Changes, published: State, appliedFrom: ReadonlyMap<Id, locks.View>, layer: string, mode: CommitMode = 'full') {
-  if (mode === 'full') settle(s, ch, layer)
+function commit(s: State, ch: net.Changes, published: State, appliedFrom: ReadonlyMap<Id, locks.View>, layer: string, mode: CommitMode = 'full', placing = false) {
+  if (mode === 'full') settle(s, ch, layer, placing)
   else {
     if (mode === 'views') for (const k of viewKeys(s)) if (k !== views.FRONT) settleLayerPositions(s, ch, k)
     settleShared(s)
@@ -1144,7 +1204,7 @@ function settleShared(s: State) {
 }
 
 /** The fixed pipeline up to (not including) the checks: everything the edit's constraints settle. */
-function settle(s: State, ch: net.Changes, layer: string) {
+function settle(s: State, ch: net.Changes, layer: string, placing = false) {
   const n = net.of(s.network, layer), front = layer === views.FRONT
   applyTopology(s, ch, c => net.removeIsolated(n, c))
   // Link alignment can make new coincidences, and binding can end links, so repeat
@@ -1163,5 +1223,41 @@ function settle(s: State, ch: net.Changes, layer: string) {
   if (front) for (const h of apply.mirroredHandles(s.apply, n, ch)) net.moveHandle(n, ch, h.line, h.end, h.offset)
   net.setHandles(n, joins.solve(s.joins, n, ch, links.smoothPairs(s.links, n)))
   for (const k of viewKeys(s)) if (k !== layer) settleLayerPositions(s, ch, k)
+  settleBones(s, ch, placing)
   settleShared(s)
+}
+
+/**
+ * The bone derivation in the settle (docs/bone-lines-checklist.md §3; dot 1792298028): bases renewed at 0,0 for lines
+ * this edit changed there (and, when placing, for every line of a bone it moved there), every attached line derived in
+ * every view through the network's own operations (so the springs see the derived points as acted on and adjust the
+ * ordinary lines next to them), those views settled again, and an attached line moved by that settle refuses the edit.
+ * Then 同步广播基线: the attached lines' angle baseline takes their front, so they are never pending.
+ */
+function settleBones(s: State, ch: net.Changes, placing: boolean) {
+  const attached = bones.attachments(s.bones)
+  if (!attached.length) return
+  const frontLines = (pred: (pt: Id) => boolean, held: (l: Id) => boolean) => {
+    const f = net.of(s.network, views.FRONT)
+    return (id: Id) => net.hasLine(f, id) && (pred(net.line(f, id).a) || pred(net.line(f, id).b) || held(id))
+  }
+  const frontTargets = new Set(ch.targets.filter(t => t.layer === views.FRONT).map(t => t.point))
+  const frontHeld = new Set([...ch.held, ...ch.handleTips].filter(h => h.layer === views.FRONT).map(h => h.line))
+  const touched = frontLines(p => frontTargets.has(p), l => frontHeld.has(l))
+  const edited = new Set(attached.filter(a => touched(a.line)).map(a => a.line))
+  const placed = new Set(placing ? bones.bones(s.bones).filter(b => touched(b)) : [])
+  const derived = bones.derive(s.bones, s.network, ch, edited, placed)
+  for (const [k, made] of derived) {
+    if (!made.size) continue
+    settleLayerPositions(s, ch, k)
+    const n = net.of(s.network, k), moved: Id[] = []
+    for (const [id, c] of made) {
+      const now = bones.cubicOf(n, id)
+      if (now.some((p, i) => Math.abs(p.x - c[i]!.x) > 1e-9 || Math.abs(p.y - c[i]!.y) > 1e-9)) moved.push(id)
+    }
+    if (moved.length) throw new net.Refusal('bone-settle-conflict', `bone-settle-conflict: in ${k} the settle would move the attached lines ${moved.join(', ')} off their bones (a join, link or spring pulls them); nothing was published`, net.lineObjects(moved))
+  }
+  // 同步广播基线 (dot 1792298028): exactly what animation.fit does, for the attached lines
+  const present = attached.map(a => a.line).filter(id => net.hasLine(s.network, id))
+  if (present.length) animation.fit(s.network, s.links, present)
 }

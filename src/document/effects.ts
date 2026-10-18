@@ -8,7 +8,7 @@ import * as views from '../views'
 /** A range of shape layers, resolved to concrete layer keys from the edited view. */
 export type Range = 'none' | 'edited' | 'all-views' | 'non-front' | 'others' | 'corners' | 'front-neighbours'
 /** The shared parts of the state an operation may write directly (structure = layers, points, lines, ids). */
-export type Shared = 'structure' | 'groups' | 'joins' | 'links' | 'fills' | 'masks' | 'selection' | 'apply' | 'names' | 'meta' | 'animation' | 'reference'
+export type Shared = 'structure' | 'groups' | 'joins' | 'links' | 'fills' | 'masks' | 'selection' | 'apply' | 'names' | 'meta' | 'animation' | 'reference' | 'bones'
 export type Reads = 'draft' | 'settled-trial'
 
 export interface Effect {
@@ -50,7 +50,7 @@ export function resolve(range: Range, edited: string, all: readonly string[]): s
 }
 
 /** A structural change runs through `applyTopology`, which lets every attribute module follow it, so any of these may change. */
-const STRUCTURAL: readonly Shared[] = ['structure', 'groups', 'joins', 'links', 'fills', 'masks', 'apply', 'names']
+const STRUCTURAL: readonly Shared[] = ['structure', 'groups', 'joins', 'links', 'fills', 'masks', 'apply', 'names', 'bones']
 /** Structural operations whose record can delete, merge or unbind, or that insert: responses follow (stage 3b package 2). */
 const STRUCTURAL_RESPONSES: readonly Shared[] = [...STRUCTURAL, 'animation']
 /** An ordinary edit: full settle (auto-bind in the edited view), not alone. */
@@ -118,6 +118,12 @@ export const EFFECTS: Record<string, Effect> = {
   clearFill: full({ reads: 'draft', shared: ['fills', 'masks'] }),
   fillVisible: full({ reads: 'draft', shared: ['fills'] }),
   reorderFill: full({ reads: 'draft', shared: ['fills'] }),
+  // bones (docs/bone-lines-checklist.md): their own part; the derivation they cause runs in the settle (its rules authorise it)
+  markBone: full({ reads: 'draft', shared: ['bones'] }),
+  attach: full({ reads: 'draft', shared: ['bones'] }),
+  detach: full({ reads: 'draft', shared: ['bones'] }),
+  // a flag on this edit: beside a bone drag, the drag places the bone (attached lines stay); alone it changes nothing
+  placeBones: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: [], autoStructure: false, settle: 'none', alone: false, companion: true },
   // masks (显隐): their own part only, no geometry
   mask: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['masks'], autoStructure: false, settle: 'none', alone: false, companion: false },
   removeMask: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['masks'], autoStructure: false, settle: 'none', alone: false, companion: false },

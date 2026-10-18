@@ -76,11 +76,11 @@ describe('the left layer order', () => {
     expect(ids(d, LEFT)).toEqual(['side', 'face', 'eye'])
   })
 
-  it('the file: version 13 on, now 14, round trip; a version 12 file opens and draws as before; a bad left order is refused', () => {
+  it('the file: version 13 on, now 15, round trip; a version 12 file opens and draws as before; a bad left order is refused', () => {
     const d = doc()
     d.editIn(LEFT, e => e.reorderLayer('side', 0))
     const f = JSON.parse(save(d))
-    expect([f.version, f.document.network.leftOrder]).toEqual([14, ['side', 'face', 'eye']])
+    expect([f.version, f.document.network.leftOrder]).toEqual([15, ['side', 'face', 'eye']])
     const plain = doc(), v12 = strokesPerView(JSON.parse(save(plain))); v12.version = 12
     const opened = open(JSON.stringify(v12))
     for (const k of opened.views()) expect(ids(opened, k)).toEqual(ids(plain, k))

@@ -207,7 +207,7 @@ describe('a version 13 file (bowen: 旧稿按照0，0 的为准)', () => {
     side.end.c = { taper: 9 } // side only
     delete layer(f, FRONT).zone[KEY]; up.zone[KEY] = 11 // the front automatic, the up view manual: automatic everywhere
     const o = open(JSON.stringify(f))
-    expect(JSON.parse(save(o)).version).toBe(14)
+    expect(JSON.parse(save(o)).version).toBe(15)
     const want = {
       points: [['a', 2, { taper: 2 }], ['b', 3, null], ['c', 1, null]],
       lines: [['ab', { width: 2, widthB: 3, profile: 'uniform' }], ['bc', { width: 3, widthB: 1, profile: 'taper' }]],

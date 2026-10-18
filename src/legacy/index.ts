@@ -156,16 +156,26 @@ export function fromV13(doc: unknown): unknown {
   }
 }
 
-/** An old document as version 14, or a refusal for a version that cannot be read. */
+/** Version 14 → 15: read as it is, with no bones (docs/bone-lines-checklist.md §1; a 14 file holds none). */
+export function fromV14(doc: unknown): unknown {
+  if (!doc || typeof doc !== 'object') return doc
+  const none = { bones: [], attach: [], owners: [], standards: [], choice: [], mode: 'record' }
+  // a 14 file holds no bones; an empty part (what saving a drawing without bones writes) counts as none
+  if (Object.hasOwn(doc, 'bones') && JSON.stringify((doc as Record<string, unknown>).bones) !== JSON.stringify(none)) throw new Error('open-failed: a version 14 file carries bones')
+  return { ...(doc as Record<string, unknown>), bones: none }
+}
+
+/** An old document as version 15, or a refusal for a version that cannot be read. */
 export function upgrade(version: unknown, doc: unknown): unknown {
-  if (version === 5) return fromV13(fromV12(fromV11(fromV10(fromV9(fromV8(fromV6(fromV5(doc))))))))
-  if (version === 6) return fromV13(fromV12(fromV11(fromV10(fromV9(fromV8(fromV6(doc)))))))
-  if (version === 7 || version === 8) return fromV13(fromV12(fromV11(fromV10(fromV9(fromV8(doc))))))
-  if (version === 9) return fromV13(fromV12(fromV11(fromV10(fromV9(doc)))))
-  if (version === 10) return fromV13(fromV12(fromV11(fromV10(doc))))
-  if (version === 11) return fromV13(fromV12(fromV11(doc)))
-  if (version === 12) return fromV13(fromV12(doc))
-  if (version === 13) return fromV13(doc)
+  if (version === 5) return fromV14(fromV13(fromV12(fromV11(fromV10(fromV9(fromV8(fromV6(fromV5(doc)))))))))
+  if (version === 6) return fromV14(fromV13(fromV12(fromV11(fromV10(fromV9(fromV8(fromV6(doc))))))))
+  if (version === 7 || version === 8) return fromV14(fromV13(fromV12(fromV11(fromV10(fromV9(fromV8(doc)))))))
+  if (version === 9) return fromV14(fromV13(fromV12(fromV11(fromV10(fromV9(doc))))))
+  if (version === 10) return fromV14(fromV13(fromV12(fromV11(fromV10(doc)))))
+  if (version === 11) return fromV14(fromV13(fromV12(fromV11(doc))))
+  if (version === 12) return fromV14(fromV13(fromV12(doc)))
+  if (version === 13) return fromV14(fromV13(doc))
+  if (version === 14) return fromV14(doc)
   throw new Error(`open-failed: unsupported version ${String(version)}`)
 }
 

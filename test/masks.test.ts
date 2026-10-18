@@ -163,7 +163,7 @@ describe('the archive', () => {
     const d = scene(), sq = loopOf(d, 'ab')
     d.edit(e => e.mask('m1', [sq], line('xy'), 'inverse'))
     const text = save(d)
-    expect(JSON.parse(text).version).toBe(14)
+    expect(JSON.parse(text).version).toBe(15)
     expect(masks(open(text))).toEqual(masks(d))
     expect(save(open(text))).toBe(text)
     const v9 = radiiPerView(JSON.parse(text)); v9.version = 9; delete v9.document.masks

@@ -13,6 +13,7 @@ import * as names from '../names'
 import * as views from '../views'
 import * as shapes from '../shapes'
 import * as animation from '../animation'
+import * as bones from '../bones'
 
 type Id = net.Id
 
@@ -26,9 +27,11 @@ export interface Clip {
   masks?: masks.Mask[]
   /** Responses of a clip made before docs/correction-cleanup-checklist.md: still checked on paste, never written. */
   animation?: animation.ResponsesData
+  /** Bones in the range, and attachments whose line and bone are both in it (docs/bone-lines-checklist.md §4); absent in older clips. */
+  bones?: { bones: Id[]; attach: { line: Id; bone: Id }[] }
 }
 
-export interface Parts { network: net.NetworkState; groups: groups.GroupsState; joins: joins.JoinsState; fills: fills.FillsState; masks: masks.MasksState; names: names.NamesState; animation: animation.ResponsesState }
+export interface Parts { network: net.NetworkState; groups: groups.GroupsState; joins: joins.JoinsState; fills: fills.FillsState; masks: masks.MasksState; names: names.NamesState; animation: animation.ResponsesState; bones: bones.BonesState }
 
 /** The range as a clip: these lines (read from `d`) and everything inside them. */
 export function extract(d: Parts, lines: readonly Id[]): Clip {
@@ -42,6 +45,7 @@ export function extract(d: Parts, lines: readonly Id[]): Clip {
     fills: fills.rangeData(d.fills, lineSet),
     masks: masks.rangeData(d.masks, lineSet, new Set(fills.rangeData(d.fills, lineSet).map(f => f.id))),
     names: names.rangeData(d.names, d.groups, d.network, ids),
+    bones: bones.rangeData(d.bones, lineSet),
   })
 }
 
@@ -144,7 +148,8 @@ export function check(v: unknown): Clip {
   }
   // the masks, when present: every reference inside the clip, else the paste is refused
   const maskData = o.masks === undefined ? undefined : masks.checkData(o.masks, lineIds, new Set(fillsData.map(f => f.id)), 'clip masks')
-  return { network: { points, lines, source, layers }, joins: { rows, endStrokes }, fills: fillsData, names: { lines: lineNames, groups: groupNames }, ...(maskData ? { masks: maskData } : {}), ...(responses ? { animation: responses } : {}) }
+  const boneData = o.bones === undefined ? undefined : bones.checkClip(o.bones, lineIds, 'clip bones')
+  return { network: { points, lines, source, layers }, joins: { rows, endStrokes }, fills: fillsData, names: { lines: lineNames, groups: groupNames }, ...(maskData ? { masks: maskData } : {}), ...(responses ? { animation: responses } : {}), ...(boneData ? { bones: boneData } : {}) }
 }
 
 /**
@@ -190,5 +195,7 @@ export function attach(d: Parts, clip: Clip, map: net.CopyMap, idOf: (old: Id) =
   // after the fills, with their old → new ids (dot 1791903786)
   if (clip.masks) masks.insert(d.masks, clip.masks, map.lines, fillMap, idOf)
   names.copyFrom(d.names, d.network, d.groups, map.lines, clip.names)
+  // bones keep their mark; attachments come with their bones, based on the pasted shapes (nothing moves)
+  if (clip.bones) bones.insert(d.bones, net.of(d.network, views.FRONT), clip.bones, map.lines)
   // corrections are never pasted: the copy blends linearly until corrected (bowen 1791993536)
 }

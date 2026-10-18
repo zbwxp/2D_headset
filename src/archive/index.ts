@@ -35,8 +35,10 @@ export const FORMAT = 'headset-v3-drawing'
  * - 14: every stroke value is one per meta-curve, in every view (docs/shared-strokes-checklist.md §4): a point's
  *   `width` and a line's `stroke.profile` in the network, a join's manual `zone` in its row, the end strokes in
  *   `joins.ends`; shape layers hold only positions and handles.
+ * - 15: plus bones (`bones`: 骨骼线, 绑骨 with their bases, owners, standards, choices, mode; docs/bone-lines-checklist.md);
+ *   a 14 file is read as it is, with no bones (*to be approved by bowen*); a 14 reader refuses a 15 file.
  */
-export const VERSION = 14
+export const VERSION = 15
 
 export function save(core: Core): string {
   return JSON.stringify({ format: FORMAT, version: VERSION, document: exportState(core) })
