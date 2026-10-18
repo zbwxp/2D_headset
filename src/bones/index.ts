@@ -143,8 +143,13 @@ function halves(c: Cubic, t: number): [Cubic, Cubic] {
   return [[{ ...c[0] }, p01, p012, m], [{ ...m }, p123, p23, { ...c[3] }]]
 }
 
-/** The largest fit error a derived line may have (drawing units): 2 % of its base length, at least 0.25. */
-export const fitLimit = (line: Cubic) => { let L = 0; for (let i = 1; i <= 32; i++) { const p = at(line, (i - 1) / 32), q = at(line, i / 32); L += Math.hypot(q.x - p.x, q.y - p.y) } return Math.max(0.25, 0.02 * L) }
+const lengthOf = (c: Cubic) => { let L = 0; for (let i = 1; i <= 32; i++) { const p = at(c, (i - 1) / 32), q = at(c, i / 32); L += Math.hypot(q.x - p.x, q.y - p.y) } return L }
+/**
+ * The largest fit error a derived line may have: 2 % of the larger of its base length and its bone's (scale-free; a
+ * short line on a long bone — the crease on the lid — is judged at the bone's scale, at which it is seen). A setting to
+ * review with real drawings.
+ */
+export const fitLimit = (line: Cubic, bone: Cubic) => 0.02 * Math.max(lengthOf(line), lengthOf(bone))
 
 /**
  * The derivation (checklist §2, §3), in place, through the network's own operations so the settle sees it:
@@ -177,8 +182,9 @@ export function derive(s: BonesState, network: net.NetworkState, ch: net.Changes
     for (const o of S(s).owners) {
       const by = live.filter(a => a.bone === o.bone && [net.line(n, a.line).a, net.line(n, a.line).b].includes(o.point))[0]
       if (!by) continue
-      const l = net.line(n, by.line), base = l.a === o.point ? by.base.line[0] : by.base.line[3]
-      try { target.set(o.point, boneMap(by.base.bone, boneNow.get(by.bone)!)(base)) }
+      const l = net.line(n, by.line), base = l.a === o.point ? by.base.line[0] : by.base.line[3], bone = boneNow.get(by.bone)!
+      // the identity exactly when the owner's bone is as it was at the base (no rounding from the map)
+      try { target.set(o.point, same(by.base.bone, bone) ? { x: base.x, y: base.y } : boneMap(by.base.bone, bone)(base)) }
       catch (e) { refuse(e, net.lineObjects([by.line, by.bone])) }
     }
     for (const a of carried) {
@@ -190,7 +196,7 @@ export function derive(s: BonesState, network: net.NetworkState, ch: net.Changes
         try { r = boneLine(a.base.line, a.base.bone, boneNow.get(a.bone)!, { a: ta, b: tb }) }
         catch (e) { return refuse(e, net.lineObjects([a.line, a.bone])) }
       }
-      if (r.maxError > fitLimit(a.base.line)) throw new net.Refusal('bone-fit', `bone-fit: in ${key}, ${a.line} cannot follow its bone as one curve (fit error ${r.maxError.toFixed(3)}); nothing was published`, net.lineObjects([a.line, a.bone]))
+      if (r.maxError > fitLimit(a.base.line, a.base.bone)) throw new net.Refusal('bone-fit', `bone-fit: in ${key}, ${a.line} cannot follow its bone as one curve (fit error ${r.maxError.toFixed(3)}); nothing was published`, net.lineObjects([a.line, a.bone]))
       made.set(a.line, r.shape)
     }
     // write: each point once, then the handles (held, so the springs leave them)
@@ -247,28 +253,34 @@ export function restore(v: unknown, n: net.NetworkState): BonesState {
 
 // ---- copy and paste (checklist §4; dot 1792296347) ------------------------------------------------
 
-/** The bones and attachments inside a copied range: every bone among `lines`; an attachment when its line and bone are both there. */
-export function rangeData(s: BonesState, lines: ReadonlySet<Id>): { bones: Id[]; attach: { line: Id; bone: Id }[] } {
-  return { bones: S(s).bones.filter(b => lines.has(b)), attach: S(s).attach.filter(a => lines.has(a.line) && lines.has(a.bone)).map(a => ({ line: a.line, bone: a.bone })) }
+/** A clip's bones part: the bones in the range, and each attachment whose line and bone are both there, with its base. */
+export interface ClipData { bones: Id[]; attach: { line: Id; bone: Id; base: { line: Cubic; bone: Cubic } }[] }
+/** The bones and attachments inside a copied range: every bone among `lines`; an attachment, with its base, when its line and bone are both there. */
+export function rangeData(s: BonesState, lines: ReadonlySet<Id>): ClipData {
+  return { bones: S(s).bones.filter(b => lines.has(b)), attach: S(s).attach.filter(a => lines.has(a.line) && lines.has(a.bone)).map(a => ({ line: a.line, bone: a.bone, base: { line: copyCubic(a.base.line), bone: copyCubic(a.base.bone) } })) }
 }
 /** A clip's bones part, checked: every reference inside the clip (`lines`), each attachment on one of its bones. */
-export function checkClip(v: unknown, lines: ReadonlySet<Id>, what: string): { bones: Id[]; attach: { line: Id; bone: Id }[] } {
+export function checkClip(v: unknown, lines: ReadonlySet<Id>, what: string): ClipData {
   const d = net.data, o = d.obj(v, what)
   const bonesIn = d.arr(o.bones, `${what} bones`).map((x, i) => { const id = d.str(x, `${what} bone ${i}`); if (!lines.has(id)) d.fail(`${what} bone ${id} is outside the clip`); return id })
   d.unique(bonesIn, `${what} bone`)
   const attach = d.arr(o.attach, `${what} attach`).map((x, i) => {
     const A = d.obj(x, `${what} attachment ${i}`), line = d.str(A.line, `${what} attachment ${i} line`), bone = d.str(A.bone, `${what} attachment ${i} bone`)
     if (!lines.has(line) || !bonesIn.includes(bone) || bonesIn.includes(line)) d.fail(`${what} attachment ${i} does not attach a line of the clip to one of its bones`)
-    return { line, bone }
+    const B = d.obj(A.base, `${what} attachment ${i} base`)
+    const cubic = (c: unknown, w: string): Cubic => { const a = d.arr(c, w); if (a.length !== 4) d.fail(`${w} is not a cubic`); return a.map((p, k) => d.vec(p, `${w} ${k}`)) as unknown as Cubic }
+    return { line, bone, base: { line: cubic(B.line, `${what} attachment ${i} base line`), bone: cubic(B.bone, `${what} attachment ${i} base bone`) } }
   })
   d.unique(attach.map(a => a.line), `${what} attached line`)
   return { bones: bonesIn, attach }
 }
 /**
  * A pasted clip's bones and attachments, on the new ids (`lines`: old → new). A bone pasted alone stays a bone; an
- * attachment comes along only with its bone. The bases are the pasted shapes at 0,0 (`front`), so a paste moves nothing.
+ * attachment comes along only with its bone, and keeps its own base moved by the paste's `offset` (dot 1792299724: a
+ * copy is not a new attachment — rebuilding the base from the fitted front would change the side views).
  */
-export function insert(s: BonesState, front: net.NetworkState, data: { bones: Id[]; attach: { line: Id; bone: Id }[] }, lines: ReadonlyMap<Id, Id>) {
+export function insert(s: BonesState, front: net.NetworkState, data: ClipData, lines: ReadonlyMap<Id, Id>, offset: Vec = { x: 0, y: 0 }) {
+  const moved = (c: Cubic): Cubic => c.map(p => ({ x: p.x + offset.x, y: p.y + offset.y })) as unknown as Cubic
   for (const b of data.bones) { const id = lines.get(b); if (id !== undefined && !S(s).bones.includes(id)) S(s).bones.push(id) }
   S(s).bones.sort()
   const added: Id[] = []
@@ -276,7 +288,7 @@ export function insert(s: BonesState, front: net.NetworkState, data: { bones: Id
     const line = lines.get(a.line), bone = lines.get(a.bone)
     if (line === undefined || bone === undefined || !net.hasLine(front, line) || !net.hasLine(front, bone)) continue
     S(s).attach = S(s).attach.filter(x => x.line !== line)
-    S(s).attach.push({ line, bone, base: { line: cubicOf(front, line), bone: cubicOf(front, bone) } })
+    S(s).attach.push({ line, bone, base: { line: offset.x || offset.y ? moved(a.base.line) : copyCubic(a.base.line), bone: offset.x || offset.y ? moved(a.base.bone) : copyCubic(a.base.bone) } })
     added.push(line)
   }
   S(s).attach.sort((p, q) => (p.line < q.line ? -1 : p.line > q.line ? 1 : 0))

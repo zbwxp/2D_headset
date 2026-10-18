@@ -70,10 +70,14 @@ function tOf(f: BoneFrame, s: number): number {
   const i = Math.min(lo, SAMPLES - 1), seg = f.at[i + 1]! - f.at[i]!
   return (i + (seg > 0 ? (target - f.at[i]!) / seg : 0)) / SAMPLES
 }
-/** The unit tangent at curve parameter t; where the derivative vanishes (a zero end handle), the curve's next direction. */
+/**
+ * The unit tangent at curve parameter t, pointing along the bone (from its start to its end). Where the derivative
+ * vanishes (a zero end handle) the curve leaves the start along +C'' and arrives at the end along −C'' (C'(1 − h) ≈
+ * −h·C''(1); dot 1792299449: the sign was wrong at the end); with C'' zero too, the chord.
+ */
 function tangent(f: BoneFrame, t: number): Vec {
   let d = deriv(f.bone, t)
-  if (len(d) < 1e-12 * Math.max(1, f.length)) d = deriv2(f.bone, t)
+  if (len(d) < 1e-12 * Math.max(1, f.length)) d = mul(deriv2(f.bone, t), t > 0.5 ? -1 : 1)
   if (len(d) < 1e-12 * Math.max(1, f.length)) d = sub(f.bone[3], f.bone[0])
   const l = len(d)
   if (!(l > 0)) throw new BoneError('bone-too-short', 'the bone has no direction')
@@ -91,25 +95,28 @@ export function toBone(f: BoneFrame, p: Vec): BonePoint {
   finite(p, 'the point')
   const dist = (t: number) => len(sub(point(f.bone, t), p))
   const d = f.ts.map(dist)
-  let bi = 0
-  for (let i = 1; i <= SAMPLES; i++) if (d[i]! < d[bi]!) bi = i
-  // ambiguity: another local minimum (the ends included), far along the bone, as near as the best
-  for (let i = 0; i <= SAMPLES; i++) {
-    const isMin = (i === 0 || d[i]! <= d[i - 1]!) && (i === SAMPLES || d[i]! <= d[i + 1]!)
-    if (isMin && Math.abs(f.at[i]! - f.at[bi]!) > 0.05 * f.length && d[i]! - d[bi]! <= 1e-6 * Math.max(1, d[bi]!)) {
-      throw new BoneError('bone-ambiguous', 'two parts of the bone are equally near this point')
+  // every local minimum of the sampled distance (the ends included), each refined on the curve (Newton on
+  // (C(t) − p)·C'(t) = 0, kept in [0, 1]); then compared refined, so two parts of the bone equally near are caught even
+  // when the samples happen to differ (dot 1792299544: a self-crossing bone)
+  const refine = (t0: number) => {
+    let t = t0
+    for (let k = 0; k < 30; k++) {
+      const r = sub(point(f.bone, t), p), c1 = deriv(f.bone, t), c2 = deriv2(f.bone, t), g = dot(r, c1), h = dot(c1, c1) + dot(r, c2)
+      if (!(h > 0)) break
+      const next = Math.max(0, Math.min(1, t - g / h))
+      if (Math.abs(next - t) < 1e-15) { t = next; break }
+      t = next
     }
+    return dist(t) <= dist(t0) ? t : t0
   }
-  // Newton on (C(t) − p)·C'(t) = 0 from the nearest sample, kept in [0, 1]
-  let t = f.ts[bi]!
-  for (let k = 0; k < 30; k++) {
-    const r = sub(point(f.bone, t), p), c1 = deriv(f.bone, t), c2 = deriv2(f.bone, t), g = dot(r, c1), h = dot(c1, c1) + dot(r, c2)
-    if (!(h > 0)) break
-    const next = Math.max(0, Math.min(1, t - g / h))
-    if (Math.abs(next - t) < 1e-15) { t = next; break }
-    t = next
+  const minima: { t: number; d: number; s: number }[] = []
+  for (let i = 0; i <= SAMPLES; i++) {
+    if ((i === 0 || d[i]! <= d[i - 1]!) && (i === SAMPLES || d[i]! <= d[i + 1]!)) { const t = refine(f.ts[i]!); minima.push({ t, d: dist(t), s: sOf(f, t) }) }
   }
-  if (dist(t) > d[bi]!) t = f.ts[bi]!
+  minima.sort((x, y) => x.d - y.d)
+  const best = minima[0]!
+  if (minima.some(m => Math.abs(m.s - best.s) > 0.05 && m.d - best.d <= 1e-6 * Math.max(1, best.d))) throw new BoneError('bone-ambiguous', 'two parts of the bone are equally near this point')
+  const t = best.t
   const q = point(f.bone, t), T = tangent(f, t), v = sub(p, q)
   return { s: sOf(f, t), along: dot(v, T), off: dot(v, normal(T)) }
 }
@@ -140,7 +147,7 @@ export function boneMap(base: Cubic, bone: Cubic, widthFactor = 1): (p: Vec) => 
  * Schneider fit). The source parameters to start; the refinement lets a curve that runs at another speed be fitted as a
  * shape. Returns the cubic and the largest distance from a sample to it (a shape error, input units).
  */
-function fitSamples(samples: readonly Vec[], ta: Vec, tb: Vec): { shape: Cubic; maxError: number } {
+function fitSamples(samples: readonly Vec[], ta: Vec, tb: Vec, dense: readonly Vec[] = samples): { shape: Cubic; maxError: number } {
   const n = samples.length - 1, a = samples[0]!, b = samples[n]!
   const u = [0]; for (let i = 1; i <= n; i++) u.push(u[i - 1]! + len(sub(samples[i]!, samples[i - 1]!)))
   const total = u[n]! || 1, chord = len(sub(b, a)) || total, floor = 1e-6 * total
@@ -202,9 +209,19 @@ function fitSamples(samples: readonly Vec[], ta: Vec, tb: Vec): { shape: Cubic; 
     if (Math.hypot(d1, d2) < 1e-10 * chord) break
   }
   for (let i = 1; i < n; i++) t[i] = project(shape, samples[i]!, t[i]!, false)
-  const maxError = err()
+  // the error both ways (dot 1792299449): the samples to the cubic, and the cubic to the carried curve — a cubic that
+  // loops out between its samples is caught by the second (no bound on handle lengths: the measure decides, dot 1792299544)
+  // the carried curve as a dense polyline (`dense`), so its own chords add little to the measure
+  const toPolyline = (p: Vec) => {
+    let best = Infinity
+    for (let i = 0; i + 1 < dense.length; i++) { const a0 = dense[i]!, ab = sub(dense[i + 1]!, a0), l2 = dot(ab, ab), u0 = l2 > 0 ? Math.max(0, Math.min(1, dot(sub(p, a0), ab) / l2)) : 0; best = Math.min(best, len(sub(p, add(a0, mul(ab, u0))))) }
+    return best
+  }
+  let back = 0
+  for (let k = 0; k <= 4 * n; k++) back = Math.max(back, toPolyline(point(shape, k / (4 * n))))
+  const maxError = Math.max(err(), back)
   shape.forEach((p, i) => finite(p, `fitted control point ${i}`))
-  if (!Number.isFinite(maxError)) throw new BoneError('bone-not-finite', 'the fit is not finite')
+  if (Number.isNaN(maxError)) throw new BoneError('bone-not-finite', 'the fit is not finite')
   return { shape, maxError }
 }
 
@@ -221,11 +238,11 @@ export function boneLine(line: Cubic, baseBone: Cubic, bone: Cubic, ends: { a?: 
   const a0 = map(line[0]), b0 = map(line[3])
   const da = ends.a ? sub(finite(ends.a, 'the start target'), a0) : { x: 0, y: 0 }, db = ends.b ? sub(finite(ends.b, 'the end target'), b0) : { x: 0, y: 0 }
   const at = (t: number) => add(map(point(line, t)), add(mul(da, 1 - t), mul(db, t)))
-  const N = 48, samples = Array.from({ length: N + 1 }, (_, i) => at(i / N))
+  const N = 48, samples = Array.from({ length: N + 1 }, (_, i) => at(i / N)), dense = Array.from({ length: 4 * N + 1 }, (_, i) => at(i / (4 * N)))
   // end directions from the carried curve: one-sided differences, falling back further in when the end does not move
   const dir = (from: number, step: number) => {
     for (let k = 1; k <= 64; k++) { const d = sub(at(from + step * k), at(from)); if (len(d) > 1e-12 * Math.max(1, len(at(from)))) return mul(d, 1 / len(d)) }
     throw new BoneError('bone-too-short', 'the carried line has no direction at an end')
   }
-  return fitSamples(samples, dir(0, 1e-4), dir(1, -1e-4))
+  return fitSamples(samples, dir(0, 1e-4), dir(1, -1e-4), dense)
 }

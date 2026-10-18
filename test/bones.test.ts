@@ -173,6 +173,18 @@ describe('structure', () => {
     d.edit(e => { e.layer('M', 'M'); e.line('m', { id: 'm0', layer: 'M', position: P(2, 9) }, { id: 'm1', layer: 'M', position: P(9, 9) }) })
     expect(code(() => d.edit(e => e.link('u0', 'm0')))).toBe('bone-linked')
   })
+  it('copy after a bone was moved: the pasted lines keep their own bases (dot 1792299724), so every view is the original moved by the offset', () => {
+    const d = attached(scene())
+    d.edit(e => e.move([{ id: 'b1', target: P(44, 3) }]))
+    d.editIn(SIDE, e => e.move([{ id: 'b0', target: P(2, -2) }]))
+    const clip = d.copy(['B', 'up', 'lo'])
+    d.edit(e => e.paste(clip, 'L', P(0, 100), 'c'))
+    for (const v of d.views()) for (const id of ['up', 'lo']) {
+      const a = cubic(d, v, id), b = cubic(d, v, `c/${id}`)
+      // not bit-equal (the derivation of the moved copy refits), but no drift: the old rebuilt base moved the side handles by 0.05
+      a.forEach((p, i) => { expect(Math.abs(b[i]!.x - p.x)).toBeLessThan(1e-6); expect(Math.abs(b[i]!.y - (p.y + 100))).toBeLessThan(1e-6) })
+    }
+  })
   it('copy and paste: a bone copied alone stays a bone; bone and line together keep the attachment; the paste moves nothing', () => {
     const d = attached(scene())
     const alone = d.copy(['B']), both = d.copy(['B', 'up'])
@@ -190,13 +202,89 @@ describe('refusals during a derivation (checklist §2)', () => {
     expect(code(() => d.edit(e => { e.move([{ id: 'b1', target: P(0.0001, 0) }]); e.moveHandle('B', 'a', P(0, 0)); e.moveHandle('B', 'b', P(0, 0)) }))).toBe('bone-too-short')
     expect(save(d)).toBe(text)
   })
-  it('a line one cubic cannot follow: refused naming the line', () => {
-    // a long straight bone with a line far above it; the bone then bent into a tight hook: the line would fold
+  it('a line one cubic cannot follow: bone-fit, naming the line; the drawing unchanged (dot 1792299336: bone-fit itself)', () => {
+    // a long straight bone with a line 30 above it; in a side view the bone bent into a tight hook: the carried line would
+    // fold inside the bend, which no single cubic follows (the projection is on the straight base bone: never ambiguous)
     const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })
-    d.edit(e => { e.line('S', { id: 's0', layer: 'L', position: P(0) }, { id: 's1', layer: 'L', position: P(100) }); e.line('w', { id: 'w0', layer: 'L', position: P(0, -30) }, { id: 'w1', layer: 'L', position: P(100, -30) }) })
+    d.edit(e => { e.line('S', { id: 's0', layer: 'L', position: P(0) }, { id: 's1', layer: 'L', position: P(100) }); e.line('w', { id: 'w0', layer: 'L', position: P(10, -30) }, { id: 'w1', layer: 'L', position: P(90, -30) }) })
     d.edit(e => e.markBone(['S'])); d.edit(e => e.attach(['w'], 'S'))
-    const r = code(() => d.edit(e => { e.move([{ id: 's1', target: P(10, 5) }]); e.moveHandle('S', 'a', P(60, 60)); e.moveHandle('S', 'b', P(60, -60)) }))
-    expect(['bone-fit', 'bone-ambiguous']).toContain(r)
+    const text = save(d)
+    let err: unknown
+    try { d.editIn(SIDE, e => { e.move([{ id: 's1', target: P(30, 0) }]); e.moveHandle('S', 'a', P(0, -80)); e.moveHandle('S', 'b', P(0, -80)) }) } catch (x) { err = x }
+    expect(err instanceof Refusal && err.code).toBe('bone-fit')
+    expect((err as Refusal).objects).toContainEqual({ kind: 'line', id: 'w' })
+    expect(save(d)).toBe(text)
+  })
+})
+
+describe('30° / 60° corrections with bones (checklist §8; dot 1792299336)', () => {
+  const pose = (d: Core, id: string) => d.atPose({ yaw: 30, pitch: 0 }).snapshot().points.find(p => p.id === id)!.position
+  it('a correction on an ordinary line: a bone drag leaves its data and its effect; save / open and undo pass', () => {
+    const d = attached(scene())
+    d.edit(e => e.correct({ yaw: 30, pitch: 0 }, { points: [{ id: 'f1', position: P(111, 2) }] }))
+    const responses = JSON.stringify(JSON.parse(save(d)).document.animation), text = save(d)
+    d.edit(e => e.move([{ id: 'b1', target: P(44, 2) }]))
+    expect(JSON.stringify(JSON.parse(save(d)).document.animation)).toBe(responses)
+    expect(pose(d, 'f1').x).toBeCloseTo(111, 9); expect(pose(d, 'f1').y).toBeCloseTo(2, 9)
+    const after = save(d)
+    expect(save(open(after))).toBe(after)
+    d.undo()
+    expect(save(d)).toBe(text)
+  })
+  it('corrections a line had before it was attached: kept through attaching and bone edits (front and side); save / open, undo / redo', () => {
+    const d = scene()
+    d.edit(e => e.correct({ yaw: 30, pitch: 0 }, { points: [{ id: 'u1', position: P(40, 0) }], handles: [{ line: 'up', end: 'a', vector: P(9, -11) }] }))
+    const responses = JSON.stringify(JSON.parse(save(d)).document.animation)
+    d.edit(e => e.attach(['up'], 'B'))
+    d.edit(e => e.move([{ id: 'b1', target: P(44, 2) }]))
+    d.editIn(SIDE, e => e.move([{ id: 'b0', target: P(1, 1) }]))
+    expect(JSON.stringify(JSON.parse(save(d)).document.animation)).toBe(responses)
+    expect(Number.isFinite(pose(d, 'u1').x)).toBe(true)
+    const after = save(d)
+    expect(save(open(after))).toBe(after)
+    d.undo(); d.undo(); d.redo(); d.redo()
+    expect(save(d)).toBe(after)
+  })
+  it('a new correction on an attached line is refused for now (bowen to decide; bowen 1792293978: 30° / 60° kept apart)', () => {
+    const d = attached(scene()), text = save(d)
+    expect(code(() => d.edit(e => e.correct({ yaw: 30, pitch: 0 }, { points: [{ id: 'u1', position: P(40, 0) }] })))).toBe('bone-derived')
+    expect(code(() => d.edit(e => e.correct({ yaw: 30, pitch: 0 }, { handles: [{ line: 'lo', end: 'a', vector: P(9, -7) }] })))).toBe('bone-derived')
+    expect(save(d)).toBe(text)
+  })
+})
+
+describe('mirror pairs with bones (checklist §4; dot 1792299336)', () => {
+  /** l and r mirror-linked across x = 0; each attached to its own bone BL / BR; the bones mirror-linked or not. */
+  function pair(mirrorBones: boolean) {
+    const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })
+    d.edit(e => {
+      e.line('BL', { id: 'p0', layer: 'L', position: P(-40, 0) }, { id: 'p1', layer: 'L', position: P(-10, 0) }, { ha: P(8, -8), hb: P(-8, -8) })
+      e.line('BR', { id: 'q0', layer: 'L', position: P(40, 0) }, { id: 'q1', layer: 'L', position: P(10, 0) }, { ha: P(-8, -8), hb: P(8, -8) })
+      e.line('l', { id: 'l0', layer: 'L', position: P(-38, -2) }, { id: 'l1', layer: 'L', position: P(-12, -2) }, { ha: P(8, -10), hb: P(-8, -10) })
+      e.line('r', { id: 'r0', layer: 'L', position: P(38, -2) }, { id: 'r1', layer: 'L', position: P(12, -2) }, { ha: P(-8, -10), hb: P(8, -10) })
+    })
+    const g = (id: string) => d.snapshot().groups.find(x => x.lines.includes(id))!.id
+    d.edit(e => e.mirrorLink([g('l')], [g('r')]))
+    if (mirrorBones) d.edit(e => e.mirrorLink([g('BL')], [g('BR')]))
+    d.edit(e => e.markBone(['BL', 'BR'])); d.edit(e => { e.attach(['l'], 'BL'); e.attach(['r'], 'BR') })
+    return d
+  }
+  const mirrored = (c: Cubic) => c.map(p => P(-p.x, p.y))
+  for (const mb of [true, false]) it(`one bone dragged at 0,0 (bones ${mb ? '' : 'not '}mirror-linked): both sides stay mirrored at 0,0; the file reopens`, () => {
+    const d = pair(mb)
+    d.edit(e => e.move([{ id: 'p1', target: P(-8, 3) }]))
+    const l = cubic(d, FRONT, 'l'), r = cubic(d, FRONT, 'r')
+    expect(r[0].x).toBeCloseTo(-l[0].x, 9); expect(r[3].x).toBeCloseTo(-l[3].x, 9); expect(r[3].y).toBeCloseTo(l[3].y, 9)
+    void mirrored
+    // the partner moved at 0,0 by the mirror (dot 1792299724) is never left off its bone: either its bone moved with it
+    // (bones mirror-linked) or it counts as drawn there — its base renews, and every other view follows that new base
+    const doc = JSON.parse(save(d)).document, rBase = doc.bones.attach.find((a: { line: string }) => a.line === 'r').base
+    if (!mb) {
+      expect(rBase.line).toEqual(cubic(d, FRONT, 'r'))
+      expect(cubic(d, SIDE, 'r')).toEqual(cubic(d, FRONT, 'r')) // BR is the same in both views: the identity
+    } else expect(rBase.bone).not.toEqual(cubic(d, FRONT, 'BR'))
+    const text = save(d)
+    expect(save(open(text))).toBe(text)
   })
 })
 
@@ -227,6 +315,19 @@ describe('the settle around derived lines (dot 1792298028: a real derivation, no
     d.edit(e => e.attach(['up', 'lo'], 'B'))
     d.edit(e => e.move([{ id: 'b1', target: P(44, 3) }]))
     d.editIn(SIDE, e => e.move([{ id: 'b1', target: P(36, -3) }]))
+    const text = save(d)
+    expect(save(open(text))).toBe(text)
+  })
+})
+
+describe('a spring off the front (dot 1792299785: a real reopen failure)', () => {
+  it('an ordinary line smoothly joined to an attached one; only a side view\'s bone moved: the file reopens', () => {
+    const d = scene()
+    d.edit(e => e.line('tail', 'u1', { id: 't1', layer: 'L', position: P(50, -10) }))
+    d.edit(e => e.join('u1', 'up', 'tail', { mode: 'smooth' }))
+    d.edit(e => e.attach(['up', 'lo'], 'B'))
+    d.editIn(SIDE, e => { e.move([{ id: 'b1', target: P(36, -3) }]); e.moveHandle('B', 'b', P(-14, -6)) })
+    // the generated line keeps its derived handles there; the ordinary line turned to it
     const text = save(d)
     expect(save(open(text))).toBe(text)
   })

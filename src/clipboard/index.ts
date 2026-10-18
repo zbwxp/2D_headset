@@ -28,7 +28,7 @@ export interface Clip {
   /** Responses of a clip made before docs/correction-cleanup-checklist.md: still checked on paste, never written. */
   animation?: animation.ResponsesData
   /** Bones in the range, and attachments whose line and bone are both in it (docs/bone-lines-checklist.md §4); absent in older clips. */
-  bones?: { bones: Id[]; attach: { line: Id; bone: Id }[] }
+  bones?: bones.ClipData
 }
 
 export interface Parts { network: net.NetworkState; groups: groups.GroupsState; joins: joins.JoinsState; fills: fills.FillsState; masks: masks.MasksState; names: names.NamesState; animation: animation.ResponsesState; bones: bones.BonesState }
@@ -189,13 +189,13 @@ export function insert(d: Parts, ch: net.Changes, clip: Clip, layer: Id, offset:
   return { map: net.insertLines(d.network, ch, clip.network, layer, idOf, offset, layers), layers }
 }
 /** Joins, fills, masks and names after `insert`, with the same layer correspondence (dot 1791654260). */
-export function attach(d: Parts, clip: Clip, map: net.CopyMap, idOf: (old: Id) => Id, layers: ReadonlyMap<string, string>) {
+export function attach(d: Parts, clip: Clip, map: net.CopyMap, idOf: (old: Id) => Id, layers: ReadonlyMap<string, string>, offset: { x: number; y: number } = { x: 0, y: 0 }) {
   joins.insert(d.joins, d.network, clip.joins, map)
   const fillMap = fills.insert(d.fills, d.network, clip.fills, map, idOf)
   // after the fills, with their old → new ids (dot 1791903786)
   if (clip.masks) masks.insert(d.masks, clip.masks, map.lines, fillMap, idOf)
   names.copyFrom(d.names, d.network, d.groups, map.lines, clip.names)
-  // bones keep their mark; attachments come with their bones, based on the pasted shapes (nothing moves)
-  if (clip.bones) bones.insert(d.bones, net.of(d.network, views.FRONT), clip.bones, map.lines)
+  // bones keep their mark; attachments come with their bones and their own bases, moved by the offset
+  if (clip.bones) bones.insert(d.bones, net.of(d.network, views.FRONT), clip.bones, map.lines, offset)
   // corrections are never pasted: the copy blends linearly until corrected (bowen 1791993536)
 }
