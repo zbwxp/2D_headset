@@ -368,8 +368,13 @@ export function App() {
   // 录制标准 / 捏脸 and standards (docs/bone-lines-checklist.md §6b): a name being typed per layer, a pending 覆盖 (a second
   // press confirms), a file's standards being imported (into the drawing it was read for)
   const [stdName, setStdName] = useState<Record<Id, string>>({})
-  const [stdConfirm, setStdConfirm] = useState<{ layer: Id; name: string } | null>(null)
-  const [stdImport, setStdImport] = useState<{ core: Core; file: string; list: { name: string; layerName: string; bones: ReturnType<Core['standardsData']>[number]['bones'] }[]; pick: number; confirm: boolean } | null>(null)
+  // a confirmation belongs to the drawing and the standard it was asked for (dot 1792304485): another drawing, another
+  // standard or another name never inherits it
+  const [stdConfirm, setStdConfirm] = useState<{ core: Core; layer: Id; name: string; id: Id } | null>(null)
+  const [stdImport, setStdImport] = useState<{ core: Core; file: string; list: { name: string; layerName: string; bones: ReturnType<Core['standardsData']>[number]['bones'] }[]; pick: number; confirm: Id | null } | null>(null)
+  // file reads for 从文件导入标准 are numbered: only the latest read for the drawing it was started in may show its
+  // standards; 取消 and a later read make an earlier one stale (dot 1792304485)
+  const stdReadSeq = useRef(0)
   // the one display kind of the name labels (docs/name-labels-plan.md; bowen 1791731823; dot 1791732110): set only
   // when A / V actually hit a line, a layers row is clicked or a name is found; nothing else changes it
   const [labelKind, setLabelKind] = useState<LabelKind>('line')
@@ -1568,35 +1573,38 @@ export function App() {
                 <input type="file" data-testid="std-import-file" accept=".json" style={{ display: 'none' }} onChange={async e => {
                   const f = e.target.files?.[0]; e.target.value = ''
                   if (!f) return
-                  const mine = core
+                  const mine = core, seq = ++stdReadSeq.current
+                  const stale = () => seq !== stdReadSeq.current || mine !== core
                   try {
-                    const other = open(await f.text()), layerName = new Map(other.snapshot().layers.map(l => [l.id, l.name] as const))
+                    const text = await f.text()
+                    if (stale()) { log.unshift({ calls: `standards of ${f.name}`, result: '✗ dropped: cancelled, a later file, or another drawing' }); bump(); return }
+                    const other = open(text), layerName = new Map(other.snapshot().layers.map(l => [l.id, l.name] as const))
                     const list = other.standardsData().map(t => ({ name: t.name, layerName: layerName.get(t.layer) ?? t.layer, bones: t.bones }))
-                    if (mine !== core) return
                     if (!list.length) { log.unshift({ calls: `standards of ${f.name}`, result: '✗ 这个文件里没有标准' }); bump(); return }
-                    setStdImport({ core, file: f.name, list, pick: 0, confirm: false })
-                  } catch (err) { log.unshift({ calls: `standards of ${f.name}`, result: '✗ ' + (err as Error).message }); bump() }
+                    setStdImport({ core: mine, file: f.name, list, pick: 0, confirm: null })
+                  } catch (err) { if (!stale()) { log.unshift({ calls: `standards of ${f.name}`, result: '✗ ' + (err as Error).message }); bump() } }
                 }} /></label>
             </div>
             {stdImport && stdImport.core === core && (() => {
               const t = stdImport.list[stdImport.pick]!, same = s.layers.find(l => l.name === t.layerName), target = same?.id ?? drawLayer
-              const exists = s.standards.some(x => x.layer === target && x.name === t.name)
+              const was = s.standards.find(x => x.layer === target && x.name === t.name), exists = !!was, confirmed = !!was && stdImport.confirm === was.id
               return <div data-testid="std-import" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', background: '#f6faf6', padding: 2 }}>
                 <span>{stdImport.file}：</span>
-                <select data-testid="std-import-pick" value={stdImport.pick} onChange={e => setStdImport({ ...stdImport, pick: Number(e.target.value), confirm: false })}>
+                <select data-testid="std-import-pick" value={stdImport.pick} onChange={e => setStdImport({ ...stdImport, pick: Number(e.target.value), confirm: null })}>
                   {stdImport.list.map((x, i) => <option key={i} value={i}>{x.name}（{x.layerName}）</option>)}</select>
                 <span data-testid="std-import-target">{same ? `放到同名图层「${same.name}」` : `没有同名图层「${t.layerName}」，放到当前层「${s.layers.find(l => l.id === target)?.name ?? target}」`}</span>
                 <button data-testid="std-import-go" disabled={!target} onClick={() => {
-                  if (exists && !stdImport.confirm) { setStdImport({ ...stdImport, confirm: true }); return }
+                  if (was && !confirmed) { setStdImport({ ...stdImport, confirm: was.id }); return }
                   // import + use (+ the derivation, in 捏脸) in one edit: one undo, a refusal rolls it all back
                   if (run(ed => { const id = ed.addStandard(target, { name: t.name, bones: t.bones }, exists); ed.useStandard(target, id) })) setStdImport(null)
-                }}>{exists ? (stdImport.confirm ? `确认覆盖「${t.name}」并选用` : `覆盖「${t.name}」并选用…`) : '导入并选用'}</button>
-                <button data-testid="std-import-cancel" onClick={() => setStdImport(null)}>取消</button>
+                }}>{exists ? (confirmed ? `确认覆盖「${t.name}」并选用` : `覆盖「${t.name}」并选用…`) : '导入并选用'}</button>
+                <button data-testid="std-import-cancel" onClick={() => { stdReadSeq.current++; setStdImport(null) }}>取消</button>
               </div>
             })()}
             {s.layers.filter(L => s.bones.some(b => layerOfLine(b) === L.id) || s.standards.some(t => t.layer === L.id)).map(L => {
               const mine = s.standards.filter(t => t.layer === L.id), choice = s.standardChoices.find(c => c.layer === L.id), typed = stdName[L.id] ?? ''
-              const taken = mine.some(t => t.name === typed.trim()), confirming = !!stdConfirm && stdConfirm.layer === L.id && stdConfirm.name === typed.trim()
+              const takenBy = mine.find(t => t.name === typed.trim()), taken = !!takenBy
+              const confirming = !!takenBy && !!stdConfirm && stdConfirm.core === core && stdConfirm.layer === L.id && stdConfirm.name === typed.trim() && stdConfirm.id === takenBy.id
               return <div key={L.id} data-std-layer={L.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
                 <b>{L.name}</b>
                 <label>用标准 <select data-std-use={L.id} value={choice?.standard ?? ''} onChange={e => run(ed => ed.useStandard(L.id, e.target.value || null))}>
@@ -1605,7 +1613,7 @@ export function App() {
                 <input data-std-name={L.id} value={typed} placeholder="标准名" size={8} onChange={e => { setStdName({ ...stdName, [L.id]: e.target.value }); setStdConfirm(null) }} />
                 <button data-std-save={L.id} disabled={!typed.trim()} onClick={() => {
                   const n = typed.trim()
-                  if (taken && !confirming) { setStdConfirm({ layer: L.id, name: n }); return }
+                  if (takenBy && !confirming) { setStdConfirm({ core, layer: L.id, name: n, id: takenBy.id }); return }
                   if (run(ed => ed.saveStandard(L.id, n, taken))) setStdConfirm(null)
                 }} title="把这一层所有骨骼在九个视角的样子存成一个标准（按骨骼名字）">{taken ? (confirming ? `确认覆盖「${typed.trim()}」` : `覆盖「${typed.trim()}」…`) : '存为标准'}</button>
                 {mine.map(t => <span key={t.id} data-std={t.id} style={{ border: '1px solid #ccc', borderRadius: 3, padding: '0 3px' }}>{t.name}

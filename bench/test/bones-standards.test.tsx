@@ -159,4 +159,71 @@ describe('录制标准 / 捏脸 in the bench', () => {
     await t.choose(`[data-std-use="${t.L}"]`, '')
     expect(t.q(`[data-bone="U${t.k}"] title`)?.textContent).toBe('捏脸：这一层没有选标准；侧面骨骼回录制标准改')
   })
+
+  // dot 1792304485 / 1792304511: interrupted flows
+  const later = () => { let done!: (t: string) => void; const p = new Promise<string>(r => { done = r }); return { p, done } }
+  const pending = async (t: Awaited<ReturnType<typeof setup>>, name: string, p: Promise<string>) => {
+    const input = t.q('[data-testid="std-import-file"]') as HTMLInputElement
+    Object.defineProperty(input, 'files', { value: [{ name, text: () => p }], configurable: true })
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); await wait(10) })
+  }
+  const withStandard = (k: string, Y: number, name: string) => { const d = Core.newDocument({ layer: { id: 'X', name: 'X' } }); d.edit(e => eye(e, 'Lo', Y, k)); d.edit(e => e.markBone([`U${k}`, `D${k}`])); d.edit(e => e.saveStandard('Lo', name)); return save(d) }
+
+  it('an earlier file read that ends after a later one never replaces the later one\'s panel', async () => {
+    const t = await setup(), first = later(), second = later()
+    await pending(t, 'old.json', first.p)
+    await pending(t, 'new.json', second.p)
+    await act(async () => { second.done(withStandard(t.k, t.Y, '新')); await wait(20) })
+    expect(t.q('[data-testid="std-import"]')!.textContent).toContain('new.json')
+    await act(async () => { first.done(withStandard(t.k, t.Y, '旧')); await wait(20) })
+    expect(t.q('[data-testid="std-import"]')!.textContent).toContain('new.json')
+  })
+
+  it('取消 while a second read is still running: the read ends and no panel comes back', async () => {
+    const t = await setup()
+    await t.file('[data-testid="std-import-file"]', 'one.json', withStandard(t.k, t.Y, '一'))
+    const second = later()
+    await pending(t, 'two.json', second.p)
+    await t.click('[data-testid="std-import-cancel"]')
+    expect(t.q('[data-testid="std-import"]')).toBeNull()
+    await act(async () => { second.done(withStandard(t.k, t.Y, '二')); await wait(20) })
+    expect(t.q('[data-testid="std-import"]')).toBeNull()
+  })
+
+  it('a 覆盖 confirmation asked in one drawing is not used in another opened since (same layer id and name)', async () => {
+    const t = await setup()
+    await t.type(`[data-std-name="${t.L}"]`, 'S'); await t.click(`[data-std-save="${t.L}"]`)
+    await t.click(`[data-std-save="${t.L}"]`)
+    expect(t.q(`[data-std-save="${t.L}"]`)!.textContent).toBe('确认覆盖「S」')
+    // drawing B: the same layer id, a standard of that name
+    const B = Core.newDocument({ layer: { id: 'X', name: 'X' } })
+    B.edit(e => eye(e, t.L, t.Y, t.k)); B.edit(e => e.markBone([`U${t.k}`, `D${t.k}`])); B.edit(e => e.saveStandard(t.L, 'S'))
+    await t.file('[data-testid="open"]', 'B.json', save(B))
+    const stdB = JSON.stringify(bench().core.standardsData())
+    await act(async () => { bench().core.editIn('view:90,0', e => e.moveHandle(`U${t.k}`, 'a', P(2, -16))); bench().refresh() })
+    await t.type(`[data-std-name="${t.L}"]`, 'S')
+    expect(t.q(`[data-std-save="${t.L}"]`)!.textContent).toBe('覆盖「S」…')
+    await t.click(`[data-std-save="${t.L}"]`)
+    expect(JSON.stringify(bench().core.standardsData())).toBe(stdB)
+  })
+
+  it('an import 覆盖 confirmed for one layer\'s standard asks again when the target becomes another layer\'s', async () => {
+    const t = await setup()
+    // two layers without the file's layer name, each with a standard 「S」: the target is the current layer
+    const M = `M${t.k}`
+    await act(async () => { bench().core.edit(e => { e.layer(M, `另${t.k}`); e.line(`W${t.k}`, { id: `w0${t.k}`, layer: M, position: P(0, t.Y + 50) }, { id: `w1${t.k}`, layer: M, position: P(40, t.Y + 50) }) }); bench().core.edit(e => e.markBone([`W${t.k}`])); bench().refresh() })
+    await t.click(`[data-layer-row="${t.L}"]`)
+    await t.type(`[data-std-name="${t.L}"]`, 'S'); await t.click(`[data-std-save="${t.L}"]`)
+    await t.type(`[data-std-name="${M}"]`, 'S'); await t.click(`[data-std-save="${M}"]`)
+    await t.file('[data-testid="std-import-file"]', 'f.json', withStandard('q', t.Y, 'S'))
+    expect(t.q('[data-testid="std-import-target"]')!.textContent).toContain(`放到当前层「眼${t.k}」`)
+    await t.click('[data-testid="std-import-go"]')
+    expect(t.q('[data-testid="std-import-go"]')!.textContent).toBe('确认覆盖「S」并选用')
+    await t.click(`[data-layer-row="${M}"]`)
+    expect(t.q('[data-testid="std-import-target"]')!.textContent).toContain(`放到当前层「另${t.k}」`)
+    const before = JSON.stringify(bench().core.standardsData())
+    expect(t.q('[data-testid="std-import-go"]')!.textContent).toBe('覆盖「S」并选用…')
+    await t.click('[data-testid="std-import-go"]')
+    expect(JSON.stringify(bench().core.standardsData())).toBe(before)
+  })
 })
