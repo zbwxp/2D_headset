@@ -69,6 +69,13 @@ describe('attaching', () => {
     a.edit(e => e.markBone(['A']))
     expect(code(() => a.edit(e => e.attach(['c'], 'A')))).toBe('bone-ambiguous')
   })
+  it('refused: a line of another layer (a part is a layer; bowen 1792307973)', () => {
+    const d = scene()
+    d.edit(e => { e.layer('M', 'M'); e.line('m', { id: 'm0', layer: 'M', position: P(2, -3) }, { id: 'm1', layer: 'M', position: P(30, -3) }) })
+    const was = save(d)
+    expect(code(() => d.edit(e => e.attach(['up', 'm'], 'B')))).toBe('bone-layer')
+    expect(save(d)).toBe(was)
+  })
 })
 
 describe('a bone dragged at 0,0 (带动线稿)', () => {

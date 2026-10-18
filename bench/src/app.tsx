@@ -917,11 +917,14 @@ export function App() {
   const hoverLine = poseHover ? shownLines.find(l => l.id === poseHover && selLayers.includes(s.points.find(p => p.id === l.a)?.layer ?? '')) : undefined
   useEffect(() => { if (poseHover && !hoverLine) setPoseHover(null) })
   /** 绑骨's canvas pick: the nearest bone under the press takes the chosen lines; a press on no bone keeps the pick on. */
+  // 绑骨: the chosen lines' one layer, and its bones (none when the lines are in several layers)
+  const pickLayers = [...new Set((bonePick?.lines ?? []).map(layerOfLine))], pickBones = pickLayers.length === 1 ? s.bones.filter(b => layerOfLine(b) === pickLayers[0]) : []
   const onBonePick = (e: React.PointerEvent) => {
     e.preventDefault()
-    const at = toDoc(e), boneSet = new Set(s.bones)
+    // only the bones of the chosen lines' layer (bowen 1792307973)
+    const at = toDoc(e), boneSet = new Set(pickBones)
     const hit = g.lines.filter(G => boneSet.has(G.id)).map(G => ({ id: G.id, d: curveDistance(G.curve, at) })).filter(x => x.d <= REACH.line * px).sort((a, b) => a.d - b.d)[0]
-    if (!hit || !bonePick) { note('没点到骨骼：点一根骨骼，或在下面的列表里选（Esc 取消）'); bump(); return }
+    if (!hit || !bonePick) { note(pickLayers.length > 1 ? '选中的线不在同一图层：每一层分开绑骨（Esc 取消）' : '没点到这一层的骨骼：点这一层的一根骨骼，或在下面的列表里选（Esc 取消）'); bump(); return }
     const lines = bonePick.lines
     setBonePick(null)
     run(ed => ed.attach(lines, hit.id))
@@ -1545,7 +1548,9 @@ export function App() {
         </div>
         {/* 骨骼 (docs/bone-lines-checklist.md §5): bones, 绑骨 / 解绑, the drag switch; modes and standards come in B3 */}
         {!pose && (() => {
-          const boneSet = new Set(s.bones), chosen = selLines.filter(id => !boneSet.has(id)), name = (id: Id) => s.lines.find(l => l.id === id)?.name ?? id
+          // a line's true name is 图层·连续曲线·线; within one layer 「连续曲线 · 线」 (bowen 1792308208)
+          const boneSet = new Set(s.bones), chosen = selLines.filter(id => !boneSet.has(id))
+          const name = (id: Id) => { const own = s.lines.find(l => l.id === id)?.name ?? id, gr = s.groups.find(x => x.lines.includes(id)); return gr ? `${gr.name} · ${own}` : own }
           return <div data-testid="bones" style={{ display: 'flex', flexDirection: 'column', gap: 4, border: '1px solid #ddd', padding: 4 }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
               <b>骨骼</b>
@@ -1553,8 +1558,10 @@ export function App() {
               <button data-testid="bone-unmark" disabled={!selLines.some(id => boneSet.has(id))} onClick={() => run(ed => ed.markBone(selLines.filter(id => boneSet.has(id)), false))} title="取消选中骨骼的骨骼身份；挂在上面的线解绑、留在原地">取消骨骼</button>
               <button data-testid="bone-attach" disabled={!chosen.length || !s.bones.length} style={{ fontWeight: bonePicking ? 700 : 400, background: bonePicking ? '#e8f5e9' : undefined }}
                 onClick={() => { setApplyFrom(false); setBgPick(null); setBonePick(bonePicking ? null : { core, lines: chosen }) }} title="把选中的线绑到一根骨骼上：再点一根骨骼，或在下面选">绑骨…</button>
-              {bonePicking && <span data-testid="bone-pick-hint" style={{ color: '#2a7' }}>点一根骨骼，或选：<select data-testid="bone-pick-select" value="" onChange={e => { const b = e.target.value; if (!b || !bonePick) return; const lines = bonePick.lines; setBonePick(null); run(ed => ed.attach(lines, b)); bump() }}>
-                <option value="">骨骼…</option>{s.bones.map(b => <option key={b} value={b}>{name(b)}</option>)}</select>（Esc 取消）</span>}
+              {bonePicking && (pickLayers.length > 1
+                ? <span data-testid="bone-pick-hint" style={{ color: '#c33' }}>选中的线不在同一图层：每一层分开绑骨（Esc 取消）</span>
+                : <span data-testid="bone-pick-hint" style={{ color: '#2a7' }}>点「{s.layers.find(l => l.id === pickLayers[0])?.name ?? pickLayers[0]}」层的一根骨骼，或选：<select data-testid="bone-pick-select" value="" onChange={e => { const b = e.target.value; if (!b || !bonePick) return; const lines = bonePick.lines; setBonePick(null); run(ed => ed.attach(lines, b)); bump() }}>
+                <option value="">{pickBones.length ? '骨骼…' : '这一层还没有骨骼'}</option>{pickBones.map(b => <option key={b} value={b}>{name(b)}</option>)}</select>（Esc 取消）</span>)}
               <label title="0,0 拖骨骼时：带动线稿 = 挂着的线跟着走；摆放骨骼 = 线稿不动，只改骨骼位置"><input type="radio" data-testid="bone-carry" checked={!placing} onChange={() => setPlacing(false)} /> 带动线稿</label>
               <label><input type="radio" data-testid="bone-place" checked={placing} onChange={() => setPlacing(true)} /> 摆放骨骼（正面线稿不动）</label>
             </div>

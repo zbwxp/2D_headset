@@ -260,4 +260,24 @@ describe('bones in the bench', () => {
     await t.press(120, t.Y)
     expect(snap().selection.map(u => u.id)).toEqual([t.id('f')])
   })
+
+  it('绑骨 lists and takes only the bones of the chosen lines\' layer (bowen 1792307973; lines of two layers: the core refuses, bone-layer)', async () => {
+    const t = await setup()
+    const M = `M${t.k}`
+    await act(async () => { bench().core.edit(e => { e.layer(M, `另${t.k}`); e.line(t.id('Z'), { id: t.id('z0'), layer: M, position: P(0, t.Y + 30) }, { id: t.id('z1'), layer: M, position: P(40, t.Y + 30) }, { ha: P(10, -10), hb: P(-10, -10) }) }); bench().refresh() })
+    await t.select(t.id('B')); await t.click('[data-testid="bone-mark"]')
+    await t.select(t.id('Z')); await t.click('[data-testid="bone-mark"]')
+    await t.select(t.id('up')); await t.click('[data-testid="bone-attach"]')
+    // (earlier tests' bones are in layer-1 too: the page's core is shared) — never the other layer's bone
+    const options = [...t.host.querySelectorAll('[data-testid="bone-pick-select"] option')].map(o => (o as HTMLOptionElement).value).filter(Boolean)
+    expect(options).toContain(t.id('B'))
+    expect(options).not.toContain(t.id('Z'))
+    // named 「连续曲线 · 线」 (bowen 1792308208)
+    const sn = snap(), gr = sn.groups.find(x => x.lines.includes(t.id('B')))!, own = sn.lines.find(l => l.id === t.id('B'))!.name
+    expect((t.q(`[data-testid="bone-pick-select"] option[value="${t.id('B')}"]`) as HTMLOptionElement).textContent).toBe(`${gr.name} · ${own}`)
+    expect(t.q('[data-testid="bone-pick-hint"]')!.textContent).toContain('「Layer 1」')
+    // a press on the other layer's bone attaches nothing
+    await t.press(20, t.Y + 22.5)
+    expect(snap().attachments.some(a => a.line === t.id('up'))).toBe(false)
+  })
 })

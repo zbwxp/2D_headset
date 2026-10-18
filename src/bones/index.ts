@@ -158,14 +158,16 @@ export function markBone(s: BonesState, n: net.NetworkState, lines: readonly Id[
 
 /**
  * Attach lines to a bone (绑骨), reading the front `front`: the base is both shapes as they are now, so attaching never
- * moves a line (checklist §8). Refused: not a bone, a bone or the bone itself as the line, a line with links (dot,
+ * moves a line (checklist §8). Refused: not a bone, a line of another layer, a bone or the bone itself as the line, a line with links (dot,
  * checklist §4: unlink first — `linked` = the lines with links), a bone too short, a line point ambiguous on it.
  */
 export function attach(s: BonesState, front: net.NetworkState, lines: readonly Id[], bone: Id, linked: ReadonlySet<Id>) {
   if (!S(s).bones.includes(bone)) throw new net.Refusal('not-a-bone', `not-a-bone: ${bone} is not a bone`, net.lineObjects([bone]))
-  const boneShape = cubicOf(front, bone)
+  const boneShape = cubicOf(front, bone), layerOf = (id: Id) => net.point(front, net.line(front, id).a).layer
   for (const id of lines) {
     if (!net.hasLine(front, id)) throw new Error(`No line ${id}`)
+    // a part is a layer (bowen 1792297720): a line is attached only to a bone of its own layer (bowen 1792307973)
+    if (layerOf(id) !== layerOf(bone)) throw new net.Refusal('bone-layer', `bone-layer: ${id} is in another layer than the bone ${bone}; a line is attached only to a bone of its own layer`, net.lineObjects([id, bone]))
     if (id === bone || S(s).bones.includes(id)) throw new net.Refusal('bone-attached', `bone-attached: ${id} is a bone; a bone cannot be attached to a bone`, net.lineObjects([id]))
     if (linked.has(id)) throw new net.Refusal('bone-linked', `bone-linked: ${id} has links (联动); unlink it before attaching it to a bone`, net.lineObjects([id]))
     const shape = cubicOf(front, id)
