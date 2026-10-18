@@ -1,0 +1,196 @@
+// 骨骼 in the bench (B2; docs/bone-lines-checklist.md §5; dot 1792300555): mark a bone, 绑骨 by a canvas pick or the
+// list, 解绑, highlight without selecting, the drag switch (one transaction, one undo), bones drawn bright and never as
+// ink, hidden in playback unless asked; the pick ends with Esc, a tool change, playback and another drawing, and a late
+// release never attaches. jsdom only: real mouse checks are listed in the hand-in.
+import { describe, it, expect } from 'vitest'
+import { act } from 'react'
+import { createRoot } from 'react-dom/client'
+import { Core, save } from '../../src'
+const wait = (ms: number) => new Promise(r => setTimeout(r, ms))
+if (!Blob.prototype.text) Blob.prototype.text = function (this: Blob) { return new Promise<string>(res => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.readAsText(this) }) }
+import { App } from '../src/app'
+
+;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+class Pt { constructor(public x = 0, public y = 0) {} matrixTransform() { return this } }
+;(globalThis as { DOMPoint?: unknown }).DOMPoint ??= Pt
+let n = 0
+type B = { core: Core; ix: { setTool(t: string): void; selection(): unknown[] }; refresh(): void; view(): string; chooseView(k: string): void; edit(fn: (e: never) => void): void }
+const bench = () => (window as unknown as { bench: B }).bench
+const P = (x: number, y = 0) => ({ x, y })
+
+function pe(type: string, x: number, y: number, buttons: number, pointerId = 1, button = 0) {
+  const e = new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button, buttons })
+  Object.defineProperty(e, 'pointerId', { value: pointerId })
+  return e
+}
+
+/** A bone B (an arch) and the lines up and f, far apart; each test's drawing is placed at its own height. */
+let last: { root: ReturnType<typeof createRoot>; host: HTMLElement } | null = null
+async function setup() {
+  const k = ++n, Y = 400 * k
+  // one App at a time: every mounted App listens to the window's keys (an earlier test's App would undo too)
+  if (last) { const l = last; await act(async () => { l.root.unmount() }); l.host.remove() }
+  const host = document.createElement('div'); document.body.appendChild(host)
+  const root = createRoot(host)
+  last = { root, host }
+  await act(async () => { root.render(<App />) })
+  const svg = host.querySelector('[data-testid="canvas"]')!
+  ;(svg as unknown as { getScreenCTM: () => unknown }).getScreenCTM = () => ({ inverse: () => ({}) })
+  Object.defineProperty(svg, 'clientWidth', { value: 800 }); Object.defineProperty(svg, 'clientHeight', { value: 600 })
+  const id = (s: string) => `${s}${k}`
+  await act(async () => {
+    bench().chooseView('view:0,0')
+    bench().core.edit(e => {
+      e.line(id('B'), { id: id('b0'), layer: 'layer-1', position: P(0, Y) }, { id: id('b1'), layer: 'layer-1', position: P(40, Y) }, { ha: P(10, -10), hb: P(-10, -10) })
+      e.line(id('up'), { id: id('u0'), layer: 'layer-1', position: P(2, Y - 2) }, { id: id('u1'), layer: 'layer-1', position: P(38, Y - 2) }, { ha: P(10, -12), hb: P(-10, -12) })
+      e.line(id('f'), { id: id('f0'), layer: 'layer-1', position: P(100, Y) }, { id: id('f1'), layer: 'layer-1', position: P(140, Y) })
+    })
+    bench().ix.setTool('V'); bench().refresh()
+  })
+  const q = (sel: string) => host.querySelector(sel) as HTMLElement | null
+  const click = async (sel: string) => { await act(async () => { q(sel)!.click() }) }
+  const select = async (...lines: string[]) => { await act(async () => { bench().core.edit(e => (e as unknown as { select(u: unknown[]): void }).select(lines.map(l => ({ kind: 'line', id: l })))); bench().refresh() }) }
+  const press = async (x: number, y: number) => { await act(async () => { svg.dispatchEvent(pe('pointerdown', x, y, 1)); window.dispatchEvent(pe('pointerup', x, y, 0)) }) }
+  // the arch's middle (t = 0.5): (20, Y − 7.5)
+  return { host, svg, k, Y, id, q, click, select, press, boneAt: P(20, Y - 7.5), root }
+}
+const snap = () => bench().core.snapshot()
+
+describe('bones in the bench', () => {
+  it('设为骨骼 marks the selected line; a bone is drawn bright, never as ink', async () => {
+    const t = await setup()
+    await t.select(t.id('B')); await t.click('[data-testid="bone-mark"]')
+    expect(snap().bones).toContain(t.id('B'))
+    const el = t.q(`[data-bone="${t.id('B')}"]`)!
+    expect(['#00c853', '#aa00ff']).toContain(el.getAttribute('stroke'))
+    expect(t.q(`[data-ink="${t.id('B')}"]`)).toBeNull()
+  })
+
+  it('绑骨 by a canvas pick: the selected line is attached to the bone pressed; the pick ends', async () => {
+    const t = await setup()
+    await t.select(t.id('B')); await t.click('[data-testid="bone-mark"]')
+    await t.select(t.id('up')); await t.click('[data-testid="bone-attach"]')
+    expect(t.q('[data-testid="bone-pick-hint"]')).not.toBeNull()
+    await t.press(t.boneAt.x, t.boneAt.y)
+    expect(snap().attachments).toContainEqual({ line: t.id('up'), bone: t.id('B') })
+    expect(t.q('[data-testid="bone-pick-hint"]')).toBeNull()
+  })
+
+  it('绑骨 from the list; 解绑 releases; a bone highlighted never changes the selection', async () => {
+    const t = await setup()
+    await t.select(t.id('B')); await t.click('[data-testid="bone-mark"]')
+    await t.select(t.id('up')); await t.click('[data-testid="bone-attach"]')
+    const sel = t.q('[data-testid="bone-pick-select"]') as HTMLSelectElement
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(sel, t.id('B')); sel.dispatchEvent(new Event('change', { bubbles: true })) })
+    expect(snap().attachments).toContainEqual({ line: t.id('up'), bone: t.id('B') })
+    const before = JSON.stringify(snap().selection)
+    await t.click(`[data-bone-hi="${t.id('B')}"]`)
+    expect(t.q(`[data-bone-hi-line="${t.id('up')}"]`)).not.toBeNull()
+    expect(JSON.stringify(snap().selection)).toBe(before)
+    await t.click(`[data-bone-detach="${t.id('up')}"]`)
+    expect(snap().attachments.find(a => a.line === t.id('up'))).toBeUndefined()
+  })
+
+  it('the pick ends with Esc, a tool change and playback; a late release after Esc attaches nothing', async () => {
+    const t = await setup()
+    await t.select(t.id('B')); await t.click('[data-testid="bone-mark"]')
+    await t.select(t.id('up'))
+    // Esc, then the press's release arriving late
+    await t.click('[data-testid="bone-attach"]')
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
+    await act(async () => { window.dispatchEvent(pe('pointerup', t.boneAt.x, t.boneAt.y, 0)) })
+    expect(t.q('[data-testid="bone-pick-hint"]')).toBeNull()
+    // the drawing is the page's one drawing (earlier tests' lines are there too): only this test's lines are looked at
+    const mine = () => snap().attachments.filter(a => a.line.endsWith(String(t.k)) && a.line.startsWith('up'))
+    expect(mine()).toEqual([])
+    // a tool change
+    await t.click('[data-testid="bone-attach"]')
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true })) })
+    expect(t.q('[data-testid="bone-pick-hint"]')).toBeNull()
+    // playback
+    await t.select(t.id('up')); await t.click('[data-testid="bone-attach"]')
+    const button = (label: string) => [...t.host.querySelectorAll('button')].find(x => x.textContent === label)!
+    await act(async () => { button('Playback').click() })
+    await act(async () => { button('Leave playback').click() })
+    expect(t.q('[data-testid="bone-pick-hint"]')).toBeNull()
+    expect(mine()).toEqual([])
+  })
+
+  it('another drawing opened ends the pick', async () => {
+    const t = await setup()
+    await t.select(t.id('B')); await t.click('[data-testid="bone-mark"]')
+    await t.select(t.id('up')); await t.click('[data-testid="bone-attach"]')
+    const input = t.q('[data-testid="open"]') as HTMLInputElement
+    Object.defineProperty(input, 'files', { value: [new File([save(Core.newDocument())], 'other.json', { type: 'application/json' })], configurable: true })
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); await wait(50) })
+    expect(t.q('[data-testid="bone-pick-hint"]')).toBeNull()
+  })
+
+  it('a batch with one line that cannot be attached (it has a link) attaches none', async () => {
+    const t = await setup()
+    await act(async () => { bench().core.edit(e => { (e as unknown as { layer(i: string, n: string): void }).layer(`M${t.k}`, `M${t.k}`) }) })
+    await act(async () => { bench().core.edit(e => { (e as unknown as { line(...a: unknown[]): void }).line(t.id('m'), { id: t.id('m0'), layer: `M${t.k}`, position: P(100, t.Y + 30) }, { id: t.id('m1'), layer: `M${t.k}`, position: P(110, t.Y + 30) }) }) })
+    await act(async () => { bench().core.edit(e => { (e as unknown as { link(a: string, b: string): void }).link(t.id('f0'), t.id('m0')) }); bench().refresh() })
+    await t.select(t.id('B')); await t.click('[data-testid="bone-mark"]')
+    await t.select(t.id('up'), t.id('f')); await t.click('[data-testid="bone-attach"]')
+    await t.press(t.boneAt.x, t.boneAt.y)
+    expect(snap().attachments.filter(a => a.line === t.id('up') || a.line === t.id('f'))).toEqual([])
+  })
+
+  it('摆放骨骼: a bone dragged at 0,0 moves alone (the lines stay), in one transaction — one undo puts it back', async () => {
+    const t = await setup()
+    await t.select(t.id('B')); await t.click('[data-testid="bone-mark"]')
+    await t.select(t.id('up')); await t.click('[data-testid="bone-attach"]'); await t.press(t.boneAt.x, t.boneAt.y)
+    await t.click('[data-testid="bone-place"]')
+    const up = JSON.stringify(snap().lines.find(l => l.id === t.id('up'))), points = JSON.stringify(snap().points.filter(p => p.id === t.id('u0') || p.id === t.id('u1')))
+    const text = save(bench().core)
+    // drag the bone's end with A: press, move, release
+    await act(async () => { bench().ix.setTool('A'); bench().refresh() })
+    await act(async () => { t.svg.dispatchEvent(pe('pointerdown', 40, t.Y, 1)); window.dispatchEvent(pe('pointermove', 46, t.Y + 3, 1)); window.dispatchEvent(pe('pointerup', 46, t.Y + 3, 0)) })
+    expect(snap().points.find(p => p.id === t.id('b1'))!.position).toEqual(P(46, t.Y + 3))
+    expect(JSON.stringify(snap().lines.find(l => l.id === t.id('up')))).toBe(up)
+    expect(JSON.stringify(snap().points.filter(p => p.id === t.id('u0') || p.id === t.id('u1')))).toBe(points)
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true })) })
+    expect(save(bench().core)).toBe(text)
+  })
+
+  it('带动线稿 (the default): the same drag carries the line', async () => {
+    const t = await setup()
+    await t.select(t.id('B')); await t.click('[data-testid="bone-mark"]')
+    await t.select(t.id('up')); await t.click('[data-testid="bone-attach"]'); await t.press(t.boneAt.x, t.boneAt.y)
+    const u1 = snap().points.find(p => p.id === t.id('u1'))!.position
+    await act(async () => { bench().ix.setTool('A'); bench().refresh() })
+    await act(async () => { t.svg.dispatchEvent(pe('pointerdown', 40, t.Y, 1)); window.dispatchEvent(pe('pointermove', 46, t.Y + 3, 1)); window.dispatchEvent(pe('pointerup', 46, t.Y + 3, 0)) })
+    expect(snap().points.find(p => p.id === t.id('u1'))!.position).not.toEqual(u1)
+  })
+
+  it('playback hides bones unless 显示骨骼 is ticked', async () => {
+    const t = await setup()
+    await t.select(t.id('B')); await t.click('[data-testid="bone-mark"]')
+    const button = (label: string) => [...t.host.querySelectorAll('button')].find(x => x.textContent === label)!
+    await act(async () => { button('Playback').click() })
+    expect(t.q(`[data-bone="${t.id('B')}"]`)).toBeNull()
+    await t.click('[data-testid="bones-in-playback"]')
+    expect(t.q(`[data-bone="${t.id('B')}"]`)).not.toBeNull()
+    await act(async () => { button('Leave playback').click() })
+  })
+
+  it('off the front an attached line says it is generated; dragging it there is refused and nothing changes', async () => {
+    const t = await setup()
+    await t.select(t.id('B')); await t.click('[data-testid="bone-mark"]')
+    await t.select(t.id('up')); await t.click('[data-testid="bone-attach"]'); await t.press(t.boneAt.x, t.boneAt.y)
+    await act(async () => { bench().chooseView('view:90,0'); bench().ix.setTool('A'); bench().refresh() })
+    expect(t.q(`[data-attached-line="${t.id('up')}"] title`)?.textContent).toContain('由骨骼生成')
+    const text = save(bench().core)
+    await act(async () => { t.svg.dispatchEvent(pe('pointerdown', 38, t.Y - 2, 1)); window.dispatchEvent(pe('pointermove', 30, t.Y - 20, 1)); window.dispatchEvent(pe('pointerup', 30, t.Y - 20, 0)) })
+    expect(save(bench().core)).toBe(text)
+  })
+
+  it('a bone never takes the pick of an ordinary line away: V on the far line selects it', async () => {
+    const t = await setup()
+    await t.select(t.id('B')); await t.click('[data-testid="bone-mark"]')
+    await act(async () => { bench().ix.setTool('V'); bench().refresh() })
+    await t.press(120, t.Y)
+    expect(snap().selection.map(u => u.id)).toEqual([t.id('f')])
+  })
+})

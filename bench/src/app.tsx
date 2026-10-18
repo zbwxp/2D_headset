@@ -40,6 +40,8 @@ const P = (x: number, y: number): Vec => ({ x, y })
 const add = (a: Vec, b: Vec) => P(a.x + b.x, a.y + b.y)
 const path = (c: readonly Vec[]) => `M${c[0]!.x},${c[0]!.y} C${c[1]!.x},${c[1]!.y} ${c[2]!.x},${c[2]!.y} ${c[3]!.x},${c[3]!.y}`
 /** 视角背景 (bowen, after 1792058545): one fixed colour per view, so a view reads the same wherever it is shown. */
+/** Bones while editing (bowen 1792297798: bright green or purple), in turn. */
+const BONE_COLOURS = ['#00c853', '#aa00ff']
 const VIEW_COLOUR: Record<string, string> = {
   'view:-90,45': '#e4572e', 'view:0,45': '#2e86de', 'view:90,45': '#9b5de5',
   'view:-90,0': '#f39c12', 'view:0,0': '#16a085', 'view:90,0': '#d81b60',
@@ -209,15 +211,20 @@ function changesBetween(before: Model, after: Model, s: Snapshot): string[] {
   if (rest) out.push('（还有别的数据变了：结构）')
   return out.length ? out : ['（没有数据变化）']
 }
-function loggedFor(mode: () => WriteMode, afterWrite: () => void = () => {}, poseView: () => string | null = () => null): (c: Core) => Core {
+function loggedFor(mode: () => WriteMode, afterWrite: () => void = () => {}, poseView: () => string | null = () => null, placing: () => boolean = () => false): (c: Core) => Core {
   const wrappers = new WeakMap<Core, Core>()
   return c => {
     let w = wrappers.get(c)
     if (w) return w
     w = new Proxy(c, {
       get(t, k) {
+        // 「摆放骨骼」 (docs/bone-lines-checklist.md §5): at 0,0, while editing, every edit and its preview carry placeBones()
+        // in the same transaction (dot 1792300555)
+        const placed = (view: string, fn: (e: Editor) => void) => (mode() === 'edit' && view === 'view:0,0' && placing() ? (e: Editor) => { e.placeBones(); fn(e) } : fn)
+        if (k === 'preview') return (view: string, fn: (e: Editor) => void) => t.preview(view, placed(view, fn))
         if (k === 'edit' || k === 'editIn') return (...args: unknown[]) => {
-          const [view, fn] = (k === 'edit' ? ['view:0,0', args[0]] : args) as [string, (e: Editor) => void]
+          const [view, fn0] = (k === 'edit' ? ['view:0,0', args[0]] : args) as [string, (e: Editor) => void]
+          const fn = placed(view, fn0)
           const m = mode()
           if (m === 'locked') { log.unshift({ calls: `${k}(…)`, result: '✗ restoring the autosaved drawing' }); throw new Error('restoring: nothing is written until the autosaved drawing is restored') }
           // playback at a view, writing that view: A's and V's editing of it (docs/playback-edit-checklist.md §2)
@@ -350,6 +357,14 @@ export function App() {
   // buttons add a view instead of choosing it; Esc cancels
   const [bgAt, setBgAt] = useState<{ core: Core; views: string[] } | null>(null)
   const [bgPick, setBgPick] = useState<Core | null>(null), bgPickOn = useRef(false)
+  // 绑骨 (docs/bone-lines-checklist.md §5): picking the bone for the chosen lines, on the canvas or from the list; it belongs
+  // to the drawing it was started in and ends with Esc, a tool change, playback or another drawing (dot 1792300555)
+  const [bonePick, setBonePick] = useState<{ core: Core; lines: Id[] } | null>(null), bonePickOn = useRef(false)
+  // 「带动线稿 / 摆放骨骼（正面线稿不动）」: placing on, every edit at 0,0 carries placeBones() (loggedFor)
+  const [placing, setPlacing] = useState(false), placingOn = useRef(false)
+  // a bone whose attached lines are highlighted (never the selection); bones in playback (hidden by default; debug)
+  const [boneHi, setBoneHi] = useState<Id | null>(null)
+  const [bonesInPlayback, setBonesInPlayback] = useState(false)
   // the one display kind of the name labels (docs/name-labels-plan.md; bowen 1791731823; dot 1791732110): set only
   // when A / V actually hit a line, a layers row is clicked or a name is found; nothing else changes it
   const [labelKind, setLabelKind] = useState<LabelKind>('line')
@@ -459,7 +474,7 @@ export function App() {
     const lines = changesBetween(base.model, now, core.snapshot())
     setLastChange({ pose: { ...poseRef.current }, lines: lines[0] === '（没有数据变化）' ? [`（没有改动视角或修正：${log[0]?.calls ?? ''}）`] : lines })
   }
-  const logged = useRef(loggedFor(() => (restoringNow.current ? 'locked' : posing.current ? 'playback' : 'edit'), () => { cutRef.current = null; saver.current?.want(); noteChange() }, () => (posing.current ? viewAtPose(poseRef.current) : null))).current
+  const logged = useRef(loggedFor(() => (restoringNow.current ? 'locked' : posing.current ? 'playback' : 'edit'), () => { cutRef.current = null; saver.current?.want(); noteChange() }, () => (posing.current ? viewAtPose(poseRef.current) : null), () => placingOn.current)).current
   const svg = useRef<SVGSVGElement>(null)
   // one screen pixel in document units, from the canvas's real size (the viewBox is fitted, so the
   // larger ratio wins); the old fixed 900-pixel width made picking about half as wide as meant
@@ -481,6 +496,10 @@ export function App() {
   applyFromOn.current = applyFrom
   const bgViews = bgAt && bgAt.core === core ? bgAt.views : [], bgPicking = bgPick === core
   bgPickOn.current = bgPicking
+  const bonePicking = bonePick !== null && bonePick.core === core
+  bonePickOn.current = bonePicking
+  placingOn.current = placing
+  useEffect(() => { if (bonePick && bonePick.core !== core) setBonePick(null) })
   const setBgViews = (f: (v: string[]) => string[]) => setBgAt({ core, views: f(bgViews) })
   // ended with its drawing, not paused: coming back to that drawing does not bring them back (as 从视角应用, dot 1791879765)
   useEffect(() => { if (bgAt && bgAt.core !== core) setBgAt(null); if (bgPick && bgPick !== core) setBgPick(null) })
@@ -872,6 +891,17 @@ export function App() {
   // the hovered line, only while it is a visible line of a selected layer: a scope change drops it (dot 1791978817)
   const hoverLine = poseHover ? shownLines.find(l => l.id === poseHover && selLayers.includes(s.points.find(p => p.id === l.a)?.layer ?? '')) : undefined
   useEffect(() => { if (poseHover && !hoverLine) setPoseHover(null) })
+  /** 绑骨's canvas pick: the nearest bone under the press takes the chosen lines; a press on no bone keeps the pick on. */
+  const onBonePick = (e: React.PointerEvent) => {
+    e.preventDefault()
+    const at = toDoc(e), boneSet = new Set(s.bones)
+    const hit = g.lines.filter(G => boneSet.has(G.id)).map(G => ({ id: G.id, d: curveDistance(G.curve, at) })).filter(x => x.d <= REACH.line * px).sort((a, b) => a.d - b.d)[0]
+    if (!hit || !bonePick) { note('没点到骨骼：点一根骨骼，或在下面的列表里选（Esc 取消）'); bump(); return }
+    const lines = bonePick.lines
+    setBonePick(null)
+    run(ed => ed.attach(lines, hit.id))
+    bump()
+  }
   const shownLineAt = (at: Vec): Id | null => {
     // editing's rules (dot 1791978385): only the selected layers' visible lines; a masked line by what is drawn of it
     const layerOf = new Map(s.points.map(p => [p.id, p.layer]))
@@ -1055,7 +1085,7 @@ export function App() {
    */
   const startPose = () => {
     gesture.current?.cancel('entering playback')
-    ix.cancelAll(); setApplyFrom(false); setBgPick(null) // an unfinished 视角背景 pick ends too (dot)
+    ix.cancelAll(); setApplyFrom(false); setBgPick(null); setBonePick(null) // an unfinished 视角背景 or 绑骨 pick ends too (dot)
     posing.current = true; poseGen.current++; refGen.current++
     changeBase.current = { core, model: core.model() }
     const [yaw, pitch] = shown.slice('view:'.length).split(',').map(Number)
@@ -1170,6 +1200,7 @@ export function App() {
   /** A tool change (key or button, Z included) ends any gesture through its one cancel path (dot 1791554909). */
   const chooseTool = (t: Tool | 'Z') => {
     gesture.current?.cancel('a tool change')
+    setBonePick(null)
     setZoomTool(t === 'Z')
     if (t !== 'Z') ix.setTool(t)
   }
@@ -1188,6 +1219,7 @@ export function App() {
       if (e.key === 'Escape' && gesture.current) { gesture.current.cancel('Esc'); e.preventDefault(); return }
       if (e.key === 'Escape' && applyFromOn.current) { setApplyFrom(false); e.preventDefault(); return }
       if (e.key === 'Escape' && bgPickOn.current) { setBgPick(null); e.preventDefault(); return }
+      if (e.key === 'Escape' && bonePickOn.current) { setBonePick(null); e.preventDefault(); return }
       // playback: Esc clears the playback selection (docs/playback-tools-checklist.md §1)
       if (e.key === 'Escape' && posing.current) setPbSel(v => (v.ids.length ? { core, ids: [] } : v))
       // only a field that takes typing keeps its keys (dot 1791544530), an input method its own (dot 1791727663);
@@ -1368,6 +1400,8 @@ export function App() {
         <div data-testid="playback" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           {pose ? <>
             <button onClick={stopPose}>Leave playback</button>
+            {/* bones are hidden in playback (bowen 1792297720); shown here for checking only (docs/bone-lines-checklist.md §5) */}
+            <label data-testid="bones-in-playback-row"><input type="checkbox" data-testid="bones-in-playback" checked={bonesInPlayback} onChange={e => setBonesInPlayback(e.target.checked)} /> 显示骨骼（调试）</label>
             {(['yaw', 'pitch'] as const).map(axis => {
               // the pose is a view: preview and commit both set it, a cancel keeps the last (as the grid); a thumb session's
               // own updates never cancel it, typing ends any other gesture as a field always did
@@ -1484,6 +1518,30 @@ export function App() {
             title="把另一个视角的线用彩色画在画布背景上，只用来参考：不能选、不能改、不存进文件">添加视角背景…</button>
           {bgPicking && <span style={{ color: '#2a7' }}>选一个视角，用彩色线画在背景上（Esc 取消）</span>}
         </div>
+        {/* 骨骼 (docs/bone-lines-checklist.md §5): bones, 绑骨 / 解绑, the drag switch; modes and standards come in B3 */}
+        {!pose && (() => {
+          const boneSet = new Set(s.bones), chosen = selLines.filter(id => !boneSet.has(id)), name = (id: Id) => s.lines.find(l => l.id === id)?.name ?? id
+          return <div data-testid="bones" style={{ display: 'flex', flexDirection: 'column', gap: 4, border: '1px solid #ddd', padding: 4 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+              <b>骨骼</b>
+              <button data-testid="bone-mark" disabled={!selLines.length} onClick={() => run(ed => ed.markBone(selLines, true))} title="把选中的线设为骨骼">设为骨骼</button>
+              <button data-testid="bone-unmark" disabled={!selLines.some(id => boneSet.has(id))} onClick={() => run(ed => ed.markBone(selLines.filter(id => boneSet.has(id)), false))} title="取消选中骨骼的骨骼身份；挂在上面的线解绑、留在原地">取消骨骼</button>
+              <button data-testid="bone-attach" disabled={!chosen.length || !s.bones.length} style={{ fontWeight: bonePicking ? 700 : 400, background: bonePicking ? '#e8f5e9' : undefined }}
+                onClick={() => { setApplyFrom(false); setBgPick(null); setBonePick(bonePicking ? null : { core, lines: chosen }) }} title="把选中的线绑到一根骨骼上：再点一根骨骼，或在下面选">绑骨…</button>
+              {bonePicking && <span data-testid="bone-pick-hint" style={{ color: '#2a7' }}>点一根骨骼，或选：<select data-testid="bone-pick-select" value="" onChange={e => { const b = e.target.value; if (!b || !bonePick) return; const lines = bonePick.lines; setBonePick(null); run(ed => ed.attach(lines, b)); bump() }}>
+                <option value="">骨骼…</option>{s.bones.map(b => <option key={b} value={b}>{name(b)}</option>)}</select>（Esc 取消）</span>}
+              <label title="0,0 拖骨骼时：带动线稿 = 挂着的线跟着走；摆放骨骼 = 线稿不动，只改骨骼位置"><input type="radio" data-testid="bone-carry" checked={!placing} onChange={() => setPlacing(false)} /> 带动线稿</label>
+              <label><input type="radio" data-testid="bone-place" checked={placing} onChange={() => setPlacing(true)} /> 摆放骨骼（正面线稿不动）</label>
+            </div>
+            {s.bones.map((b, i) => <div key={b} data-bone-row={b} style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
+              <span style={{ width: 10, height: 10, background: BONE_COLOURS[i % BONE_COLOURS.length], display: 'inline-block' }} />
+              <button data-bone-hi={b} style={{ fontWeight: boneHi === b ? 700 : 400 }} onClick={() => setBoneHi(boneHi === b ? null : b)} title="高亮挂在这根骨骼上的线（不改变选择）">{name(b)}</button>
+              {s.attachments.filter(a => a.bone === b).map(a => <span key={a.line} data-attached={a.line} style={{ border: '1px solid #ccc', borderRadius: 3, padding: '0 3px' }}>{name(a.line)}
+                <button data-bone-detach={a.line} title="解绑：这条线留在原地，变回普通线" style={{ border: 0, background: 'none', cursor: 'pointer' }} onClick={() => { run(ed => ed.detach([a.line])); bump() }}>解绑</button></span>)}
+            </div>)}
+          </div>
+        })()}
+
         {bgViews.length > 0 && <div data-testid="view-backgrounds" style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
           {bgViews.map(v => <span key={v} data-view-background-chip={v} style={{ display: 'inline-flex', alignItems: 'center', gap: 2, border: `2px solid ${VIEW_COLOUR[v] ?? '#888'}`, borderRadius: 4, padding: '0 2px' }}>
             {v.slice(5)}{v === (pose ? viewAtPose(pose) : shown) ? '（当前，不画）' : ''}
@@ -1662,7 +1720,7 @@ export function App() {
         {/* one line always, and the column never widened by it (minWidth 0): a status that wrapped would resize the canvas between a press and its release and move the press (a click on a curve with long ids nudged it) */}
         <div data-testid="status" title={status} style={{ padding: '4px 8px', borderBottom: '1px solid #ccc', height: 18, lineHeight: '18px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: (pose ? corrRefusal : pv.refusal) ? '#c00' : '#333' }}>{status}</div>
         <svg ref={svg} style={{ flex: 1, background: '#fafafa', touchAction: 'none', cursor: cursorFor(pressTakenBy, pressed) }} data-testid="canvas" viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
-          onPointerDown={e => (viewportPress(e) ? onDown(e) : restoring ? undefined : moveRef ? onRefDown(e) : inBetween ? onPoseDown(e) : poseView ? (ix.tool === 'A' || ix.tool === 'V' ? onDown(e) : undefined) : onDown(e))}
+          onPointerDown={e => (viewportPress(e) ? onDown(e) : restoring ? undefined : bonePickOn.current && !pose ? onBonePick(e) : moveRef ? onRefDown(e) : inBetween ? onPoseDown(e) : poseView ? (ix.tool === 'A' || ix.tool === 'V' ? onDown(e) : undefined) : onDown(e))}
           // hovering tells interaction what the pointer is over on the selection box (the cursor follows; selection-box plan §6)
           // the pointer's place is kept on every move and release over the canvas, a drag's too (a pan ends where the pointer
           // is, dot 1791737940); the hover is asked only with no button and no gesture — and after every render
@@ -1727,8 +1785,21 @@ export function App() {
             // the arcs' debug centre line while the ink switch is off, and for an arc with no ink to draw (its diagnostic says why)
             const arcLines = (i: number) => g.arcs.filter(a => (rank.get(a.lines[0]) ?? -1) === i && (!ink || (!inkOf.has(a.key) && ink.diagnostics.some(d => d.source.id === a.key))))
               .map(a => <path key={a.key} data-arc-fallback={ink ? a.key : undefined} d={path(a.curve)} fill="none" stroke="#a50" strokeWidth={2} />)
+            const boneIndex = new Map(s.bones.map((b, i) => [b, i] as const)), attachedTo = new Map(s.attachments.map(a => [a.line, a.bone] as const))
             const lineEl = (G: (typeof g.lines)[number]) => {
               const l = line(G.id), stroke = paintOf(G.id)
+              // a bone: a bright line, never ink or fill; hidden in playback unless asked (docs/bone-lines-checklist.md §5)
+              const bi = boneIndex.get(G.id)
+              if (bi !== undefined) return pose && !bonesInPlayback ? null
+                : <path key={G.id} data-bone={G.id} d={path(G.curve)} fill="none" stroke={BONE_COLOURS[bi % BONE_COLOURS.length]} strokeWidth={2 * px} strokeLinecap="round" />
+              const drawn = lineElOf(G, l, stroke)
+              // an attached line: highlighted with its bone; off the front, generated (hover)
+              const hi = boneHi !== null && attachedTo.get(G.id) === boneHi
+              if (!drawn || (!hi && (pose || shown === 'view:0,0' || !attachedTo.has(G.id)))) return drawn
+              return <g key={G.id} data-attached-line={G.id}>{hi && <path data-bone-hi-line={G.id} d={path(G.curve)} fill="none" stroke={BONE_COLOURS[(boneIndex.get(attachedTo.get(G.id)!) ?? 0) % BONE_COLOURS.length]} strokeOpacity={0.35} strokeWidth={8 * px} strokeLinecap="round" pointerEvents="none" />}
+                {drawn}{!pose && shown !== 'view:0,0' && attachedTo.has(G.id) && <title>由骨骼生成（在 0,0 改）</title>}</g>
+            }
+            const lineElOf = (G: (typeof g.lines)[number], l: ReturnType<typeof line>, stroke: string) => {
               const u = uniform.get(G.id)
               if (u) {
                 if (!u.first) return null
