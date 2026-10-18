@@ -1629,7 +1629,7 @@ export function App() {
                 }} title="把这一层所有骨骼在九个视角的样子存成一个标准（按骨骼名字）">{taken ? (confirming ? `确认覆盖「${typed.trim()}」` : `覆盖「${typed.trim()}」…`) : '存为标准'}</button>
                 {mine.map(t => <span key={t.id} data-std={t.id} style={{ border: '1px solid #ccc', borderRadius: 3, padding: '0 3px' }}>{t.name}
                   {/* an unmarked standard with 「·」 names: their format cannot be told, those bones are never paired (dot 1792309641) */}
-                  {!t.naming && t.bones.some(b => b.name.includes('·')) && <span data-std-old-names={t.id} style={{ color: '#c60' }} title={`旧名称格式未识别：${t.bones.filter(b => b.name.includes('·')).map(b => b.name).join('、')} 不会配对。只在录制这个标准的原稿里重新「存为标准」才能无损恢复；在别的脸上重存，会把那张脸当前的骨骼存成标准`}> ⚠旧名称格式</span>}
+                  {!t.naming && t.bones.some(b => b.name.includes('·')) && <span data-std-old-names={t.id} style={{ color: '#c60' }} title={`旧名称格式未识别：${t.bones.filter(b => b.name.includes('·')).map(b => b.name).join('、')} 不会配对。「存为标准」存的是当前九个视角的骨骼：只有在录制这个标准的原稿里、骨骼还保持录制时的样子，重存才是无损恢复；原稿改过，或在别的脸上重存，存进去的都是当前的骨骼`}> ⚠旧名称格式</span>}
                   <button data-std-remove={t.id} disabled={choice?.standard === t.id} title={choice?.standard === t.id ? '正在使用，先换别的标准或选「不用」' : '删除这个标准'} style={{ border: 0, background: 'none', cursor: 'pointer' }} onClick={() => run(ed => ed.removeStandard(t.id))}>删除</button></span>)}
               </div>
             })}
