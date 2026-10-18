@@ -556,8 +556,9 @@ export function App() {
       if (!h.size) return false
       if (t.kind === 'line') return h.has(t.id)
       if (t.kind === 'handle') return h.has(t.line)
+      // a point of a hidden bone stays reachable only while a line still shown uses it (dot 1792301916)
       const at = core.snapshot().lines.filter(l => l.a === t.id || l.b === t.id)
-      return at.length > 0 && at.every(l => h.has(l.id))
+      return at.some(l => h.has(l.id)) && at.every(l => h.has(l.id) || !l.state.visible)
     },
     cut: (t, at, reach) => {
       if (!env.current.masks) return false

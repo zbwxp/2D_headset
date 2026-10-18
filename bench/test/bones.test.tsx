@@ -243,6 +243,14 @@ describe('bones in the bench', () => {
     await t.press(0, t.Y) // b0: shared with the shown line s
     expect(picked()).toContain(t.id('b0'))
     await act(async () => { button('Leave playback').click() })
+    // the shared line hidden too: no shown line uses b0 any more, so it is out of reach as well
+    await act(async () => { bench().core.edit(e => { (e as unknown as { lineState(l: string, s: unknown): void }).lineState(t.id('s'), { visible: false }) }); bench().refresh() })
+    await t.select()
+    await act(async () => { button('Playback').click() })
+    await act(async () => { bench().ix.setTool('A'); bench().refresh() })
+    await t.press(0, t.Y)
+    expect(picked()).not.toContain(t.id('b0'))
+    await act(async () => { button('Leave playback').click() })
   })
 
   it('a bone never takes the pick of an ordinary line away: V on the far line selects it', async () => {
