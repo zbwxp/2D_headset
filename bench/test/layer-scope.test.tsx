@@ -203,6 +203,8 @@ describe('picking an element in a layer that is not selected adds that layer (bo
 describe('the properties panel shows the unit last clicked in the list (bowen 1791599608)', () => {
   it('a layer, a continuous curve, a line; it folds', async () => {
     const host = await setup()
+    // B's curve gets a second line (a curve of one line is one row, no line rows: bowen 1792308578)
+    await act(async () => { bench().core.edit(e => e.line('lB2', 'qB', { id: 'rB', layer: 'B', position: { x: 150, y: 40 } })); bench().refresh() })
     const props = () => host.querySelector('[data-testid="properties"]')?.textContent ?? ''
     const header = () => [...host.querySelectorAll('div')].find(d => d.title === '收起属性' || d.title === '展开属性')!
     expect(header().textContent).toContain('图层 · D') // the current layer before any click
@@ -218,10 +220,23 @@ describe('the properties panel shows the unit last clicked in the list (bowen 17
     const lineRow = host.querySelector('[title^="点击选中这条线"]') as HTMLElement
     await act(async () => { lineRow.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
     expect(header().textContent).toContain('线 · ')
-    expect(props()).toMatch(/起点 a.*开放.*终点 b.*开放/)
+    expect(props()).toMatch(/起点 a.*终点 b/)
     expect(props()).toContain('更多属性（待定）')
     await act(async () => { header().dispatchEvent(new MouseEvent('click', { bubbles: true })) })
     expect(host.querySelector('[data-testid="properties"]')).toBeNull()
+  })
+
+  it('a curve of one line is one row: no twirl, no line row; it shows the line\'s width and ends (bowen 1792308578)', async () => {
+    const host = await setup()
+    const icon = (title: string) => [...host.querySelectorAll('svg title')].find(t => t.textContent === title)!.parentElement!
+    await act(async () => { icon('展开全部图层').dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    const rows = [...host.querySelectorAll('[data-group-row]')] as HTMLElement[]
+    expect(rows.length).toBe(4)
+    for (const r of rows) {
+      expect([...r.querySelectorAll('svg title')].map(t => t.textContent)).not.toContain('展开到每条线')
+      expect(r.textContent).toMatch(/w\d.*a:开放 b:开放/)
+    }
+    expect(host.querySelector('[data-line]')).toBeNull()
   })
 })
 

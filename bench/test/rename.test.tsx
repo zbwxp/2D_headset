@@ -128,7 +128,8 @@ describe('the Rename component', () => {
   })
 })
 
-/** The App with one layer holding two curves of one line each; the layer and its first curve unfolded. */
+/** The App with one layer holding a curve of two lines (l1, l1b) and a curve of one line (l2); the layer and the first
+ *  curve unfolded (a curve of one line has no line rows: bowen 1792308578). */
 async function panel() {
   const host = document.createElement('div'); document.body.appendChild(host)
   await act(async () => { createRoot(host).render(<App />) })
@@ -136,6 +137,7 @@ async function panel() {
   d.edit(e => {
     e.line('l1', { id: 'a1', layer: 'L', position: { x: 0, y: 0 } }, { id: 'b1', layer: 'L', position: { x: 100, y: 0 } })
     e.line('l2', { id: 'a2', layer: 'L', position: { x: 0, y: 50 } }, { id: 'b2', layer: 'L', position: { x: 100, y: 50 } })
+    e.line('l1b', 'b1', { id: 'c1', layer: 'L', position: { x: 200, y: 0 } })
   })
   const input = host.querySelector('[data-testid="open"]') as HTMLInputElement
   Object.defineProperty(input, 'files', { value: [new File([save(d)], 'd.json')], configurable: true })
@@ -219,7 +221,7 @@ describe('renaming in the layers panel', () => {
     await act(async () => { fire(t.named(t.g1.name), 'dblclick') })
     const f = t.host.querySelector('[data-rename]') as HTMLInputElement
     await act(async () => { setValue(f, 'stale') })
-    await act(async () => { bench().edit(e => e.deleteLine('l1')); bench().refresh() })
+    await act(async () => { bench().edit(e => { e.deleteLine('l1'); e.deleteLine('l1b') }); bench().refresh() })
     const log = t.host.textContent
     await act(async () => { keyOn(f, 'Enter'); f.dispatchEvent(new FocusEvent('focusout', { bubbles: true })) })
     expect([t.host.querySelector('[data-rename]'), t.host.textContent === log, t.s().groups.some(g => g.name === 'stale')]).toEqual([null, true, false])

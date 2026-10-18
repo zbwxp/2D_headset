@@ -200,7 +200,8 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId, o
   const layers = [...s.layers].reverse() // top first, as Adobe lists them
   // the rows the list shows, top to bottom, across layers: the run a Shift click takes (bowen 1791897991)
   const groupRows = layers.filter(L => open.has(L.id)).flatMap(L => s.groups.filter(gr => gr.layer === L.id).reverse().map(gr => ({ id: gr.id, lines: gr.lines, layer: L.id })))
-  const lineRows = groupRows.filter(gr => open.has(gr.id)).flatMap(gr => gr.lines.map(l => ({ id: l, lines: [l], layer: gr.layer })))
+  // a curve of one line is one row (bowen 1792308578): its line has no row of its own
+  const lineRows = groupRows.filter(gr => open.has(gr.id) && gr.lines.length > 1).flatMap(gr => gr.lines.map(l => ({ id: l, lines: [l], layer: gr.layer })))
   const activeLayer = s.layers.find(l => l.id === active)
   const fillsShown = s.loops.some(l => l.filled && l.visible)
   // every layer at once (bowen 1791865192): any line shown → hide all; all hidden → show all
@@ -259,11 +260,13 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId, o
             {isOpen && groups.map(gr => {
               const gShown = !all(gr.lines, id => !s.lines.find(l => l.id === id)!.state.visible)
               const gLocked = all(gr.lines, id => s.lines.find(l => l.id === id)!.state.locked)
-              const gOpen = open.has(gr.id)
+              // a curve of one line: one row, no level below (bowen 1792308578); the row is the curve (its name, renamed as
+              // the curve) and shows what is attached to its line
+              const single = gr.lines.length === 1, gOpen = !single && open.has(gr.id), only = single ? s.lines.find(x => x.id === gr.lines[0])! : undefined
               return <div key={gr.id}><div data-group-row={gr.id} data-drop={target?.id === gr.id ? target.at : undefined} draggable onDragStart={e => start(e, { kind: 'group', id: gr.id })} onDragEnd={end}
                 onDragOver={e => over(e, drag?.kind === 'group' && drag.id !== gr.id ? { id: gr.id, at: half(e) } : null)} onDrop={e => drop(e, gr.id)}
                 style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 6px 3px 22px', background: '#353535', borderBottom: `1px solid ${C.line}`, boxShadow: mark(gr.id), opacity: drag?.id === gr.id ? 0.5 : 1 }}>
-                <Icon d={gOpen ? TWIRL_OPEN : TWIRL_SHUT} title={gOpen ? '收起' : '展开到每条线'} onClick={() => toggle(gr.id)} />
+                {single ? <span style={{ width: 16, flex: 'none' }} /> : <Icon d={gOpen ? TWIRL_OPEN : TWIRL_SHUT} title={gOpen ? '收起' : '展开到每条线'} onClick={() => toggle(gr.id)} />}
                 <Icon d={EYE} on={gShown} title={gShown ? '隐藏曲线' : '显示曲线'} onClick={() => run(x => x.groupState(gr.id, { visible: !gShown }))} />
                 <Icon d={LOCK} on={gLocked} title={gLocked ? '解锁曲线' : '锁定曲线'} onClick={() => run(x => x.groupState(gr.id, { locked: !gLocked }))} />
                 <Thumb lines={gr.lines} />
@@ -271,7 +274,8 @@ export function LayersPanel({ s, g, selected, active, select, run, newLayerId, o
                   style={{ cursor: 'pointer', color: gr.lines.every(l => selLines.has(l)) ? '#8fb4ff' : undefined }}
                   onClick={e => pickRows(groupRows, gr.id, e, L.id, 'group')} />
                 {gr.lines.some(id => paired.has(id)) && <Icon d={MIRROR} title="镜像联动" />}
-                <span style={{ color: C.dim, flex: 'none' }}>{gr.lines.length}</span>
+                {only ? <span style={{ color: C.dim, flex: 'none', fontSize: 11 }} title="线宽（起点→终点）· 两端（相接方式或开放端点的笔触）">w{only.stroke.width}{only.stroke.widthB === undefined ? '' : `→${only.stroke.widthB}`} {ends(only).join(' ')}</span>
+                  : <span style={{ color: C.dim, flex: 'none' }}>{gr.lines.length}</span>}
               </div>
               {/* the smallest unit is the line (bowen 1791557559): one row each, with what is attached to it */}
               {gOpen && gr.lines.map(id => {

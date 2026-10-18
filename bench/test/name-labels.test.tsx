@@ -118,11 +118,12 @@ describe('name labels', () => {
     if (!row(t.curve('solo').name)) await act(async () => { [...rowA.querySelectorAll('svg > title')].find(x => x.textContent === '展开')!.parentElement!.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
     await act(async () => { row(t.curve('solo').name).dispatchEvent(new MouseEvent('click', { bubbles: true })) })
     expect(t.labels()).toEqual([t.curve('solo').name])
-    const curveRow = row(t.curve('solo').name).parentElement!
+    // a line row: the long curve's (a curve of one line has no line rows: bowen 1792308578)
+    const curveRow = row(t.curve('l1').name).parentElement!
     await act(async () => { [...curveRow.querySelectorAll('svg > title')].find(x => x.textContent === '展开到每条线')!.parentElement!.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
-    await act(async () => { row(t.name('solo')).dispatchEvent(new MouseEvent('click', { bubbles: true })) })
-    expect(t.labels()).toEqual([t.name('solo')])
-    await act(async () => { (bench() as unknown as { edit(f: (e: import('../../src').Editor) => void): void }).edit(e => e.renameLine('solo', '下巴线')); bench().refresh() })
+    await act(async () => { row(t.name('l1')).dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    expect(t.labels()).toEqual([t.name('l1')])
+    await act(async () => { (bench() as unknown as { edit(f: (e: import('../../src').Editor) => void): void }).edit(e => e.renameLine('l1', '下巴线')); bench().refresh() })
     expect(t.labels()).toEqual(['下巴线'])
   })
 

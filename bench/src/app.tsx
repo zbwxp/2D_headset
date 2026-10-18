@@ -1551,9 +1551,10 @@ export function App() {
         </div>
         {/* 骨骼 (docs/bone-lines-checklist.md §5): bones, 绑骨 / 解绑, the drag switch; modes and standards come in B3 */}
         {!pose && (() => {
-          // a line's true name is 图层·连续曲线·线; within one layer 「连续曲线 · 线」 (bowen 1792308208)
+          // a line's true name is 图层·连续曲线·线; within one layer 「连续曲线 · 线」 (bowen 1792308208), a curve of one
+          // line by the curve's name alone (bowen 1792308645)
           const boneSet = new Set(s.bones), chosen = selLines.filter(id => !boneSet.has(id))
-          const name = (id: Id) => { const own = s.lines.find(l => l.id === id)?.name ?? id, gr = s.groups.find(x => x.lines.includes(id)); return gr ? `${gr.name} · ${own}` : own }
+          const name = (id: Id) => { const own = s.lines.find(l => l.id === id)?.name ?? id, gr = s.groups.find(x => x.lines.includes(id)); return !gr ? own : gr.lines.length === 1 ? gr.name : `${gr.name} · ${own}` }
           return <div data-testid="bones" style={{ display: 'flex', flexDirection: 'column', gap: 4, border: '1px solid #ddd', padding: 4 }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
               <b>骨骼</b>

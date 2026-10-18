@@ -272,9 +272,10 @@ describe('bones in the bench', () => {
     const options = [...t.host.querySelectorAll('[data-testid="bone-pick-select"] option')].map(o => (o as HTMLOptionElement).value).filter(Boolean)
     expect(options).toContain(t.id('B'))
     expect(options).not.toContain(t.id('Z'))
-    // named 「连续曲线 · 线」 (bowen 1792308208)
-    const sn = snap(), gr = sn.groups.find(x => x.lines.includes(t.id('B')))!, own = sn.lines.find(l => l.id === t.id('B'))!.name
-    expect((t.q(`[data-testid="bone-pick-select"] option[value="${t.id('B')}"]`) as HTMLOptionElement).textContent).toBe(`${gr.name} · ${own}`)
+    // named 「连续曲线 · 线」 (bowen 1792308208); a curve of one line by the curve's name alone (bowen 1792308645)
+    const sn = snap(), gr = sn.groups.find(x => x.lines.includes(t.id('B')))!
+    expect(gr.lines.length).toBe(1)
+    expect((t.q(`[data-testid="bone-pick-select"] option[value="${t.id('B')}"]`) as HTMLOptionElement).textContent).toBe(gr.name)
     expect(t.q('[data-testid="bone-pick-hint"]')!.textContent).toContain('「Layer 1」')
     // a press on the other layer's bone attaches nothing
     await t.press(20, t.Y + 22.5)
