@@ -226,4 +226,15 @@ describe('录制标准 / 捏脸 in the bench', () => {
     await t.click('[data-testid="std-import-go"]')
     expect(JSON.stringify(bench().core.standardsData())).toBe(before)
   })
+
+  it('an unmarked standard with 「·」 names is flagged 旧名称格式 (its bones are not paired; dot 1792309641)', async () => {
+    const t = await setup()
+    const v = { 'view:0,0': [P(0), P(1, -1), P(2, -1), P(3)] }
+    await act(async () => { bench().core.edit(e => e.addStandard(t.L, { name: 'old', bones: [{ key: 'k', name: '左眼·骨', views: v as never }] })); bench().refresh() })
+    const id = snap().standards.find(x => x.layer === t.L && x.name === 'old')!.id
+    expect(t.q(`[data-std-old-names="${id}"]`)!.getAttribute('title')).toContain('旧名称格式未识别')
+    await t.type(`[data-std-name="${t.L}"]`, 'S'); await t.click(`[data-std-save="${t.L}"]`)
+    const fresh = snap().standards.find(x => x.layer === t.L && x.name === 'S')!.id
+    expect(t.q(`[data-std-old-names="${fresh}"]`)).toBeNull()
+  })
 })

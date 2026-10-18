@@ -59,7 +59,7 @@ describe('录制标准 and saving a standard', () => {
     expect(t!.bones.map(b => b.name).sort()).toEqual(['连续曲线1·上骨', '连续曲线1·下骨'])
     for (const b of t!.bones) expect(Object.keys(b.views).sort()).toEqual([...d.views()].sort())
     expect(t!.bones.find(b => b.name === '连续曲线1·上骨')!.views[SIDE]).toEqual(cubic(d, SIDE, 'U'))
-    expect(d.snapshot().standards).toEqual([{ id: t!.id, name: 'S1', layer: 'L', bones: t!.bones.map(b => ({ key: b.key, name: b.name })) }])
+    expect(d.snapshot().standards).toEqual([{ id: t!.id, name: 'S1', layer: 'L', bones: t!.bones.map(b => ({ key: b.key, name: b.name })), naming: 'curve·line' }])
     expect(d.snapshot().boneMode).toBe('record')
   })
   it('saving again under the same name is refused; overwriting keeps its id and the keys of same-named bones', () => {
@@ -332,6 +332,27 @@ describe('dot 1792309220 / 1792309259: old names and old standards', () => {
     const file = JSON.parse(save(d))
     file.document.network.layers = file.document.network.layers.map((l: { id: string; name: string }) => (l.id === 'L' ? { ...l, name: '左·脸' } : l))
     expect(open(JSON.stringify(file)).snapshot().layers.map(l => l.name).sort()).toEqual(['左脸', '左脸副本'])
+  })
+  it('a file whose names repeat before 「·」 is removed is refused; a name of only 「·」 becomes a stable default (dot 1792309685)', () => {
+    const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })
+    d.edit(e => { e.layer('M', 'M'); e.line('p', { id: 'p0', layer: 'L', position: P(0) }, { id: 'p1', layer: 'L', position: P(10) }); e.line('q', 'p1', { id: 'q1', layer: 'L', position: P(20) }) })
+    const f1 = JSON.parse(save(d))
+    for (const e of f1.document.names.line) e[1] = 'N·'
+    expect(() => open(JSON.stringify(f1))).toThrow()
+    const f2 = JSON.parse(save(d))
+    f2.document.network.layers = f2.document.network.layers.map((l: { id: string; name: string }) => ({ ...l, name: 'N·' }))
+    expect(() => open(JSON.stringify(f2))).toThrow()
+    // a layer id holding 「·」 and a name of only 「·」: the default 「图层」, the same after save / open
+    const f3 = JSON.parse(save(d))
+    f3.document.network.layers = f3.document.network.layers.map((l: { id: string; name: string }) => (l.id === 'M' ? { ...l, name: '·' } : l))
+    const once = open(JSON.stringify(f3)), text = save(once)
+    expect(once.snapshot().layers.map(l => l.name).sort()).toEqual(['L', '图层'])
+    expect(save(open(text))).toBe(text)
+    const f4 = JSON.parse(save(d))
+    f4.document.names.line[0][1] = '·'
+    const o4 = open(JSON.stringify(f4)), t4 = save(o4)
+    expect(o4.snapshot().lines.map(l => l.name).some(x => x.includes('·'))).toBe(false)
+    expect(save(open(t4))).toBe(t4)
   })
   it('pasting from an older clipboard with 「·」 in names: removed at once, the same as after save / open', () => {
     const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })

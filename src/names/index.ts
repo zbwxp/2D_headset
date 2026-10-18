@@ -227,15 +227,15 @@ export function restore(v: unknown, n: net.NetworkState, g: groups.GroupsState):
   const d = net.data, o = d.obj(v, 'names')
   const changed = new Set<string>()
   const entries = (kind: Kind, ids: Id[]) => {
-    const list = d.arr(o[kind], `${kind} names`).map((x, i): [Id, string] => {
+    const list = d.arr(o[kind], `${kind} names`).map((x, i): readonly [Id, string, string] => {
       const e = d.arr(x, `${kind} name ${i}`)
       // 「·」 joins the parts of a true name: removed from names saved before (bowen 1792308685); a name that was only
       // 「·」 takes the default
       const id = d.str(e[0], `${kind} name ${i} id`), name = d.str(e[1], `${kind} name ${i}`)
-      if (!name.includes('·')) return [id, name]
+      if (!name.includes('·')) return [id, name, name] as const
       const clean = name.replaceAll('·', '')
       changed.add(`${kind} ${id}`)
-      return [id, clean.trim() ? clean : DEFAULT[kind]]
+      return [id, clean.trim() ? clean : DEFAULT[kind], name] as const
     })
     d.unique(list.map(e => e[0]), `${kind} name for`)
     const have = new Set(list.map(e => e[0]))
@@ -243,7 +243,10 @@ export function restore(v: unknown, n: net.NetworkState, g: groups.GroupsState):
     if (list.length !== ids.length) d.fail(`a ${kind} name belongs to a missing ${kind}`)
     return list
   }
-  const st = { line: entries('line', net.lines(n).map(l => l.id)), group: entries('group', groups.list(g, n).map(x => x.id)) } as Store as unknown as NamesState
+  const raw = { line: entries('line', net.lines(n).map(l => l.id)), group: entries('group', groups.list(g, n).map(x => x.id)) }
+  // a file bad before 「·」 is removed (a repeat in a scope) is refused as it is, never repaired (dot 1792309685)
+  try { check({ line: raw.line.map(e => [e[0], e[2]]), group: raw.group.map(e => [e[0], e[2]]) } as Store as unknown as NamesState, n, g) } catch (err) { d.fail((err as Error).message) }
+  const st = { line: raw.line.map(e => [e[0], e[1]]), group: raw.group.map(e => [e[0], e[1]]) } as Store as unknown as NamesState
   // only names changed by removing 「·」 are repaired where they now collide; any other repeat or empty name is a bad file
   // (refused by the check below, dot 1792309259)
   if (changed.size) dedupe(st, n, g, changed)

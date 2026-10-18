@@ -302,12 +302,14 @@ export const data = {
 export function restore(v: unknown, layer: string): NetworkState {
   const d = data, o = d.obj(v, 'network')
   const raw = d.arr(o.layers, 'layers').map((x, i) => { const L = d.obj(x, `layer ${i}`); const name = d.str(L.name, `layer ${i} name`); if (!name.trim()) d.fail(`layer ${i} has an empty name`); return { id: d.str(L.id, `layer ${i} id`), name } })
-  // 「·」 removed from layer names saved before (bowen 1792308685); only a name it changed is given 副本 where it now
-  // repeats another (an unchanged repeat stays, for the check to refuse)
+  // 「·」 removed from layer names saved before (bowen 1792308685): a file whose names repeat before that is refused as
+  // it is (dot 1792309685); only a name it changed is given 副本 where it now repeats another; a name that was only 「·」
+  // takes 「图层」 (never the id, which may hold 「·」 itself), so the first open is already stable
+  d.unique(raw.map(l => l.name), 'layer name')
   const kept = new Set(raw.filter(l => !l.name.includes('·')).map(l => l.name))
   const layers = raw.map(l => {
     if (!l.name.includes('·')) return l
-    const clean = l.name.replaceAll('·', '').trim() ? l.name.replaceAll('·', '') : l.id
+    const clean = l.name.replaceAll('·', '').trim() ? l.name.replaceAll('·', '') : '图层'
     let name = clean
     for (let k = 1; kept.has(name); k++) name = clean + '副本' + (k > 1 ? k : '')
     kept.add(name)

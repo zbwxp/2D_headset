@@ -85,7 +85,7 @@ export interface Snapshot {
   attachments: { line: Id; bone: Id }[]
   /** 录制标准 / 捏脸, the standards (without their shapes) and each layer's chosen standard with its pairs. */
   boneMode: bones.Mode
-  standards: { id: Id; name: string; layer: Id; bones: { key: string; name: string }[] }[]
+  standards: { id: Id; name: string; layer: Id; bones: { key: string; name: string }[]; naming?: 'curve·line' }[]
   standardChoices: bones.Choice[]
 }
 export type Geometry = derived.Geometry
@@ -945,7 +945,7 @@ export class LayerReader {
       bones: bones.bones(s.bones),
       attachments: bones.attachments(s.bones).map(x => ({ line: x.line, bone: x.bone })),
       boneMode: bones.mode(s.bones),
-      standards: bones.standards(s.bones).map(t => ({ id: t.id, name: t.name, layer: t.layer, bones: t.bones.map(b => ({ key: b.key, name: b.name })) })),
+      standards: bones.standards(s.bones).map(t => ({ id: t.id, name: t.name, layer: t.layer, bones: t.bones.map(b => ({ key: b.key, name: b.name })), ...(t.naming ? { naming: t.naming } : {}) })),
       standardChoices: bones.choices(s.bones),
     })
   }
