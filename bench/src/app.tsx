@@ -365,6 +365,11 @@ export function App() {
   // a bone whose attached lines are highlighted (never the selection); bones in playback (hidden by default; debug)
   const [boneHi, setBoneHi] = useState<Id | null>(null)
   const [bonesInPlayback, setBonesInPlayback] = useState(false)
+  // 录制标准 / 捏脸 and standards (docs/bone-lines-checklist.md §6b): a name being typed per layer, a pending 覆盖 (a second
+  // press confirms), a file's standards being imported (into the drawing it was read for)
+  const [stdName, setStdName] = useState<Record<Id, string>>({})
+  const [stdConfirm, setStdConfirm] = useState<{ layer: Id; name: string } | null>(null)
+  const [stdImport, setStdImport] = useState<{ core: Core; file: string; list: { name: string; layerName: string; bones: ReturnType<Core['standardsData']>[number]['bones'] }[]; pick: number; confirm: boolean } | null>(null)
   // the one display kind of the name labels (docs/name-labels-plan.md; bowen 1791731823; dot 1791732110): set only
   // when A / V actually hit a line, a layers row is clicked or a name is found; nothing else changes it
   const [labelKind, setLabelKind] = useState<LabelKind>('line')
@@ -539,6 +544,8 @@ export function App() {
   // one visibility rule for the playback drag's picking, its point marks and its ghost, computed once
   // per frame (dot 1791697776; docs/stage3b-pkg5-problems.md): the visible lines and the points they end at
   // bones are hidden in playback unless asked (docs/bone-lines-checklist.md §5): not drawn, not picked, no selection marks (dot 1792301388)
+  /** A line's layer: its points' layer. */
+  const layerOfLine = (id: Id) => { const a = s.lines.find(l => l.id === id)?.a; return s.points.find(p => p.id === a)?.layer }
   const boneSetAll = new Set(s.bones), boneHidden = (id: Id) => !!pose && !bonesInPlayback && boneSetAll.has(id)
   const shownLines = s.lines.filter(l => l.state.visible && !boneHidden(l.id)), shownEnds = new Set(shownLines.flatMap(l => [l.a, l.b]))
   // the drawing layer falls back to the top layer when the chosen one is gone (deleted, or a file was opened)
@@ -1403,7 +1410,7 @@ export function App() {
     : `playback yaw ${pose.yaw}, pitch ${pose.pitch} · ${atCorrection && where && 'edge' in where ? `修正点：${where.inner} → ${where.outer}，t = ${+where.t.toFixed(3)} · A 拖点或手柄，V 拖整条曲线` : viewAtPose(pose) ? `视角 ${viewAtPose(pose)} · A / V 直接改这个视角` : '这里只能看；修正点在 yaw ±30 / ±60、pitch 0 / ±45'}${posed instanceof Error ? ' · ✗ ' + posed.message : ''}`)
     : pv.refusal ? '✗ ' + withNames(pv.refusal.message)
     : brokenHere.length ? `✗ reference picture ${brokenHere.join(', ')} could not be drawn (the drawing is unaffected)`
-    : `view ${shown} · tool ${ix.tool} · layer ${drawLayer} · selection ${sel.map(u => u.kind[0] + ':' + ('id' in u ? u.id : u.line + '.' + u.end)).join(' ') || '—'}${pv.pick ? ' · first pick ' + pv.pick.id : ''}${pv.cut.length ? ' · cut pending (paste moves, Esc cancels)' : ''}${pv.mirrorSource.length ? ' · mirror source ' + pv.mirrorSource.length : ''}`
+    : `view ${shown}${s.boneMode === 'make' ? ' · 捏脸' : ''} · tool ${ix.tool} · layer ${drawLayer} · selection ${sel.map(u => u.kind[0] + ':' + ('id' in u ? u.id : u.line + '.' + u.end)).join(' ') || '—'}${pv.pick ? ' · first pick ' + pv.pick.id : ''}${pv.cut.length ? ' · cut pending (paste moves, Esc cancels)' : ''}${pv.mirrorSource.length ? ' · mirror source ' + pv.mirrorSource.length : ''}`
 
   return (
     <div style={{ display: 'flex', height: '100%' }}>
@@ -1552,6 +1559,59 @@ export function App() {
               {s.attachments.filter(a => a.bone === b).map(a => <span key={a.line} data-attached={a.line} style={{ border: '1px solid #ccc', borderRadius: 3, padding: '0 3px' }}>{name(a.line)}
                 <button data-bone-detach={a.line} title="解绑：这条线留在原地，变回普通线" style={{ border: 0, background: 'none', cursor: 'pointer' }} onClick={() => { run(ed => ed.detach([a.line])); bump() }}>解绑</button></span>)}
             </div>)}
+            {/* 录制标准 / 捏脸 and standards (docs/bone-lines-checklist.md §6b) */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', borderTop: '1px dashed #ddd', paddingTop: 4 }}>
+              <span>模式</span>
+              <label title="侧面骨骼手动调，调好后「存为标准」"><input type="radio" data-testid="bone-mode-record" checked={s.boneMode === 'record'} onChange={() => run(ed => ed.boneMode('record'))} /> 录制标准</label>
+              <label title="只在 0,0 改骨骼，其他视角的骨骼由选用的标准推出；侧面骨骼不能改"><input type="radio" data-testid="bone-mode-make" checked={s.boneMode === 'make'} onChange={() => run(ed => ed.boneMode('make'))} /> 捏脸</label>
+              <label style={{ border: '1px solid #aaa', padding: '0 6px', borderRadius: 3, cursor: 'pointer', background: '#f4f4f4' }} title="从另一个文件（例如默认脸）复制一个标准进来">从文件导入标准…
+                <input type="file" data-testid="std-import-file" accept=".json" style={{ display: 'none' }} onChange={async e => {
+                  const f = e.target.files?.[0]; e.target.value = ''
+                  if (!f) return
+                  const mine = core
+                  try {
+                    const other = open(await f.text()), layerName = new Map(other.snapshot().layers.map(l => [l.id, l.name] as const))
+                    const list = other.standardsData().map(t => ({ name: t.name, layerName: layerName.get(t.layer) ?? t.layer, bones: t.bones }))
+                    if (mine !== core) return
+                    if (!list.length) { log.unshift({ calls: `standards of ${f.name}`, result: '✗ 这个文件里没有标准' }); bump(); return }
+                    setStdImport({ core, file: f.name, list, pick: 0, confirm: false })
+                  } catch (err) { log.unshift({ calls: `standards of ${f.name}`, result: '✗ ' + (err as Error).message }); bump() }
+                }} /></label>
+            </div>
+            {stdImport && stdImport.core === core && (() => {
+              const t = stdImport.list[stdImport.pick]!, same = s.layers.find(l => l.name === t.layerName), target = same?.id ?? drawLayer
+              const exists = s.standards.some(x => x.layer === target && x.name === t.name)
+              return <div data-testid="std-import" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', background: '#f6faf6', padding: 2 }}>
+                <span>{stdImport.file}：</span>
+                <select data-testid="std-import-pick" value={stdImport.pick} onChange={e => setStdImport({ ...stdImport, pick: Number(e.target.value), confirm: false })}>
+                  {stdImport.list.map((x, i) => <option key={i} value={i}>{x.name}（{x.layerName}）</option>)}</select>
+                <span data-testid="std-import-target">{same ? `放到同名图层「${same.name}」` : `没有同名图层「${t.layerName}」，放到当前层「${s.layers.find(l => l.id === target)?.name ?? target}」`}</span>
+                <button data-testid="std-import-go" disabled={!target} onClick={() => {
+                  if (exists && !stdImport.confirm) { setStdImport({ ...stdImport, confirm: true }); return }
+                  // import + use (+ the derivation, in 捏脸) in one edit: one undo, a refusal rolls it all back
+                  if (run(ed => { const id = ed.addStandard(target, { name: t.name, bones: t.bones }, exists); ed.useStandard(target, id) })) setStdImport(null)
+                }}>{exists ? (stdImport.confirm ? `确认覆盖「${t.name}」并选用` : `覆盖「${t.name}」并选用…`) : '导入并选用'}</button>
+                <button data-testid="std-import-cancel" onClick={() => setStdImport(null)}>取消</button>
+              </div>
+            })()}
+            {s.layers.filter(L => s.bones.some(b => layerOfLine(b) === L.id) || s.standards.some(t => t.layer === L.id)).map(L => {
+              const mine = s.standards.filter(t => t.layer === L.id), choice = s.standardChoices.find(c => c.layer === L.id), typed = stdName[L.id] ?? ''
+              const taken = mine.some(t => t.name === typed.trim()), confirming = !!stdConfirm && stdConfirm.layer === L.id && stdConfirm.name === typed.trim()
+              return <div key={L.id} data-std-layer={L.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
+                <b>{L.name}</b>
+                <label>用标准 <select data-std-use={L.id} value={choice?.standard ?? ''} onChange={e => run(ed => ed.useStandard(L.id, e.target.value || null))}>
+                  <option value="">（不用）</option>{mine.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+                {choice && <span data-std-pairs={L.id} style={{ color: '#666' }}>匹配 {choice.pairs.length} / {s.bones.filter(b => layerOfLine(b) === L.id).length} 根</span>}
+                <input data-std-name={L.id} value={typed} placeholder="标准名" size={8} onChange={e => { setStdName({ ...stdName, [L.id]: e.target.value }); setStdConfirm(null) }} />
+                <button data-std-save={L.id} disabled={!typed.trim()} onClick={() => {
+                  const n = typed.trim()
+                  if (taken && !confirming) { setStdConfirm({ layer: L.id, name: n }); return }
+                  if (run(ed => ed.saveStandard(L.id, n, taken))) setStdConfirm(null)
+                }} title="把这一层所有骨骼在九个视角的样子存成一个标准（按骨骼名字）">{taken ? (confirming ? `确认覆盖「${typed.trim()}」` : `覆盖「${typed.trim()}」…`) : '存为标准'}</button>
+                {mine.map(t => <span key={t.id} data-std={t.id} style={{ border: '1px solid #ccc', borderRadius: 3, padding: '0 3px' }}>{t.name}
+                  <button data-std-remove={t.id} disabled={choice?.standard === t.id} title={choice?.standard === t.id ? '正在使用，先换别的标准或选「不用」' : '删除这个标准'} style={{ border: 0, background: 'none', cursor: 'pointer' }} onClick={() => run(ed => ed.removeStandard(t.id))}>删除</button></span>)}
+              </div>
+            })}
           </div>
         })()}
 
@@ -1799,12 +1859,17 @@ export function App() {
             const arcLines = (i: number) => g.arcs.filter(a => (rank.get(a.lines[0]) ?? -1) === i && (!ink || (!inkOf.has(a.key) && ink.diagnostics.some(d => d.source.id === a.key))))
               .map(a => <path key={a.key} data-arc-fallback={ink ? a.key : undefined} d={path(a.curve)} fill="none" stroke="#a50" strokeWidth={2} />)
             const boneIndex = new Map(s.bones.map((b, i) => [b, i] as const)), attachedTo = new Map(s.attachments.map(a => [a.line, a.bone] as const))
+            // 捏脸, off the front: where a bone comes from (hover)
+            const boneSource = (b: Id) => {
+              const c = s.standardChoices.find(x => x.layer === layerOfLine(b)), t = c && s.standards.find(x => x.id === c.standard)
+              return !c ? '捏脸：这一层没有选标准；侧面骨骼回录制标准改' : !c.pairs.some(p => p.bone === b) ? '捏脸：这根骨骼没匹配上标准；侧面回录制标准改' : `来自标准「${t?.name ?? c.standard}」（在录制标准里改）`
+            }
             const lineEl = (G: (typeof g.lines)[number]) => {
               const l = line(G.id), stroke = paintOf(G.id)
               // a bone: a bright line, never ink or fill; hidden in playback unless asked (docs/bone-lines-checklist.md §5)
               const bi = boneIndex.get(G.id)
               if (bi !== undefined) return pose && !bonesInPlayback ? null
-                : <path key={G.id} data-bone={G.id} d={path(G.curve)} fill="none" stroke={BONE_COLOURS[bi % BONE_COLOURS.length]} strokeWidth={2 * px} strokeLinecap="round" />
+                : <path key={G.id} data-bone={G.id} d={path(G.curve)} fill="none" stroke={BONE_COLOURS[bi % BONE_COLOURS.length]} strokeWidth={2 * px} strokeLinecap="round">{!pose && shown !== 'view:0,0' && s.boneMode === 'make' && <title>{boneSource(G.id)}</title>}</path>
               const drawn = lineElOf(G, l, stroke)
               // an attached line: highlighted with its bone; off the front, generated (hover)
               // highlighted: the bone picked in the list, or a bone selected on the canvas (dot 1792301388); never in playback
