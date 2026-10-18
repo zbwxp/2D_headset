@@ -16,6 +16,7 @@ Evidence so far (throwaway scripts, not in the repo): bowen's 165.json left eye,
 - **部位 (part) = a layer** (bowen 1792297720): the bones in one layer form a part; no new concept. The two eye bones sit in one layer.
 - **标准 (standard)**: `{ id, name, layer, bones: [{ boneName, nine view shapes }] }`, written only by 「存为标准…」. Several per layer. Stored where bowen decides (§7) — by default in the default-face drawing; a made face imports a **copy**, so nothing done in the made face changes the source.
 - **Choice** per part in a made face: which standard it uses, by the standard's stable id (dot 1792296507) — the name is for display and import matching only, so renaming a standard never breaks the choice.
+- **Owner of a shared point** (dot 1792297855): a point shared by attached lines on different bones belongs to the nearest of **those lines' bones** at 0,0; chosen once when attaching and stored (never re-chosen on a drag, so a point passing the halfway mark never changes owner); equal distances → the bone with the smaller id. Renewed only when an attachment touching that point changes.
 - Ids are stable inside a drawing; names (layer, standard, bone) are used only to match on import — renaming inside a drawing never breaks a relation.
 
 ## 2. Derivation (pure functions in `deform/`, next to `Field`, `deformPlan`, `fit`)
@@ -31,7 +32,7 @@ Evidence so far (throwaway scripts, not in the repo): bowen's 165.json left eye,
 1. bowen's edit lands in the current view (where the mode allows it); if it edited an attached line at 0,0, its base is renewed here;
 2. front mirror handles (existing, front only); an attached line changed by the mirror gets its base renewed too;
 3. side bones: 捏脸 → generated from the chosen standard (§2); 录制标准 → as bowen placed them;
-4. per view, one target for every attached point — a point shared by lines on different bones belongs to the bone nearest it at 0,0 (§7.2);
+4. per view, one target for every attached point — a point shared by lines on different bones follows its stored owner bone (§1);
 5. each attached line refit with fixed ends;
 6. existing link align and `joins.solve` must not move an attached line's points or handles; if they would, refuse.
 One undo step reverts all of it. Results are written into the views' positions — playback reads ordinary nine-view lines, unchanged.
@@ -44,6 +45,7 @@ One undo step reverts all of it. Results are written into the views' positions �
 - **Copy / paste** (dot 1792296347): a bone copied alone stays a bone (its own data — mark, name — travels with it), so a standard's bones can be pasted and attached to a brand-new eye; an attachment travels only when both the bone and the line are copied, with ids remapped to the pasted copies.
 - **Links (联动)**: attaching a line that already has links is refused ("unlink first"); new links on attached lines are refused. Ledger row.
 - **Mirror**: tested, not argued — a mirror pair with one side attached; both sides on different bones.
+- **Stage 2 (pending / broadcast / fit)**: the derivation also sets the angle baseline (`base:angle`) of attached lines to their front — as a fit — so an attached line is never pending; broadcastShape and fit refuse when their scope holds an attached line (`bone-derived`). Playback responses (corrections) are not touched.
 - **Masks, fills**: read geometry only. **30° / 60° corrections**: v1 never touches correction data; a test shows they still apply.
 
 ## 5. Bench (side panel, existing tools A / V / Z)
@@ -61,7 +63,7 @@ If a view looks wrong for this eye shape: 录制标准, adjust the bones in that
 
 ## 7. Decisions
 Decided by bowen: two modes (1792296232); in 录制标准 the side views adjust bones only (1792296313); along-the-bone correspondence by fraction of length (1792251439); 1792297720 — the relation is 绑骨 (attach); one way to follow, no 整体跟 (the crease gets its own bone later); a width factor only as an interface (`widthFactor` hook in the derivation, default 1 × length ratio, no UI) and built only if needed; bones are meta-lines, bright green / purple while editing (1792297798), hidden in playback by default; a part is a layer. Hence no stored side-bone offsets, and **the geometry of attached lines cannot be edited directly in non-front views** — 0,0 editing, lines not attached to a bone, and the shared strokes stay as they are (dot 1792296507).
-Left to dot and me (bowen 1792297720 "你们看情况决定"): **a point shared by lines on different bones belongs to the bone nearest it at 0,0** (unique, no averaging; in the eye: the two outer ends of the lid band).
+Left to dot and me (bowen 1792297720 "你们看情况决定"): **a point shared by lines on different bones belongs to the nearest of those lines' bones at 0,0, chosen when attaching and stored; ties → the smaller bone id** (unique, no averaging; in the eye: the two outer ends of the lid band).
 Default until bowen says otherwise: standards live in the default-face drawing; made faces import copies.
 
 ## 8. Evidence (tests; dot's four first)
