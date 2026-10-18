@@ -538,16 +538,20 @@ export function App() {
   const poseCut = posed && !(posed instanceof Error) && masksOn && inkOn ? cutsFor(s, g, masksOf, inkOf).lines : null
   // one visibility rule for the playback drag's picking, its point marks and its ghost, computed once
   // per frame (dot 1791697776; docs/stage3b-pkg5-problems.md): the visible lines and the points they end at
-  const shownLines = s.lines.filter(l => l.state.visible), shownEnds = new Set(shownLines.flatMap(l => [l.a, l.b]))
+  // bones are hidden in playback unless asked (docs/bone-lines-checklist.md §5): not drawn, not picked, no selection marks (dot 1792301388)
+  const boneSetAll = new Set(s.bones), boneHidden = (id: Id) => !!pose && !bonesInPlayback && boneSetAll.has(id)
+  const shownLines = s.lines.filter(l => l.state.visible && !boneHidden(l.id)), shownEnds = new Set(shownLines.flatMap(l => [l.a, l.b]))
   // the drawing layer falls back to the top layer when the chosen one is gone (deleted, or a file was opened)
   const drawLayer = s.layers.some(l => l.id === layer) ? layer : s.layers[s.layers.length - 1]?.id ?? ''
   // the selected layers that still exist, always with the current one
   const selLayers = [...new Set([...layers.filter(id => s.layers.some(l => l.id === id)), ...(drawLayer ? [drawLayer] : [])])]
   const editView = poseView ?? shown // playback at a view edits that view (§2)
-  const env = useRef({ layer: drawLayer, layers: selLayers, px, view: editView, masks: masksOn && inkOn })
-  env.current = { layer: drawLayer, layers: selLayers, px, view: editView, masks: masksOn && inkOn }
+  const env = useRef({ layer: drawLayer, layers: selLayers, px, view: editView, masks: masksOn && inkOn, hiddenBones: new Set<Id>() })
+  env.current = { layer: drawLayer, layers: selLayers, px, view: editView, masks: masksOn && inkOn, hiddenBones: new Set(s.bones.filter(boneHidden)) }
   const ix = useRef(createInteraction({ core: () => logged(core), view: () => env.current.view, newId: nid, layer: () => env.current.layer || undefined, layers: () => env.current.layers, pixel: () => env.current.px,
     cut: (t, at, reach) => {
+      // a bone hidden in playback is out of reach as it is out of sight (dot 1792301418)
+      if (t.kind === 'line' && env.current.hiddenBones.has(t.id)) return true
       if (!env.current.masks) return false
       let c = cutRef.current
       // dropped by a write (or another drawing or view): computed again from the drawing as it is now, never skipped
@@ -1794,7 +1798,8 @@ export function App() {
                 : <path key={G.id} data-bone={G.id} d={path(G.curve)} fill="none" stroke={BONE_COLOURS[bi % BONE_COLOURS.length]} strokeWidth={2 * px} strokeLinecap="round" />
               const drawn = lineElOf(G, l, stroke)
               // an attached line: highlighted with its bone; off the front, generated (hover)
-              const hi = boneHi !== null && attachedTo.get(G.id) === boneHi
+              // highlighted: the bone picked in the list, or a bone selected on the canvas (dot 1792301388); never in playback
+              const hi = !pose && attachedTo.has(G.id) && (boneHi === attachedTo.get(G.id) || selLines.includes(attachedTo.get(G.id)!))
               if (!drawn || (!hi && (pose || shown === 'view:0,0' || !attachedTo.has(G.id)))) return drawn
               return <g key={G.id} data-attached-line={G.id}>{hi && <path data-bone-hi-line={G.id} d={path(G.curve)} fill="none" stroke={BONE_COLOURS[(boneIndex.get(attachedTo.get(G.id)!) ?? 0) % BONE_COLOURS.length]} strokeOpacity={0.35} strokeWidth={8 * px} strokeLinecap="round" pointerEvents="none" />}
                 {drawn}{!pose && shown !== 'view:0,0' && attachedTo.has(G.id) && <title>由骨骼生成（在 0,0 改）</title>}</g>
@@ -1829,7 +1834,7 @@ export function App() {
                   fill={f.color} opacity={cutLines.size && s.loops.find(l => l.id === f.id)?.route.every(u => cutLines.has(u.line)) ? 0.35 : 1}
                   stroke={!inBetween && isSel({ kind: 'fill', id: f.id }) ? '#06f' : 'none'} strokeWidth={2 * px} />)}
                 {/* the selection reads at a glance (bowen 1791558186): a wide blue halo under each selected line */}
-                {!inBetween && g.lines.filter(G => rank.get(G.id) === i && selLines.includes(G.id)).map(G => <path key={'halo' + G.id} d={path(G.curve)} fill="none" stroke="#2a7fff" strokeOpacity={0.3}
+                {!inBetween && g.lines.filter(G => rank.get(G.id) === i && selLines.includes(G.id) && !boneHidden(G.id)).map(G => <path key={'halo' + G.id} d={path(G.curve)} fill="none" stroke="#2a7fff" strokeOpacity={0.3}
                   strokeWidth={Math.max(line(G.id).stroke.width, line(G.id).stroke.widthB ?? 0) + 8 * px} strokeLinecap="round" />)}
                 {arcsAlone.filter(p => groupOfPiece(p) === i).map(pieceEl)}
                 {g.lines.filter(G => rank.get(G.id) === i).map(lineEl)}
@@ -1939,7 +1944,7 @@ export function App() {
           })}
           {!inBetween && pv.pen && 'at' in pv.pen && <circle cx={pv.pen.at.x} cy={pv.pen.at.y} r={3 * px} fill="#f80" />}
           {/* the selected lines' or curves' names (name-labels/): the scoped selection, never taking a press, not in playback */}
-          {!inBetween && labelsFor(g.lines.map(G => ({ id: G.id, name: line(G.id).name, mid: middleOf(G.curve) })), s.groups.map(gr => ({ id: gr.id, name: gr.name, lines: gr.lines })), selLines, labelKind).map(lb =>
+          {!inBetween && labelsFor(g.lines.filter(G => !boneHidden(G.id)).map(G => ({ id: G.id, name: line(G.id).name, mid: middleOf(G.curve) })), s.groups.map(gr => ({ id: gr.id, name: gr.name, lines: gr.lines.filter(id => !boneHidden(id)) })).filter(gr => gr.lines.length), selLines.filter(id => !boneHidden(id)), labelKind).map(lb =>
             <text key={lb.key} data-label={lb.key} x={lb.at.x + 6 * px} y={lb.at.y - 6 * px} fontSize={12 * px} fill="#123" stroke="#fff" strokeWidth={3 * px} paintOrder="stroke" pointerEvents="none" style={{ userSelect: 'none' }}>{lb.text}</text>)}
           {refusalAt.map((p, i) => <g key={'x' + i} stroke="#d00" strokeWidth={2.5 * px}>
             <line x1={p.x - 6 * px} y1={p.y - 6 * px} x2={p.x + 6 * px} y2={p.y + 6 * px} /><line x1={p.x - 6 * px} y1={p.y + 6 * px} x2={p.x + 6 * px} y2={p.y - 6 * px} />

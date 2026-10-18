@@ -186,6 +186,44 @@ describe('bones in the bench', () => {
     expect(save(bench().core)).toBe(text)
   })
 
+  it('a bone selected on the canvas highlights its attached lines (as the list does)', async () => {
+    const t = await setup()
+    await t.select(t.id('B')); await t.click('[data-testid="bone-mark"]')
+    await t.select(t.id('up')); await t.click('[data-testid="bone-attach"]'); await t.press(t.boneAt.x, t.boneAt.y)
+    // the bone in the selection (as a V or A press leaves it; the press itself is covered by the pick tests)
+    await t.select(t.id('B'))
+    expect(t.q(`[data-bone-hi-line="${t.id('up')}"]`)).not.toBeNull()
+    await t.select(t.id('f'))
+    expect(t.q(`[data-bone-hi-line="${t.id('up')}"]`)).toBeNull()
+  })
+
+  it('a selected bone in playback (显示骨骼 off): no selection halo, no label, no pick — only ticked it shows (dot 1792301388)', async () => {
+    const t = await setup()
+    await t.select(t.id('B')); await t.click('[data-testid="bone-mark"]')
+    await t.select(t.id('B'))
+    const halo = () => [...t.svg.querySelectorAll('path')].filter(p => p.getAttribute('stroke') === '#2a7fff' && p.getAttribute('stroke-opacity') === '0.3').length
+    expect(halo()).toBe(1)
+    const button = (label: string) => [...t.host.querySelectorAll('button')].find(x => x.textContent === label)!
+    await act(async () => { button('Playback').click() })
+    expect(t.q(`[data-bone="${t.id('B')}"]`)).toBeNull()
+    expect(halo()).toBe(0)
+    expect(t.q(`[data-label="${t.id('B')}"]`)).toBeNull()
+    await t.click('[data-testid="bones-in-playback"]')
+    expect(halo()).toBe(1)
+    await act(async () => { button('Leave playback').click() })
+  })
+  it('from an empty selection, playback with bones hidden: V on the hidden bone picks nothing (dot 1792301418)', async () => {
+    const t = await setup()
+    await t.select(t.id('B')); await t.click('[data-testid="bone-mark"]')
+    await t.select()
+    const button = (label: string) => [...t.host.querySelectorAll('button')].find(x => x.textContent === label)!
+    await act(async () => { button('Playback').click() })
+    await act(async () => { bench().ix.setTool('V'); bench().refresh() })
+    await t.press(t.boneAt.x, t.boneAt.y)
+    expect(snap().selection.map(u => u.id)).not.toContain(t.id('B'))
+    await act(async () => { button('Leave playback').click() })
+  })
+
   it('a bone never takes the pick of an ordinary line away: V on the far line selects it', async () => {
     const t = await setup()
     await t.select(t.id('B')); await t.click('[data-testid="bone-mark"]')
