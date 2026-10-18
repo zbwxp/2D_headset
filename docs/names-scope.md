@@ -20,9 +20,10 @@ line names and continuous-curve names share one occupancy check" (docs/step5-nam
 9. Standards (骨骼标准): a standard bone stores 「连续曲线·线」 as its name — names never contain 「·」 (bowen 1792308620:
    rename refuses it; names saved before have it removed on open, bowen 1792308685, a collision that makes gets 副本), so
    the joined form is unambiguous; such a standard is marked `naming: 'curve·line'`. Pairing (once, at 用标准) by it. A
-   standard without the marker was saved before: its bones hold line names (「·」 removed on reading) and pair by the
-   bone's line name when exactly one bone of the layer has it, else stay unpaired — the marker decides, never a 「·」 in a
-   name (dot 1792309220). Stored keys and pairs are untouched.
+   standard without the marker was saved before it: a bone name without 「·」 is a line name and pairs by the bone's line
+   name when exactly one bone of the layer has it; a name with 「·」 is an old line name or an unmarked 「连续曲线·线」
+   (5eefb4b–30cddec), which cannot be told apart, so it is never paired — saving the standard again marks it (dot
+   1792309220, 1792309505). Names are kept as stored. Stored keys and pairs are untouched.
 10. Archive: the names part keeps its shape (old files are valid under the wider rule, after 「·」 is removed); standards
     keep theirs (v15).
 

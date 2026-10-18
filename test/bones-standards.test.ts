@@ -285,7 +285,7 @@ describe('names 图层·连续曲线·线 (bowen 1792308208, docs/names-scope.md
 })
 
 describe('dot 1792309220 / 1792309259: old names and old standards', () => {
-  it('an old standard (unmarked) holding 「左眼·骨」 pairs with the bone whose line was 「左眼·骨」 (now 「左眼骨」), never with 左眼 · 骨', () => {
+  it('an unmarked standard: a name with 「·」 (an old line name 「左眼·骨」, or an unmarked 「连续曲线·线」) is never paired; one without pairs by line name', () => {
     const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })
     d.edit(e => {
       e.line('A', { id: 'a0', layer: 'L', position: P(0, 0) }, { id: 'a1', layer: 'L', position: P(40, 0) }, { ha: P(10, -10), hb: P(-10, -10) })
@@ -294,20 +294,24 @@ describe('dot 1792309220 / 1792309259: old names and old standards', () => {
     d.edit(e => { e.renameGroup(d.snapshot().groups.find(x => x.lines.includes('B'))!.id, '左眼'); e.renameLine('B', '骨'); e.renameLine('A', '左眼骨') })
     d.edit(e => e.markBone(['A', 'B']))
     const v = { [FRONT]: [P(0), P(1, -1), P(2, -1), P(3)] as Cubic }
-    // as an old file holds it: line names, no naming marker
+    // as an old file holds it: no naming marker
     const file = JSON.parse(save(d))
-    file.document.bones.standards = [{ id: 'std-9', name: 'old', layer: 'L', bones: [{ key: 'kA', name: '左眼·骨', views: v }] }]
+    file.document.bones.standards = [{ id: 'std-9', name: 'old', layer: 'L', bones: [{ key: 'kA', name: '左眼·骨', views: v }, { key: 'kB', name: '左眼骨', views: v }] }]
     const back = open(JSON.stringify(file))
-    expect(back.standardsData()[0]!.bones[0]!.name).toBe('左眼骨')
+    expect(back.standardsData()[0]!.bones.map(b => b.name)).toEqual(['左眼·骨', '左眼骨'])
     back.edit(e => e.useStandard('L', 'std-9'))
-    expect(back.snapshot().standardChoices[0]!.pairs).toEqual([{ bone: 'A', key: 'kA' }])
+    expect(back.snapshot().standardChoices[0]!.pairs).toEqual([{ bone: 'A', key: 'kB' }])
     // imported directly (unmarked data): the same
     const C = open(save(d))
     C.edit(e => { const id = e.addStandard('L', { name: 'old', bones: [{ key: 'kA', name: '左眼·骨', views: v }] }); e.useStandard('L', id) })
-    expect(C.snapshot().standardChoices[0]!.pairs).toEqual([{ bone: 'A', key: 'kA' }])
-    // a marked standard is paired by 「连续曲线·线」 only
+    expect(C.snapshot().standardChoices[0]!.pairs).toEqual([])
+    // a marked standard is paired by 「连续曲线·线」
     C.edit(e => { const id = e.addStandard('L', { name: 'new', naming: 'curve·line', bones: [{ key: 'kB', name: '左眼·骨', views: v }] }); e.useStandard('L', id) })
     expect(C.snapshot().standardChoices[0]!.pairs).toEqual([{ bone: 'B', key: 'kB' }])
+    // saving it again (marked) makes an unmarked standard pair as usual
+    C.edit(e => e.saveStandard('L', 'old', true))
+    C.edit(e => e.useStandard('L', C.snapshot().standards.find(t => t.name === 'old')!.id))
+    expect(C.snapshot().standardChoices[0]!.pairs.map(p => p.bone).sort()).toEqual(['A', 'B'])
   })
   it('opening: only names that held 「·」 are repaired; a repeat or an empty name otherwise is still refused', () => {
     const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })

@@ -111,10 +111,12 @@ export function useStandard(s: BonesState, front: net.NetworkState, layer: Id, i
   const std = S(s).standards.find(t => t.id === id)
   if (!std) throw new Error(`No standard ${id}`)
   const list = namedBones(s, front, layer, nameOf, 'standard-names')
-  // by 「连续曲线·线」; a standard saved before (naming unmarked: its bones by line name) by the bone's line name, when
-  // exactly one bone of the layer has it (docs/names-scope.md rule 9; the marker decides, never a 「·」 in a name)
+  // by 「连续曲线·线」 (marked); an unmarked standard was saved before the marker: a bone name without 「·」 is a line name
+  // and pairs by the bone's line name when exactly one bone of the layer has it; a name with 「·」 is either an old line
+  // name or an unmarked 「连续曲线·线」 (5eefb4b–30cddec) — it cannot be told which, so it is never paired: saving the
+  // standard again marks it (docs/names-scope.md rule 9; dot 1792309220, 1792309505)
   const byName = new Map(std.bones.map(b => [b.name, b.key] as const)), linePart = (x: string) => x.slice(x.lastIndexOf('·') + 1)
-  const old = (x: string) => { const b = std.bones.filter(t => t.name === linePart(x)); return b.length === 1 && list.filter(y => linePart(y.name) === b[0]!.name).length === 1 ? b[0]!.key : undefined }
+  const old = (x: string) => { const b = std.bones.filter(t => !t.name.includes('·') && t.name === linePart(x)); return b.length === 1 && list.filter(y => linePart(y.name) === b[0]!.name).length === 1 ? b[0]!.key : undefined }
   S(s).choice.push({ layer, standard: id, pairs: list.flatMap(x => { const key = std.naming === 'curve·line' ? byName.get(x.name) : old(x.name); return key === undefined ? [] : [{ bone: x.bone, key }] }) })
   S(s).choice.sort((p, q) => (p.layer < q.layer ? -1 : p.layer > q.layer ? 1 : 0))
 }
@@ -413,12 +415,9 @@ const same = (p: Cubic, q: Cubic) => p.every((v, i) => v.x === q[i]!.x && v.y ==
 /** As plain data (archive). */
 export const data = (s: BonesState): unknown => structuredClone(S(s))
 
-/**
- * A standard's bones from data, checked: names, finite cubics per view, keys unique (a missing key is the name). A
- * standard saved before 「连续曲线·线」 names (`naming` unmarked) holds line names: 「·」 is removed from them as from
- * the lines' own (bowen 1792308685); a repeat that makes gets 副本, any other repeat is refused.
- */
+/** A standard's bones from data, checked: names, finite cubics per view, keys unique (a missing key is the name). */
 function standardBones(v: unknown, what: string, naming: 'curve·line' | undefined): StandardBone[] {
+  void naming
   const d = net.data
   const cubic = (x: unknown, w: string): Cubic => { const a = d.arr(x, w); if (a.length !== 4) d.fail(`${w} is not a cubic`); return a.map((p, i) => d.vec(p, `${w} ${i}`)) as unknown as Cubic }
   const bones = d.arr(v, `${what} bones`).map((y, k) => {
@@ -431,16 +430,7 @@ function standardBones(v: unknown, what: string, naming: 'curve·line' | undefin
   // a standard pairs by name: none empty, none repeated (dot 1792304023)
   if (bones.some(b => !b.name.trim())) d.fail(`${what} has a bone without a name`)
   d.unique(bones.map(b => b.name), `${what} bone name`)
-  if (naming === 'curve·line') return bones
-  const changed = bones.map(b => b.name.includes('·')), seen = new Set(bones.filter((_, i) => !changed[i]).map(b => b.name))
-  return bones.map((b, i) => {
-    if (!changed[i]) return b
-    const clean = b.name.replaceAll('·', '') || '骨骼'
-    let name = clean
-    for (let k = 1; seen.has(name); k++) name = clean + '副本' + (k > 1 ? k : '')
-    seen.add(name)
-    return { ...b, name }
-  })
+  return bones
 }
 
 /** From saved data, checked: types, references to lines that exist, finite shapes; a bad file is refused, never repaired. */
