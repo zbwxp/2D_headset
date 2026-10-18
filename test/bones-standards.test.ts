@@ -226,6 +226,20 @@ describe('dot 1792304023', () => {
   })
 })
 
+describe('a face far from its standard (bowen 1792304469: made faces are edited where the default face is)', () => {
+  it('a standard recorded 2000 away: 捏脸 is refused with bone-standard-far, nothing changes; near it, it works', () => {
+    const A = recorded(), B = face(2000), data = A.standardsData()[0]!
+    B.edit(e => { const id = e.addStandard('L', data); e.useStandard('L', id) })
+    const was = save(B)
+    expect(code(() => B.edit(e => e.boneMode('make')))).toBe('bone-standard-far')
+    expect(save(B)).toBe(was)
+    // a face a little off (a few units) is a changed eye, carried as before
+    const C = face(3)
+    C.edit(e => { const id = e.addStandard('L', data); e.useStandard('L', id); e.boneMode('make') })
+    expect(C.snapshot().boneMode).toBe('make')
+  })
+})
+
 describe('switching the chosen standard', () => {
   it('regenerates the side bones from the new standard; back to the first gives the first result again', () => {
     const d = recorded(), s1 = stdId(d, 'S1')

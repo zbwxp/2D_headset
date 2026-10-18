@@ -332,13 +332,21 @@ function bonesFromStandards(s: BonesState, network: net.NetworkState, ch: net.Ch
   }
   if (!paired.size) return out
   const ids = [...paired.keys()].sort()
-  for (const key of net.shapeLayers(network).filter(l => l.kind === 'view' && l.key !== views.FRONT).map(l => l.key)) {
+  const sideKeys = net.shapeLayers(network).filter(l => l.kind === 'view' && l.key !== views.FRONT).map(l => l.key), firstSide = sideKeys[0]
+  for (const key of sideKeys) {
     const n = net.of(network, key), made = new Map<Id, Cubic>()
     // each paired bone's end targets in this view, one per point (the smaller bone id first)
     const target = new Map<Id, Vec>(), mapped = new Map<Id, (p: Vec) => Vec>()
     for (const id of ids) {
       const std = paired.get(id)!, s0 = std.views[views.FRONT], sv = std.views[key]
       if (!s0 || !sv) continue
+      // a made face is edited where the default face is (bowen 1792304469, ①): a bone farther than its standard bone's
+      // length from it at 0,0 is refused, never carried with huge offsets (ledger row 26)
+      if (key === firstSide) {
+        const now0 = cubicOf(front, id), poly = Array.from({ length: 65 }, (_, k) => at(s0, k / 64)), L = lengthOf(s0)
+        const far = Math.max(...Array.from({ length: 9 }, (_, k) => { const p = at(now0, k / 8); return Math.min(...poly.map(q => Math.hypot(q.x - p.x, q.y - p.y))) }))
+        if (far > L) throw new net.Refusal('bone-standard-far', `bone-standard-far: at 0,0 the bone ${id} is ${far.toFixed(1)} from its standard's bone (more than that bone's length ${L.toFixed(1)}); a made face is edited where the standard was recorded; nothing was published`, net.lineObjects([id]))
+      }
       let m: (p: Vec) => Vec
       try { m = boneMap(s0, sv) } catch (e) { return refuse(e, net.lineObjects([id])) }
       mapped.set(id, m)
