@@ -122,6 +122,12 @@ const CASES: Case[] = [
   { op: 'detach', args: () => [['ef']], setup: d => d.edit(e => { e.markBone(['xy']); e.attach(['ef'], 'xy') }) },
   // a flag on its edit: alone it writes nothing (so no per-view write check); its effect is tested in test/bones.test.ts
   { op: 'placeBones', args: () => [], views: [] },
+  // modes and standards (B3)
+  { op: 'boneMode', args: () => ['make'] },
+  { op: 'saveStandard', args: () => ['L', 's1'], setup: d => d.edit(e => e.markBone(['xy'])) },
+  { op: 'removeStandard', args: () => ['std-1'], setup: d => { d.edit(e => e.markBone(['xy'])); d.edit(e => e.saveStandard('L', 's1')) } },
+  { op: 'useStandard', args: () => ['L', 'std-1'], setup: d => { d.edit(e => e.markBone(['xy'])); d.edit(e => e.saveStandard('L', 's1')) } },
+  { op: 'addStandard', args: () => ['L', { name: 'imported', bones: [{ key: 'k', name: 'n', views: { [FRONT]: [P(0), P(1), P(2), P(3)] } }] }] },
   { op: 'mask', args: d => ['m1', [loops(d)[0]], { kind: 'line', id: 'xy' }, 'inverse'] },
   { op: 'removeMask', args: () => ['m1'], setup: d => d.edit(e => e.mask('m1', [loops(d)[0]!], { kind: 'line', id: 'xy' }, 'inverse')) },
   { op: 'fillVisible', args: d => [loops(d)[0], false] },

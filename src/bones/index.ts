@@ -11,8 +11,14 @@ type Id = net.Id
 export type Mode = 'record' | 'make'
 /** One attached line: its bone and the base it is carried from (its 0,0 shape and the bone's, when attached or last renewed). */
 export interface Attachment { readonly line: Id; readonly bone: Id; readonly base: { readonly line: Cubic; readonly bone: Cubic } }
-/** A standard (B3): one layer's bones in the nine views, under a name; `id` is what a made face refers to. */
-export interface Standard { readonly id: Id; readonly name: string; readonly layer: Id; readonly bones: readonly { readonly name: string; readonly views: Readonly<Record<string, Cubic>> }[] }
+/**
+ * A standard (B3; docs/bone-lines-checklist.md §6b): one layer's bones in the nine views, under a name; `id` is what a
+ * made face refers to; each bone has a stable `key` (pairs refer to it — names are only for the first pairing).
+ */
+export interface StandardBone { readonly key: string; readonly name: string; readonly views: Readonly<Record<string, Cubic>> }
+export interface Standard { readonly id: Id; readonly name: string; readonly layer: Id; readonly bones: readonly StandardBone[] }
+/** A layer's chosen standard and its stored pairs (bone id ↔ standard key), made once when choosing. */
+export interface Choice { readonly layer: Id; readonly standard: Id; readonly pairs: readonly { readonly bone: Id; readonly key: string }[] }
 
 declare const opaque: unique symbol
 export type BonesState = { readonly [opaque]: 'bones' }
@@ -22,8 +28,8 @@ interface Store {
   /** A point shared by attached lines on different bones: the bone it follows (chosen when attaching, stored). */
   owners: { point: Id; bone: Id }[]
   standards: Standard[]
-  /** Per layer of bones, the standard a made face uses (B3). */
-  choice: { layer: Id; standard: Id }[]
+  /** Per layer of bones, the standard a made face uses, with its pairs (B3). */
+  choice: { layer: Id; standard: Id; pairs: { bone: Id; key: string }[] }[]
   mode: Mode
 }
 const S = (s: BonesState) => s as unknown as Store
@@ -37,6 +43,88 @@ export const attachmentOf = (s: BonesState, line: Id): Attachment | undefined =>
 export const isAttached = (s: BonesState, line: Id) => S(s).attach.some(a => a.line === line)
 export const owners = (s: BonesState): { point: Id; bone: Id }[] => S(s).owners.map(o => ({ ...o }))
 export const mode = (s: BonesState): Mode => S(s).mode
+export const standards = (s: BonesState): Standard[] => structuredClone(S(s).standards)
+export const choices = (s: BonesState): Choice[] => structuredClone(S(s).choice)
+
+// ---- modes and standards (B3; docs/bone-lines-checklist.md §6b) --------------------------------------------------
+
+/** 录制标准 / 捏脸. Switching never changes a standard (dot 1792302286). */
+export function setMode(s: BonesState, m: Mode) {
+  if (m !== 'record' && m !== 'make') throw new Error(`Unknown bone mode ${String(m)}`)
+  S(s).mode = m
+}
+/** The bones whose 0,0 line is in `layer`. */
+const bonesIn = (s: BonesState, front: net.NetworkState, layer: Id) => S(s).bones.filter(b => net.hasLine(front, b) && net.point(front, net.line(front, b).a).layer === layer)
+/** Each bone's name, checked: none empty, none repeated (a standard pairs by name once). */
+function namedBones(s: BonesState, front: net.NetworkState, layer: Id, nameOf: (line: Id) => string | undefined, code: string) {
+  const list = bonesIn(s, front, layer).map(b => ({ bone: b, name: nameOf(b) ?? '' }))
+  const empty = list.filter(x => !x.name.trim()).map(x => x.bone)
+  if (empty.length) throw new net.Refusal(code, `${code}: the bones ${empty.join(', ')} have no name; a standard pairs bones by name`, net.lineObjects(empty))
+  const seen = new Map<string, Id[]>(); for (const x of list) seen.set(x.name, [...(seen.get(x.name) ?? []), x.bone])
+  const twice = [...seen].filter(([, ids]) => ids.length > 1)
+  if (twice.length) throw new net.Refusal(code, `${code}: the name${twice.length > 1 ? 's' : ''} ${twice.map(([n]) => `「${n}」`).join(', ')} ${twice.length > 1 ? 'are' : 'is'} used by more than one bone in this layer; a standard pairs bones by name`, net.lineObjects(twice.flatMap(([, ids]) => ids)))
+  return list
+}
+/**
+ * The layer's bones in every view (`network`), saved as the standard `name` (存为标准). An existing name in this layer is
+ * replaced only with `overwrite` (its id and the keys of same-named bones kept), else refused. `id` is used for a new one.
+ */
+export function saveStandard(s: BonesState, network: net.NetworkState, layer: Id, name: string, overwrite: boolean, id: Id, nameOf: (line: Id) => string | undefined) {
+  if (!name.trim()) throw new net.Refusal('standard-name', 'standard-name: a standard needs a name')
+  const front = net.of(network, views.FRONT), list = namedBones(s, front, layer, nameOf, 'standard-names')
+  if (!list.length) throw new net.Refusal('standard-empty', `standard-empty: the layer ${layer} has no bones`)
+  const was = S(s).standards.find(t => t.layer === layer && t.name === name)
+  if (was && !overwrite) throw new net.Refusal('standard-exists', `standard-exists: 「${name}」 already exists for this layer; overwrite it explicitly`)
+  if (!was && S(s).standards.some(t => t.id === id)) throw new Error(`Standard id ${id} is in use`)
+  const keys = new Map((was?.bones ?? []).map(b => [b.name, b.key] as const)), used = new Set<string>()
+  const keyFor = (bone: Id, n: string) => { let k = keys.get(n) ?? bone; for (let i = 2; used.has(k); i++) k = `${keys.get(n) ?? bone}~${i}`; used.add(k); return k }
+  const viewKeys = net.shapeLayers(network).filter(l => l.kind === 'view').map(l => l.key)
+  const bones = list.map(x => ({ key: keyFor(x.bone, x.name), name: x.name, views: Object.fromEntries(viewKeys.map(k => [k, cubicOf(net.of(network, k), x.bone)])) }))
+  const std: Standard = { id: was?.id ?? id, name, layer, bones }
+  S(s).standards = was ? S(s).standards.map(t => (t.id === was.id ? std : t)) : [...S(s).standards, std]
+  // a layer using the replaced standard keeps its pairs where the key still exists
+  S(s).choice = S(s).choice.map(c => (c.standard === std.id ? { ...c, pairs: c.pairs.filter(p => bones.some(b => b.key === p.key)) } : c))
+}
+/** A fresh standard id: `std-1`, `std-2`, … */
+export const freshStandardId = (s: BonesState): Id => { let i = 1; while (S(s).standards.some(t => t.id === `std-${i}`)) i++; return `std-${i}` }
+/** A standard removed (删除): refused while a layer uses it. */
+export function removeStandard(s: BonesState, id: Id) {
+  if (!S(s).standards.some(t => t.id === id)) throw new Error(`No standard ${id}`)
+  if (S(s).choice.some(c => c.standard === id)) throw new net.Refusal('standard-in-use', `standard-in-use: a layer uses this standard; choose another (or none) first`)
+  S(s).standards = S(s).standards.filter(t => t.id !== id)
+}
+/**
+ * The standard a layer uses (用标准), or none (`null`). The layer's bones are paired with the standard's by name here,
+ * once, and the pairs stored; a bone without a same-named standard bone stays unpaired. Empty or repeated names refuse.
+ */
+export function useStandard(s: BonesState, front: net.NetworkState, layer: Id, id: Id | null, nameOf: (line: Id) => string | undefined) {
+  S(s).choice = S(s).choice.filter(c => c.layer !== layer)
+  if (id === null) return
+  const std = S(s).standards.find(t => t.id === id)
+  if (!std) throw new Error(`No standard ${id}`)
+  const list = namedBones(s, front, layer, nameOf, 'standard-names')
+  const byName = new Map(std.bones.map(b => [b.name, b.key] as const))
+  S(s).choice.push({ layer, standard: id, pairs: list.flatMap(x => (byName.has(x.name) ? [{ bone: x.bone, key: byName.get(x.name)! }] : [])) })
+  S(s).choice.sort((p, q) => (p.layer < q.layer ? -1 : p.layer > q.layer ? 1 : 0))
+}
+/**
+ * A standard from elsewhere (从文件导入标准), copied into `layer` as a new standard `id`; a same-named standard of that
+ * layer is replaced only with `overwrite` (keeping its id), else refused.
+ */
+export function addStandard(s: BonesState, layer: Id, data: { name: string; bones: readonly StandardBone[] }, overwrite: boolean, id: Id): Id {
+  let bones: StandardBone[]
+  try { bones = standardBones(data.bones, 'imported standard') } catch (e) { throw new net.Refusal('standard-data', `standard-data: ${(e as Error).message}`) }
+  if (typeof data.name !== 'string' || !data.name.trim()) throw new net.Refusal('standard-name', 'standard-name: a standard needs a name')
+  if (!bones.length) throw new net.Refusal('standard-empty', 'standard-empty: the standard has no bones')
+  const was = S(s).standards.find(t => t.layer === layer && t.name === data.name)
+  if (was && !overwrite) throw new net.Refusal('standard-exists', `standard-exists: 「${data.name}」 already exists for this layer; overwrite it explicitly`)
+  if (!was && S(s).standards.some(t => t.id === id)) throw new Error(`Standard id ${id} is in use`)
+  const std: Standard = { id: was?.id ?? id, name: data.name, layer, bones }
+  S(s).standards = was ? S(s).standards.map(t => (t.id === was.id ? std : t)) : [...S(s).standards, std]
+  // a layer using the replaced standard keeps its pairs where the key still exists
+  S(s).choice = S(s).choice.map(c => (c.standard === std.id ? { ...c, pairs: c.pairs.filter(p => bones.some(b => b.key === p.key)) } : c))
+  return std.id
+}
 
 /** A line's cubic in a view. */
 export function cubicOf(n: net.NetworkState, id: Id): Cubic {
@@ -57,6 +145,7 @@ export function markBone(s: BonesState, n: net.NetworkState, lines: readonly Id[
       if (!S(s).bones.includes(id)) S(s).bones.push(id)
     } else if (S(s).bones.includes(id)) {
       S(s).bones = S(s).bones.filter(b => b !== id)
+      S(s).choice = S(s).choice.map(c => ({ ...c, pairs: c.pairs.filter(p => p.bone !== id) }))
       release(s, n, S(s).attach.filter(a => a.bone === id).map(a => a.line))
     }
   }
@@ -133,6 +222,8 @@ export function update(s: BonesState, n: net.NetworkState, ch: net.Changes) {
   S(s).attach = S(s).attach.filter(a => !gone.has(a.line) && !bonesGone.includes(a.bone))
   const deadPoints = new Set(ch.deletedPoints)
   S(s).owners = S(s).owners.filter(o => !deadPoints.has(o.point) && S(s).bones.includes(o.bone))
+  // a bone gone leaves its pair (the standard keeps its data: it is a copy)
+  S(s).choice = S(s).choice.map(c => ({ ...c, pairs: c.pairs.filter(p => S(s).bones.includes(p.bone)) }))
   S(s).attach.sort((p, q) => (p.line < q.line ? -1 : p.line > q.line ? 1 : 0))
   void n
 }
@@ -161,6 +252,8 @@ export const fitLimit = (line: Cubic, bone: Cubic) => 0.02 * Math.max(lengthOf(l
  */
 export function derive(s: BonesState, network: net.NetworkState, ch: net.Changes, edited: ReadonlySet<Id>, placing: ReadonlySet<Id>): Map<string, Map<Id, Cubic>> {
   const out = new Map<string, Map<Id, Cubic>>()
+  // step 3 (捏脸): the paired bones' side views from their standards, written first; the attached lines then follow them
+  if (S(s).mode === 'make') for (const [k, m] of bonesFromStandards(s, network, ch)) out.set(k, new Map(m))
   if (!S(s).attach.length) return out
   const front = net.of(network, views.FRONT)
   // the bases first (at 0,0, from the edit as it is)
@@ -176,7 +269,7 @@ export function derive(s: BonesState, network: net.NetworkState, ch: net.Changes
     // a bone as it was at the base carries its lines unchanged: at the front a line is then left exactly as it is,
     // elsewhere it takes its base shape exactly (the identity, never refit)
     const carried = live.filter(a => !isFront || !same(a.base.bone, boneNow.get(a.bone)!))
-    if (!carried.length) { out.set(key, made); continue }
+    if (!carried.length) { if (!out.has(key)) out.set(key, made); continue }
     // one target per shared point: the owner's carrying of it (the attachment with the smallest line id on that bone)
     const target = new Map<Id, Vec>()
     for (const o of S(s).owners) {
@@ -213,14 +306,104 @@ export function derive(s: BonesState, network: net.NetworkState, ch: net.Changes
     }
     // the cubics as written (a shared point's final position may differ from a line's own fit only when two lines on one
     // bone carried it differently — the last write wins and the check below reads what is there)
+    out.set(key, new Map([...(out.get(key) ?? new Map<Id, Cubic>()), ...[...made.keys()].map(id => [id, cubicOf(n, id)] as const)]))
+  }
+  return out
+}
+
+/**
+ * 捏脸's side bones (docs/bone-lines-checklist.md §6b): for each layer's chosen standard and each stored pair, the bone in
+ * every other view = bone coordinates of 「the standard's bone at 0,0 → in that view」 applied to the bone as it is at 0,0,
+ * refit as one cubic. An end shared by paired bones takes the smaller bone id's target; an end shared with a bone that
+ * is not paired must land where that bone has it, else refused (dot 1792302286). Written through the network's own
+ * operations (points as targets, handles held). Returns the bones written, per view.
+ */
+function bonesFromStandards(s: BonesState, network: net.NetworkState, ch: net.Changes): Map<string, Map<Id, Cubic>> {
+  const out = new Map<string, Map<Id, Cubic>>(), front = net.of(network, views.FRONT)
+  const paired = new Map<Id, StandardBone>()
+  for (const c of S(s).choice) {
+    const std = S(s).standards.find(t => t.id === c.standard)
+    if (!std) continue
+    for (const p of c.pairs) { const b = std.bones.find(x => x.key === p.key); if (b && net.hasLine(front, p.bone) && S(s).bones.includes(p.bone)) paired.set(p.bone, b) }
+  }
+  if (!paired.size) return out
+  const ids = [...paired.keys()].sort()
+  for (const key of net.shapeLayers(network).filter(l => l.kind === 'view' && l.key !== views.FRONT).map(l => l.key)) {
+    const n = net.of(network, key), made = new Map<Id, Cubic>()
+    // each paired bone's end targets in this view, one per point (the smaller bone id first)
+    const target = new Map<Id, Vec>(), mapped = new Map<Id, (p: Vec) => Vec>()
+    for (const id of ids) {
+      const std = paired.get(id)!, s0 = std.views[views.FRONT], sv = std.views[key]
+      if (!s0 || !sv) continue
+      let m: (p: Vec) => Vec
+      try { m = boneMap(s0, sv) } catch (e) { return refuse(e, net.lineObjects([id])) }
+      mapped.set(id, m)
+      // a bone at 0,0 exactly as in its standard takes the standard's shape in this view exactly (as an unchanged bone keeps its base)
+      const l = net.line(front, id), exact = same(cubicOf(front, id), s0)
+      for (const [pt, end] of [[l.a, sv[0]], [l.b, sv[3]]] as const) {
+        if (target.has(pt)) continue
+        let q: Vec
+        try { q = exact ? { x: end.x, y: end.y } : m(net.point(front, pt).position) } catch (e) { return refuse(e, net.lineObjects([id])) }
+        // a point a bone that is not paired also uses stays where that bone has it in this view; a different target refuses
+        const others = net.linesAt(n, pt).map(x => x.line.id).filter(b => b !== id && S(s).bones.includes(b) && !paired.has(b))
+        if (others.length) {
+          const here = net.point(n, pt).position
+          if (Math.abs(here.x - q.x) > 1e-9 || Math.abs(here.y - q.y) > 1e-9) throw new net.Refusal('bone-standard-conflict', `bone-standard-conflict: in ${key} the point ${pt} is shared by ${id} (from its standard) and ${others.join(', ')} (not paired), which disagree; nothing was published`, net.lineObjects([id, ...others]))
+        }
+        target.set(pt, q)
+      }
+    }
+    for (const id of ids) {
+      if (!mapped.has(id)) continue
+      const std = paired.get(id)!, l = net.line(front, id), now0 = cubicOf(front, id)
+      let r: { shape: Cubic; maxError: number }
+      const ta = target.get(l.a)!, tb = target.get(l.b)!, sv = std.views[key]!
+      if (same(now0, std.views[views.FRONT]!) && ta.x === sv[0].x && ta.y === sv[0].y && tb.x === sv[3].x && tb.y === sv[3].y) r = { shape: copyCubic(sv), maxError: 0 }
+      else try { r = boneLine(now0, std.views[views.FRONT]!, sv, { a: ta, b: tb }) }
+      catch (e) { return refuse(e, net.lineObjects([id])) }
+      if (r.maxError > fitLimit(now0, std.views[views.FRONT]!)) throw new net.Refusal('bone-fit', `bone-fit: in ${key}, the bone ${id} cannot follow its standard as one curve (fit error ${r.maxError.toFixed(3)}); nothing was published`, net.lineObjects([id]))
+      made.set(id, r.shape)
+    }
+    if (!made.size) continue
+    const moves = new Map<Id, Vec>()
+    for (const [id, c] of made) { const l = net.line(n, id); moves.set(l.a, c[0]); moves.set(l.b, c[3]) }
+    net.move(n, ch, [...moves].map(([id, p]) => ({ id, target: p })))
+    for (const [id, c] of made) {
+      net.moveHandle(n, ch, id, 'a', { x: c[1].x - c[0].x, y: c[1].y - c[0].y })
+      net.moveHandle(n, ch, id, 'b', { x: c[2].x - c[3].x, y: c[2].y - c[3].y })
+    }
     out.set(key, new Map([...made.keys()].map(id => [id, cubicOf(n, id)])))
   }
   return out
+}
+
+/** Why a bone cannot be edited off the front in 捏脸 (the refusal's words), or undefined when it can (录制标准). */
+export function standardLock(s: BonesState, front: net.NetworkState, bone: Id): string | undefined {
+  if (S(s).mode !== 'make' || !S(s).bones.includes(bone) || !net.hasLine(front, bone)) return undefined
+  const layer = net.point(front, net.line(front, bone).a).layer, c = S(s).choice.find(x => x.layer === layer)
+  if (!c) return `no standard is chosen for its layer ${layer} — choose one, or go back to 录制标准`
+  if (!c.pairs.some(p => p.bone === bone)) return 'it is not paired with a bone of the chosen standard — go back to 录制标准 to edit it'
+  const std = S(s).standards.find(t => t.id === c.standard)
+  return `it comes from the standard 「${std?.name ?? c.standard}」 — change it in 录制标准`
 }
 const same = (p: Cubic, q: Cubic) => p.every((v, i) => v.x === q[i]!.x && v.y === q[i]!.y)
 
 /** As plain data (archive). */
 export const data = (s: BonesState): unknown => structuredClone(S(s))
+
+/** A standard's bones from data, checked: names, finite cubics per view, keys unique (a missing key is the name). */
+function standardBones(v: unknown, what: string): StandardBone[] {
+  const d = net.data
+  const cubic = (x: unknown, w: string): Cubic => { const a = d.arr(x, w); if (a.length !== 4) d.fail(`${w} is not a cubic`); return a.map((p, i) => d.vec(p, `${w} ${i}`)) as unknown as Cubic }
+  const bones = d.arr(v, `${what} bones`).map((y, k) => {
+    const Y = d.obj(y, `${what} bone ${k}`), name = d.str(Y.name, `${what} bone ${k} name`), V = d.obj(Y.views, `${what} bone ${k} views`)
+    // a standard bone without a key (none could be made before B3, dot 1792302329): its name is its key
+    const key = Y.key === undefined ? name : d.str(Y.key, `${what} bone ${k} key`)
+    return { key, name, views: Object.fromEntries(Object.entries(V).map(([vk, c]) => [vk, cubic(c, `${what} bone ${k} views ${vk}`)])) }
+  })
+  d.unique(bones.map(b => b.key), `${what} bone key`)
+  return bones
+}
 
 /** From saved data, checked: types, references to lines that exist, finite shapes; a bad file is refused, never repaired. */
 export function restore(v: unknown, n: net.NetworkState): BonesState {
@@ -243,12 +426,25 @@ export function restore(v: unknown, n: net.NetworkState): BonesState {
     return { point: p, bone: b }
   })
   d.unique(S(s).owners.map(x => x.point), 'owned point')
-  S(s).standards = d.arr(o.standards, 'bones standards').map((x, i) => {
-    const T = d.obj(x, `standard ${i}`), V = (y: unknown, what: string) => { const r = d.obj(y, what); return Object.fromEntries(Object.entries(r).map(([k, c]) => [k, cubic(c, `${what} ${k}`)])) }
-    return { id: d.str(T.id, `standard ${i} id`), name: d.str(T.name, `standard ${i} name`), layer: d.str(T.layer, `standard ${i} layer`), bones: d.arr(T.bones, `standard ${i} bones`).map((y, k) => { const Y = d.obj(y, `standard ${i} bone ${k}`); return { name: d.str(Y.name, `standard ${i} bone ${k} name`), views: V(Y.views, `standard ${i} bone ${k} views`) } }) }
+  S(s).standards = d.arr(o.standards, 'bones standards').map((x, i): Standard => {
+    const T = d.obj(x, `standard ${i}`)
+    return { id: d.str(T.id, `standard ${i} id`), name: d.str(T.name, `standard ${i} name`), layer: d.str(T.layer, `standard ${i} layer`), bones: standardBones(T.bones, `standard ${i}`) }
   })
   d.unique(S(s).standards.map(x => x.id), 'standard')
-  S(s).choice = d.arr(o.choice, 'bones choice').map((x, i) => { const C = d.obj(x, `choice ${i}`), std = d.str(C.standard, `choice ${i} standard`); if (!S(s).standards.some(t => t.id === std)) d.fail(`choice ${i}: no standard ${std}`); return { layer: d.str(C.layer, `choice ${i} layer`), standard: std } })
+  S(s).choice = d.arr(o.choice, 'bones choice').map((x, i) => {
+    const C = d.obj(x, `choice ${i}`), std = d.str(C.standard, `choice ${i} standard`), t = S(s).standards.find(u => u.id === std)
+    if (!t) d.fail(`choice ${i}: no standard ${std}`)
+    // a choice without pairs (none could be made before B3): unpaired until the standard is chosen again
+    const pairs = C.pairs === undefined ? [] : d.arr(C.pairs, `choice ${i} pairs`).map((y, k) => {
+      const Y = d.obj(y, `choice ${i} pair ${k}`), bone = d.str(Y.bone, `choice ${i} pair ${k} bone`), key = d.str(Y.key, `choice ${i} pair ${k} key`)
+      if (!S(s).bones.includes(bone)) d.fail(`choice ${i} pair ${k}: ${bone} is not a bone`)
+      if (!t!.bones.some(b => b.key === key)) d.fail(`choice ${i} pair ${k}: the standard has no bone ${key}`)
+      return { bone, key }
+    })
+    d.unique(pairs.map(p => p.bone), `choice ${i} paired bone`)
+    return { layer: d.str(C.layer, `choice ${i} layer`), standard: std, pairs }
+  })
+  d.unique(S(s).choice.map(c => c.layer), 'choice layer')
   const m = d.str(o.mode, 'bones mode')
   if (m !== 'record' && m !== 'make') d.fail(`bones mode ${m} is unknown`)
   S(s).mode = m as Mode

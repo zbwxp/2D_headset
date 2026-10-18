@@ -83,6 +83,10 @@ export interface Snapshot {
   /** Bone lines (骨骼线) and the lines attached to each (绑骨), shared by every view. */
   bones: Id[]
   attachments: { line: Id; bone: Id }[]
+  /** 录制标准 / 捏脸, the standards (without their shapes) and each layer's chosen standard with its pairs. */
+  boneMode: bones.Mode
+  standards: { id: Id; name: string; layer: Id; bones: { key: string; name: string }[] }[]
+  standardChoices: bones.Choice[]
 }
 export type Geometry = derived.Geometry
 export type Zones = derived.Zones
@@ -429,6 +433,21 @@ export class Editor {
   detach(lines: Id[]) { bones.detach(this.s.bones, this.s.network, lines) }
   /** 「摆放骨骼」: in this edit, a bone moved at 0,0 is placed — its attached lines stay where they are (their bases renew). */
   placeBones() { this.tx.placing = true }
+  /** 录制标准 ('record') or 捏脸 ('make') (docs/bone-lines-checklist.md §6b). Switching never changes a standard. */
+  boneMode(mode: bones.Mode) { bones.setMode(this.s.bones, mode) }
+  /** 存为标准: the layer's bones in the nine views under `name`; an existing name only with `overwrite`. */
+  saveStandard(layer: Id, name: string, overwrite = false) {
+    bones.saveStandard(this.s.bones, this.s.network, layer, name, overwrite, bones.freshStandardId(this.s.bones), id => names.of(this.s.names, 'line', id))
+  }
+  /** A standard removed; refused while a layer uses it. */
+  removeStandard(id: Id) { bones.removeStandard(this.s.bones, id) }
+  /** 用标准: the standard `layer` uses (pairs its bones by name, once), or none. */
+  useStandard(layer: Id, id: Id | null) { bones.useStandard(this.s.bones, net.of(this.s.network, views.FRONT), layer, id, b => names.of(this.s.names, 'line', b)) }
+  /** 从文件导入标准: a copy of another drawing's standard into `layer` (a new id; a same-named one only with `overwrite`; the data is checked). Returns its id. */
+  addStandard(layer: Id, data: { name: string; bones: readonly bones.StandardBone[] }, overwrite = false): Id {
+    if (!net.hasLayer(this.s.network, layer)) throw new Error(`No layer ${layer}`)
+    return bones.addStandard(this.s.bones, layer, structuredClone(data), overwrite, bones.freshStandardId(this.s.bones))
+  }
 
   // masks (显隐; graph "显隐 — masks", preliminary; docs/mask-p2-checklist.md)
   /** A mask: `sources` (filled closed curves) hide part of `target` (a line or a filled closed curve) — inverse: inside them; normal: all but inside them. Shared by every view. */
@@ -847,6 +866,8 @@ export class Core {
   loopsAt(at: Vec): Id[] { return this.in(views.FRONT).loopsAt(at) }
   /** Lines with an unbroadcast change: their front differs from the angle baseline (stage 2 rule 5). */
   pendingLines(): Id[] { return animation.pending(this.state.network) }
+  /** The standards with their shapes (for importing them into another drawing), copies. */
+  standardsData(): bones.Standard[] { this.idle('standardsData'); return bones.standards(this.state.bones) }
   /** The 元线条 named `name` in layer `layer`: its line id, or undefined. */
   lineByName(layer: Id, name: string): Id | undefined { return meta.lineByName(this.state.network, this.state.names, layer, name) }
 
@@ -923,6 +944,9 @@ export class LayerReader {
       mirrorPairs: apply.pairs(s.apply),
       bones: bones.bones(s.bones),
       attachments: bones.attachments(s.bones).map(x => ({ line: x.line, bone: x.bone })),
+      boneMode: bones.mode(s.bones),
+      standards: bones.standards(s.bones).map(t => ({ id: t.id, name: t.name, layer: t.layer, bones: t.bones.map(b => ({ key: b.key, name: b.name })) })),
+      standardChoices: bones.choices(s.bones),
     })
   }
 
@@ -1058,11 +1082,17 @@ export function importState(data: unknown): Core {
 /** In a non-front view: refused when the edit's own intents (targets, held handles, aimed tips) touch an attached line. */
 function bonesIntentCheck(s: State, ch: net.Changes, layer: string) {
   const attached = new Set(bones.attachments(s.bones).map(a => a.line))
-  if (!attached.size) return
+  if (!attached.size && bones.mode(s.bones) !== 'make') return
   const n = net.of(s.network, layer), points = new Set(ch.targets.filter(t => t.layer === layer).map(t => t.point))
   const handles = new Set([...ch.held, ...ch.handleTips].filter(h => h.layer === layer).map(h => h.line))
   const hit = [...attached].filter(id => net.hasLine(n, id) && (points.has(net.line(n, id).a) || points.has(net.line(n, id).b) || handles.has(id))).sort()
   if (hit.length) throw new net.Refusal('bone-derived', `bone-derived: in ${layer} the lines ${hit.join(', ')} are generated from their bones — edit them at 0,0; nothing was published`, net.lineObjects(hit))
+  // 捏脸: no bone is edited off the front, chosen, unchosen or unpaired (dot 1792302286)
+  const front = net.of(s.network, views.FRONT)
+  for (const b of bones.bones(s.bones).filter(id => net.hasLine(n, id) && (points.has(net.line(n, id).a) || points.has(net.line(n, id).b) || handles.has(id)))) {
+    const why = bones.standardLock(s.bones, front, b)
+    if (why) throw new net.Refusal('bone-standard', `bone-standard: in 捏脸 the bone ${b} is not edited in ${layer}: ${why}; nothing was published`, net.lineObjects([b]))
+  }
 }
 
 /** The views of a state as `evaluate` input: per view its angle, positions and handle vectors (strokes are one for every view). */
@@ -1294,12 +1324,13 @@ function bonesIntent(s: State, ch: net.Changes, placing: boolean): BonesIntent {
  * generated, so a spring at a join with an ordinary line turns the ordinary line, never the generated one.
  */
 function holdAttached(s: State, ch: net.Changes) {
-  const attached = bones.attachments(s.bones)
-  if (!attached.length) return
+  // the attached lines, and in 捏脸 the bones (generated off the front from their standards)
+  const held = [...bones.attachments(s.bones).map(a => a.line), ...(bones.mode(s.bones) === 'make' ? bones.bones(s.bones) : [])]
+  if (!held.length) return
   for (const k of viewKeys(s)) {
     if (k === views.FRONT) continue
     const n = net.of(s.network, k)
-    for (const a of attached) if (net.hasLine(n, a.line)) { net.hold(n, ch, a.line, 'a'); net.hold(n, ch, a.line, 'b') }
+    for (const id of held) if (net.hasLine(n, id)) { net.hold(n, ch, id, 'a'); net.hold(n, ch, id, 'b') }
   }
 }
 
@@ -1312,7 +1343,8 @@ function holdAttached(s: State, ch: net.Changes) {
  */
 function settleBones(s: State, ch: net.Changes, intent: BonesIntent) {
   const attached = bones.attachments(s.bones)
-  if (!attached.length) return
+  // nothing to derive: no attached line and no bone generated from a standard (捏脸)
+  if (!attached.length && !(bones.mode(s.bones) === 'make' && bones.choices(s.bones).some(c => c.pairs.length))) return
   let edited: ReadonlySet<Id> = intent.edited, placed: ReadonlySet<Id> = intent.placed
   // the front's settle may not move an attached line the derivation did not carry (a mirror partner on a bone of its own):
   // indirect changes never renew a base — two constraints disagreeing are refused (dot 1792300055)

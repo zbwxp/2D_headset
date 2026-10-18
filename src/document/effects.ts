@@ -124,6 +124,12 @@ export const EFFECTS: Record<string, Effect> = {
   detach: full({ reads: 'draft', shared: ['bones'] }),
   // a flag on this edit: beside a bone drag, the drag places the bone (attached lines stay); alone it changes nothing
   placeBones: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: [], autoStructure: false, settle: 'none', alone: false, companion: true },
+  // modes and standards (B3): their own part; the derivation they cause runs in the settle
+  boneMode: full({ reads: 'draft', shared: ['bones'] }),
+  saveStandard: full({ reads: 'draft', shared: ['bones'] }),
+  removeStandard: full({ reads: 'draft', shared: ['bones'] }),
+  useStandard: full({ reads: 'draft', shared: ['bones'] }),
+  addStandard: full({ reads: 'draft', shared: ['bones'] }),
   // masks (显隐): their own part only, no geometry
   mask: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['masks'], autoStructure: false, settle: 'none', alone: false, companion: false },
   removeMask: { reads: 'draft', intents: 'none', shapes: 'none', records: false, shared: ['masks'], autoStructure: false, settle: 'none', alone: false, companion: false },
