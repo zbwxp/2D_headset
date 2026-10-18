@@ -201,6 +201,31 @@ describe('捏脸 (bones generated off the front from the chosen standard)', () =
   })
 })
 
+describe('dot 1792304023', () => {
+  it('an imported standard (keys from its source), chosen, a local bone renamed, then overwritten: the keys and the pairs stay', () => {
+    const A = recorded(), data = A.standardsData()[0]!
+    const B = face()
+    B.edit(e => { const id = e.addStandard('L', { name: data.name, bones: data.bones.map(b => ({ ...b, key: `src-${b.key}` })) }); e.useStandard('L', id); e.boneMode('make') })
+    const pairs = json(B.snapshot().standardChoices)
+    expect(B.snapshot().standardChoices[0]!.pairs.map(p => p.key).sort()).toEqual(['src-D', 'src-U'])
+    B.edit(e => e.boneMode('record'))
+    B.edit(e => e.renameLine('U', '上眼睑骨'))
+    B.edit(e => e.saveStandard('L', data.name, true))
+    expect(B.standardsData()[0]!.bones.map(b => [b.key, b.name]).sort()).toEqual([['src-D', '下骨'], ['src-U', '上眼睑骨']])
+    expect(json(B.snapshot().standardChoices)).toBe(pairs)
+    // still generated from it in 捏脸
+    B.edit(e => e.boneMode('make'))
+    expect(code(() => B.editIn(SIDE, e => e.moveHandle('U', 'a', P(3, -3))))).toBe('bone-standard')
+    expect(message(() => B.editIn(SIDE, e => e.moveHandle('U', 'a', P(3, -3))))).toMatch(/comes from the standard/)
+  })
+  it('an imported standard with two bones of one name (different keys) is refused; so is a bone without a name', () => {
+    const d = face(), v = { [FRONT]: [P(0), P(1), P(2), P(3)] as Cubic }
+    expect(code(() => d.edit(e => e.addStandard('L', { name: 'x', bones: [{ key: 'a', name: '上骨', views: v }, { key: 'b', name: '上骨', views: v }] })))).toBe('standard-data')
+    expect(code(() => d.edit(e => e.addStandard('L', { name: 'x', bones: [{ key: 'a', name: ' ', views: v }] })))).toBe('standard-data')
+    expect(d.snapshot().standards).toEqual([])
+  })
+})
+
 describe('switching the chosen standard', () => {
   it('regenerates the side bones from the new standard; back to the first gives the first result again', () => {
     const d = recorded(), s1 = stdId(d, 'S1')

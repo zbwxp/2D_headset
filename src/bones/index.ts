@@ -76,8 +76,12 @@ export function saveStandard(s: BonesState, network: net.NetworkState, layer: Id
   const was = S(s).standards.find(t => t.layer === layer && t.name === name)
   if (was && !overwrite) throw new net.Refusal('standard-exists', `standard-exists: 「${name}」 already exists for this layer; overwrite it explicitly`)
   if (!was && S(s).standards.some(t => t.id === id)) throw new Error(`Standard id ${id} is in use`)
+  // a bone keeps its key: first the key it is paired with in this layer's choice of the replaced standard (a bone renamed
+  // since stays paired, dot 1792304023), then a same-named bone's key, else its own id
   const keys = new Map((was?.bones ?? []).map(b => [b.name, b.key] as const)), used = new Set<string>()
-  const keyFor = (bone: Id, n: string) => { let k = keys.get(n) ?? bone; for (let i = 2; used.has(k); i++) k = `${keys.get(n) ?? bone}~${i}`; used.add(k); return k }
+  const paired = new Map((was ? S(s).choice.find(c => c.layer === layer && c.standard === was.id)?.pairs ?? [] : []).map(p => [p.bone, p.key] as const))
+  const wanted = (bone: Id, n: string) => paired.get(bone) ?? (keys.has(n) && ![...paired.values()].includes(keys.get(n)!) ? keys.get(n)! : bone)
+  const keyFor = (bone: Id, n: string) => { const w = wanted(bone, n); let k = w; for (let i = 2; used.has(k); i++) k = `${w}~${i}`; used.add(k); return k }
   const viewKeys = net.shapeLayers(network).filter(l => l.kind === 'view').map(l => l.key)
   const bones = list.map(x => ({ key: keyFor(x.bone, x.name), name: x.name, views: Object.fromEntries(viewKeys.map(k => [k, cubicOf(net.of(network, k), x.bone)])) }))
   const std: Standard = { id: was?.id ?? id, name, layer, bones }
@@ -402,6 +406,9 @@ function standardBones(v: unknown, what: string): StandardBone[] {
     return { key, name, views: Object.fromEntries(Object.entries(V).map(([vk, c]) => [vk, cubic(c, `${what} bone ${k} views ${vk}`)])) }
   })
   d.unique(bones.map(b => b.key), `${what} bone key`)
+  // a standard pairs by name: none empty, none repeated (dot 1792304023)
+  if (bones.some(b => !b.name.trim())) d.fail(`${what} has a bone without a name`)
+  d.unique(bones.map(b => b.name), `${what} bone name`)
   return bones
 }
 
