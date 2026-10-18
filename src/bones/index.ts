@@ -290,7 +290,7 @@ export function derive(s: BonesState, network: net.NetworkState, ch: net.Changes
       const ta = target.get(l.a), tb = target.get(l.b)
       if (same(a.base.bone, boneNow.get(a.bone)!) && !ta && !tb) r = { shape: copyCubic(a.base.line), maxError: 0 }
       else {
-        try { r = boneLine(a.base.line, a.base.bone, boneNow.get(a.bone)!, { a: ta, b: tb }) }
+        try { r = boneLine(a.base.line, a.base.bone, boneNow.get(a.bone)!, { a: ta, b: tb }, 1, fitLimit(a.base.line, a.base.bone)) }
         catch (e) { return refuse(e, net.lineObjects([a.line, a.bone])) }
       }
       if (r.maxError > fitLimit(a.base.line, a.base.bone)) throw new net.Refusal('bone-fit', `bone-fit: in ${key}, ${a.line} cannot follow its bone as one curve (fit error ${r.maxError.toFixed(3)}); nothing was published`, net.lineObjects([a.line, a.bone]))
@@ -359,7 +359,7 @@ function bonesFromStandards(s: BonesState, network: net.NetworkState, ch: net.Ch
       let r: { shape: Cubic; maxError: number }
       const ta = target.get(l.a)!, tb = target.get(l.b)!, sv = std.views[key]!
       if (same(now0, std.views[views.FRONT]!) && ta.x === sv[0].x && ta.y === sv[0].y && tb.x === sv[3].x && tb.y === sv[3].y) r = { shape: copyCubic(sv), maxError: 0 }
-      else try { r = boneLine(now0, std.views[views.FRONT]!, sv, { a: ta, b: tb }) }
+      else try { r = boneLine(now0, std.views[views.FRONT]!, sv, { a: ta, b: tb }, 1, fitLimit(now0, std.views[views.FRONT]!)) }
       catch (e) { return refuse(e, net.lineObjects([id])) }
       if (r.maxError > fitLimit(now0, std.views[views.FRONT]!)) throw new net.Refusal('bone-fit', `bone-fit: in ${key}, the bone ${id} cannot follow its standard as one curve (fit error ${r.maxError.toFixed(3)}); nothing was published`, net.lineObjects([id]))
       made.set(id, r.shape)

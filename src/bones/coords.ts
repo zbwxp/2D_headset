@@ -147,7 +147,7 @@ export function boneMap(base: Cubic, bone: Cubic, widthFactor = 1): (p: Vec) => 
  * Schneider fit). The source parameters to start; the refinement lets a curve that runs at another speed be fitted as a
  * shape. Returns the cubic and the largest distance from a sample to it (a shape error, input units).
  */
-function fitSamples(samples: readonly Vec[], ta: Vec, tb: Vec, dense: readonly Vec[] = samples): { shape: Cubic; maxError: number } {
+function fitSamples(samples: readonly Vec[], ta: Vec, tb: Vec, dense: readonly Vec[] = samples, limit = Infinity): { shape: Cubic; maxError: number } {
   const n = samples.length - 1, a = samples[0]!, b = samples[n]!
   const u = [0]; for (let i = 1; i <= n; i++) u.push(u[i - 1]! + len(sub(samples[i]!, samples[i - 1]!)))
   const total = u[n]! || 1, chord = len(sub(b, a)) || total, floor = 1e-6 * total
@@ -170,6 +170,12 @@ function fitSamples(samples: readonly Vec[], ta: Vec, tb: Vec, dense: readonly V
   const t = samples.map((_, i) => i / n)
   let shape: Cubic = make(chord / 3, chord / 3)
   const err = () => Math.max(...samples.map((p, i) => len(sub(point(shape, t[i]!), p))))
+  // the carried curve as a dense polyline (`dense`), so its own chords add little to the measure
+  const toPolyline = (p: Vec) => {
+    let best = Infinity
+    for (let i = 0; i + 1 < dense.length; i++) { const a0 = dense[i]!, ab = sub(dense[i + 1]!, a0), l2 = dot(ab, ab), u0 = l2 > 0 ? Math.max(0, Math.min(1, dot(sub(p, a0), ab) / l2)) : 0; best = Math.min(best, len(sub(p, add(a0, mul(ab, u0))))) }
+    return best
+  }
   // alternate: the two handle lengths by least squares for these parameters, then each sample's parameter by projection
   for (let round = 0; round < 6; round++) {
     let c11 = 0, c12 = 0, c22 = 0, x1 = 0, x2 = 0
@@ -185,6 +191,7 @@ function fitSamples(samples: readonly Vec[], ta: Vec, tb: Vec, dense: readonly V
   }
   // then Gauss–Newton on the two lengths against the samples' orthogonal distances (each sample projected onto the
   // curve): quadratic near the answer, where the alternation above only creeps
+  const refine = () => {
   let la = len(sub(shape[1], a)), lb = len(sub(shape[2], b))
   for (let it = 0; it < 30; it++) {
     for (let i = 1; i < n; i++) t[i] = project(shape, samples[i]!, t[i]!, it % 4 === 0)
@@ -209,17 +216,45 @@ function fitSamples(samples: readonly Vec[], ta: Vec, tb: Vec, dense: readonly V
     if (Math.hypot(d1, d2) < 1e-10 * chord) break
   }
   for (let i = 1; i < n; i++) t[i] = project(shape, samples[i]!, t[i]!, false)
+  }
   // the error both ways (dot 1792299449): the samples to the cubic, and the cubic to the carried curve — a cubic that
   // loops out between its samples is caught by the second (no bound on handle lengths: the measure decides, dot 1792299544)
-  // the carried curve as a dense polyline (`dense`), so its own chords add little to the measure
-  const toPolyline = (p: Vec) => {
-    let best = Infinity
-    for (let i = 0; i + 1 < dense.length; i++) { const a0 = dense[i]!, ab = sub(dense[i + 1]!, a0), l2 = dot(ab, ab), u0 = l2 > 0 ? Math.max(0, Math.min(1, dot(sub(p, a0), ab) / l2)) : 0; best = Math.min(best, len(sub(p, add(a0, mul(ab, u0))))) }
-    return best
+  const both = () => { let back = 0; for (let k = 0; k <= 4 * n; k++) back = Math.max(back, toPolyline(point(shape, k / (4 * n)))); return Math.max(err(), back) }
+  refine()
+  let maxError = both()
+  // the refinement above weighs only the samples' distances to the cubic; when the cubic leaves the carried curve
+  // between the samples (a loop on a tight hook) and the fit would be refused (over `limit`), the two lengths are
+  // searched again against the error both ways: a coarse grid, then a compass search, deterministic. Only fits that
+  // would be refused change, so every result accepted before stays bit-equal (saved files reopen settled).
+  if (maxError > limit && maxError > 1.5 * err()) {
+    const before = { shape, t: [...t], maxError }
+    let la = len(sub(shape[1], a)), lb = len(sub(shape[2], b))
+    // both ways against polylines (no sample parameters to go stale): the samples to the cubic, the cubic to the carried curve
+    const score = (x: number, y: number) => {
+      shape = make(x, y)
+      const poly = Array.from({ length: 4 * n + 1 }, (_, k) => point(shape, k / (4 * n)))
+      let e = 0
+      for (const p of poly) e = Math.max(e, toPolyline(p))
+      for (const p of samples) { let best = Infinity; for (let i = 0; i + 1 < poly.length; i++) { const a0 = poly[i]!, ab = sub(poly[i + 1]!, a0), l2 = dot(ab, ab), u0 = l2 > 0 ? Math.max(0, Math.min(1, dot(sub(p, a0), ab) / l2)) : 0; best = Math.min(best, len(sub(p, add(a0, mul(ab, u0))))) } e = Math.max(e, best) }
+      return e
+    }
+    // started from the best of a coarse grid of lengths (a twentieth of the carried length up to all of it), the
+    // search's valleys being several
+    for (let i = 1; i <= 20; i++) for (let k = 1; k <= 20; k++) { const e = score((i / 20) * total, (k / 20) * total); if (e < maxError) { la = (i / 20) * total; lb = (k / 20) * total; maxError = e } }
+    let step = total / 40
+    for (let evals = 0; step > 1e-4 * chord && evals < 400;) {
+      let moved = false
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const x = Math.max(floor, la + dx * step), y = Math.max(floor, lb + dy * step), e = score(x, y); evals++
+        if (e < maxError) { la = x; lb = y; maxError = e; moved = true; break }
+      }
+      if (!moved) step /= 2
+    }
+    shape = make(la, lb)
+    for (let i = 1; i < n; i++) t[i] = project(shape, samples[i]!, t[i]!, true)
+    maxError = both()
+    if (!(maxError < before.maxError)) { shape = before.shape; t.splice(0, t.length, ...before.t); maxError = before.maxError }
   }
-  let back = 0
-  for (let k = 0; k <= 4 * n; k++) back = Math.max(back, toPolyline(point(shape, k / (4 * n))))
-  const maxError = Math.max(err(), back)
   shape.forEach((p, i) => finite(p, `fitted control point ${i}`))
   if (Number.isNaN(maxError)) throw new BoneError('bone-not-finite', 'the fit is not finite')
   return { shape, maxError }
@@ -230,9 +265,9 @@ function fitSamples(samples: readonly Vec[], ta: Vec, tb: Vec, dense: readonly V
  * as one cubic (end points exact, end tangents from the carried curve). `ends` moves an end to a target decided
  * elsewhere (a point owned by another bone, checklist §1): the difference is blended linearly along the line, so the
  * rest of the curve still follows this bone. `maxError` is the largest distance from the carried curve's samples to
- * the fitted cubic (a shape error).
+ * the fitted cubic (a shape error). `limit`: the error the caller refuses above — a fit over it is searched again.
  */
-export function boneLine(line: Cubic, baseBone: Cubic, bone: Cubic, ends: { a?: Vec; b?: Vec } = {}, widthFactor = 1): { shape: Cubic; maxError: number } {
+export function boneLine(line: Cubic, baseBone: Cubic, bone: Cubic, ends: { a?: Vec; b?: Vec } = {}, widthFactor = 1, limit = Infinity): { shape: Cubic; maxError: number } {
   line.forEach((p, i) => finite(p, `line control point ${i}`))
   const map = boneMap(baseBone, bone, widthFactor)
   const a0 = map(line[0]), b0 = map(line[3])
@@ -244,5 +279,5 @@ export function boneLine(line: Cubic, baseBone: Cubic, bone: Cubic, ends: { a?: 
     for (let k = 1; k <= 64; k++) { const d = sub(at(from + step * k), at(from)); if (len(d) > 1e-12 * Math.max(1, len(at(from)))) return mul(d, 1 / len(d)) }
     throw new BoneError('bone-too-short', 'the carried line has no direction at an end')
   }
-  return fitSamples(samples, dir(0, 1e-4), dir(1, -1e-4), dense)
+  return fitSamples(samples, dir(0, 1e-4), dir(1, -1e-4), dense, limit)
 }

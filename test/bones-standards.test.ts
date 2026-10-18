@@ -258,13 +258,18 @@ describe('标准tmp (bowen 165.json left eye; a test fixture, not a standard eye
     const text = save(B)
     expect(save(open(text))).toBe(text)
   })
-  it('a known limit: at 90,45 this lid bone is a tight hook; lifting the 0,0 lid by 1 is refused there (bone-fit), nothing changes', () => {
+  it('a tight hook (this lid bone at 90,45): lifting the 0,0 lid by 1 and by 3 is followed there as one curve, no loop', () => {
     const A = eyeDoc()
     A.edit(e => e.saveStandard('eye', '标准1'))
     A.edit(e => { e.useStandard('eye', stdId(A, '标准1')); e.boneMode('make') })
-    const was = save(A), l = A.snapshot().lines.find(x => x.id === top)!
-    expect(message(() => A.edit(e => { e.moveHandle(top, 'a', P(l.ha.x, l.ha.y - 1)); e.moveHandle(top, 'b', P(l.hb.x, l.hb.y - 1)) }))).toMatch(/^bone-fit: in view:90,45/)
-    expect(save(A)).toBe(was)
+    const std = cubic(A, 'view:90,45', top), l = A.snapshot().lines.find(x => x.id === top)!
+    for (const k of [1, 3]) {
+      A.edit(e => { e.moveHandle(top, 'a', P(l.ha.x, l.ha.y - k)); e.moveHandle(top, 'b', P(l.hb.x, l.hb.y - k)) })
+      // a loop would reach far from the hook (before the fix: a loop 11 units out at k = 3)
+      expect(shapeDistance(cubic(A, 'view:90,45', top), std)).toBeLessThan(1.5 * k)
+    }
+    const text = save(A)
+    expect(save(open(text))).toBe(text)
   })
 })
 

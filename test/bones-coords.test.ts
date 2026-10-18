@@ -167,3 +167,18 @@ describe('ordinary lines are not refused (dot 1792299544)', () => {
     }
   })
 })
+
+describe('a tight hook (标准tmp 上眼睑上 at 90,45: chord ≈ 9, handles ≈ 11 and 17)', () => {
+  it('the 0,0 lid lifted by 1 / 3, carried onto the hook: the fit reaches the best single cubic (a brute-force search over the two lengths: 0.20 / 0.60), not a loop', () => {
+    const eye = JSON.parse(readFileSync(new URL('./fixtures/eye-standard-tmp.json', import.meta.url), 'utf8'))
+    const top = eye.lines.find((l: { name: string }) => l.name === '上眼睑上')
+    const cub = (v: string): Cubic => { const V = eye.views[v], a = P(...(V.points[top.a] as [number, number])), b = P(...(V.points[top.b] as [number, number])), h = V.handles[top.id]; return [a, P(a.x + h.ha[0], a.y + h.ha[1]), P(b.x + h.hb[0], b.y + h.hb[1]), b] }
+    const s0 = cub('view:0,0'), sv = cub('view:90,45')
+    for (const [k, best] of [[1, 0.202], [3, 0.602]] as const) {
+      const now: Cubic = [s0[0], P(s0[1].x, s0[1].y - k), P(s0[2].x, s0[2].y - k), s0[3]]
+      // with the refusal limit (2 % of the 0,0 bone, as the derivation passes it): searched again; without: as before
+      expect(boneLine(now, s0, sv, {}, 1, 0.77).maxError).toBeLessThan(best + 0.02)
+      expect(boneLine(now, s0, sv).maxError).toBeGreaterThan(1)
+    }
+  })
+})
