@@ -1203,7 +1203,7 @@ function settleLayerPositions(s: State, ch: net.Changes, layer: string) {
   net.setPositions(n, links.align(s.links, n, ch, front ? mirrorOf(s, n) : undefined))
   net.resolveHandleTips(n, ch)
   if (front) for (const h of apply.mirroredHandles(s.apply, n, ch)) net.moveHandle(n, ch, h.line, h.end, h.offset)
-  net.setHandles(n, joins.solve(s.joins, n, ch, links.smoothPairs(s.links, n)))
+  net.setHandles(n, joins.solve(s.joins, n, springsSee(s, ch, n), links.smoothPairs(s.links, n)))
 }
 
 /** What follows the structure, once for all layers. */
@@ -1237,7 +1237,7 @@ function settle(s: State, ch: net.Changes, layer: string, placing = false) {
   net.resolveHandleTips(n, ch)
   // mirror-linked handles: a held handle gives its counterpart the reflected handle, held too (front only)
   if (front) for (const h of apply.mirroredHandles(s.apply, n, ch)) net.moveHandle(n, ch, h.line, h.end, h.offset)
-  net.setHandles(n, joins.solve(s.joins, n, ch, links.smoothPairs(s.links, n)))
+  net.setHandles(n, joins.solve(s.joins, n, springsSee(s, ch, n), links.smoothPairs(s.links, n)))
   for (const k of viewKeys(s)) if (k !== layer) settleLayerPositions(s, ch, k)
   settleBones(s, ch, boneIntent)
   settleShared(s)
@@ -1250,6 +1250,33 @@ function settle(s: State, ch: net.Changes, layer: string, placing = false) {
  * ordinary lines next to them), those views settled again, and an attached line moved by that settle refuses the edit.
  * Then 同步广播基线: the attached lines' angle baseline takes their front, so they are never pending.
  */
+/**
+ * What the springs see (dot 1792300055, proposal 1792300083): the edit's changes with every attached line's handles held
+ * in that layer, so a spring turns the ordinary line at a join, never an attached one — at the front too. Only the
+ * springs see these holds; the mirror's held-handle copy does not.
+ */
+function springsSee(s: State, ch: net.Changes, n: net.NetworkState): net.Changes {
+  const attached = bones.attachments(s.bones).filter(a => net.hasLine(n, a.line))
+  if (!attached.length) return ch
+  const ids = new Set(attached.map(a => a.line)), layer = net.boundLayer(n)
+  const extra = net.emptyChanges()
+  for (const a of attached) { net.hold(n, extra, a.line, 'a'); net.hold(n, extra, a.line, 'b') }
+  // an ordinary handle at a smooth join with an attached line cannot be held against it (dot 1792300140: both held, the
+  // join could not be smooth and the file did not reopen): the spring turns it to the attached line, keeping its length
+  const yields = new Set<string>()
+  for (const r of joins.rows(s.joins, n)) {
+    if (r.mode !== 'smooth') continue
+    const [x, y] = r.lines
+    for (const [mine, other] of [[x, y], [y, x]] as const) {
+      if (ids.has(mine) || !ids.has(other) || !net.hasLine(n, mine)) continue
+      const l = net.line(n, mine)
+      yields.add(JSON.stringify([mine, l.a === r.point ? 'a' : 'b']))
+    }
+  }
+  const kept = ch.held.filter(h => !(h.layer === layer && yields.has(JSON.stringify([h.line, h.end]))))
+  return { ...ch, held: [...kept, ...extra.held.filter(h => !kept.some(x => x.line === h.line && x.end === h.end && x.layer === h.layer))] }
+}
+
 interface BonesIntent { readonly edited: ReadonlySet<Id>; readonly placed: ReadonlySet<Id> }
 const NO_BONE_INTENT: BonesIntent = { edited: new Set(), placed: new Set() }
 /** The attached lines this edit changed at 0,0 by its own intents (their bases renew), and, when placing, the bones it moved there. */
@@ -1264,8 +1291,7 @@ function bonesIntent(s: State, ch: net.Changes, placing: boolean): BonesIntent {
 }
 /**
  * Off the front the handles of attached lines are held (dot 1792299524 follow-up): there every attached line is
- * generated, so a spring at a join with an ordinary line turns the ordinary line, never the generated one. At the front
- * attached lines are drawn (their bases): a spring may turn them as any line, which renews their bases (settleBones).
+ * generated, so a spring at a join with an ordinary line turns the ordinary line, never the generated one.
  */
 function holdAttached(s: State, ch: net.Changes) {
   const attached = bones.attachments(s.bones)
@@ -1288,33 +1314,24 @@ function settleBones(s: State, ch: net.Changes, intent: BonesIntent) {
   const attached = bones.attachments(s.bones)
   if (!attached.length) return
   let edited: ReadonlySet<Id> = intent.edited, placed: ReadonlySet<Id> = intent.placed
-  // two passes at most: an attached line the front's settle moves although the derivation did not carry it (a mirror
-  // partner following its other side) counts as edited at 0,0 — its base renews and its other views follow; a second
-  // such move refuses the edit
-  for (let pass = 0; ; pass++) {
-    const front = net.of(s.network, views.FRONT)
-    const before = new Map(attached.filter(a => net.hasLine(front, a.line)).map(a => [a.line, bones.cubicOf(front, a.line)]))
-    const moved = (id: Id) => { const was = before.get(id)!, now = bones.cubicOf(front, id); return now.some((p, i) => Math.abs(p.x - was[i]!.x) > 1e-9 || Math.abs(p.y - was[i]!.y) > 1e-9) }
-    const derived = bones.derive(s.bones, s.network, ch, edited, placed)
-    for (const [k, made] of derived) {
-      if (!made.size) continue
-      settleLayerPositions(s, ch, k)
-      const n = net.of(s.network, k), moved: Id[] = []
-      for (const [id, c] of made) {
-        const now = bones.cubicOf(n, id)
-        if (now.some((p, i) => Math.abs(p.x - c[i]!.x) > 1e-9 || Math.abs(p.y - c[i]!.y) > 1e-9)) moved.push(id)
-      }
-      if (moved.length) throw new net.Refusal('bone-settle-conflict', `bone-settle-conflict: in ${k} the settle would move the attached lines ${moved.join(', ')} off their bones (a join, link or spring pulls them); nothing was published`, net.lineObjects(moved))
+  // the front's settle may not move an attached line the derivation did not carry (a mirror partner on a bone of its own):
+  // indirect changes never renew a base — two constraints disagreeing are refused (dot 1792300055)
+  const front = net.of(s.network, views.FRONT)
+  const before = new Map(attached.filter(a => net.hasLine(front, a.line)).map(a => [a.line, bones.cubicOf(front, a.line)]))
+  const derived = bones.derive(s.bones, s.network, ch, intent.edited, intent.placed)
+  for (const [k, made] of derived) {
+    if (!made.size) continue
+    settleLayerPositions(s, ch, k)
+    const n = net.of(s.network, k), moved: Id[] = []
+    for (const [id, c] of made) {
+      const now = bones.cubicOf(n, id)
+      if (now.some((p, i) => Math.abs(p.x - c[i]!.x) > 1e-9 || Math.abs(p.y - c[i]!.y) > 1e-9)) moved.push(id)
     }
-    const carried = derived.get(views.FRONT) ?? new Map()
-    const shifted = [...before.keys()].filter(id => !carried.has(id) && moved(id))
-    if (!shifted.length) break
-    if (pass > 0) throw new net.Refusal('bone-settle-conflict', `bone-settle-conflict: at 0,0 the settle keeps moving the attached lines ${shifted.sort().join(', ')}; nothing was published`, net.lineObjects(shifted))
-    // a line the front's settle moved (a mirror partner, a spring at a join) is drawn as it now is: its base renews, and
-    // its handles are held for the second pass so the same settle does not keep turning it
-    for (const id of shifted) { net.hold(front, ch, id, 'a'); net.hold(front, ch, id, 'b') }
-    edited = new Set(shifted); placed = new Set()
+    if (moved.length) throw new net.Refusal('bone-settle-conflict', `bone-settle-conflict: in ${k} the settle would move the attached lines ${moved.join(', ')} off their bones (a join, link or spring pulls them); nothing was published`, net.lineObjects(moved))
   }
+  const carried = derived.get(views.FRONT) ?? new Map()
+  const shifted = [...before].filter(([id, was]) => !carried.has(id) && !intent.edited.has(id) && bones.cubicOf(front, id).some((p, i) => Math.abs(p.x - was[i]!.x) > 1e-9 || Math.abs(p.y - was[i]!.y) > 1e-9)).map(([id]) => id).sort()
+  if (shifted.length) throw new net.Refusal('bone-settle-conflict', `bone-settle-conflict: at 0,0 ${shifted.join(', ')} would be moved off ${shifted.length > 1 ? 'their bones' : 'its bone'} by another constraint (for example a mirror partner on a bone of its own, which a mirror link between the bones would carry along); nothing was published`, net.lineObjects(shifted))
   // 同步广播基线 (dot 1792298028): exactly what animation.fit does, for the attached lines
   const present = attached.map(a => a.line).filter(id => net.hasLine(s.network, id))
   if (present.length) animation.fit(s.network, s.links, present)

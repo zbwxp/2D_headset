@@ -269,20 +269,53 @@ describe('mirror pairs with bones (checklist §4; dot 1792299336)', () => {
     d.edit(e => e.markBone(['BL', 'BR'])); d.edit(e => { e.attach(['l'], 'BL'); e.attach(['r'], 'BR') })
     return d
   }
-  const mirrored = (c: Cubic) => c.map(p => P(-p.x, p.y))
-  for (const mb of [true, false]) it(`one bone dragged at 0,0 (bones ${mb ? '' : 'not '}mirror-linked): both sides stay mirrored at 0,0; the file reopens`, () => {
-    const d = pair(mb)
-    d.edit(e => e.move([{ id: 'p1', target: P(-8, 3) }]))
-    const l = cubic(d, FRONT, 'l'), r = cubic(d, FRONT, 'r')
-    expect(r[0].x).toBeCloseTo(-l[0].x, 9); expect(r[3].x).toBeCloseTo(-l[3].x, 9); expect(r[3].y).toBeCloseTo(l[3].y, 9)
-    void mirrored
-    // the partner moved at 0,0 by the mirror (dot 1792299724) is never left off its bone: either its bone moved with it
-    // (bones mirror-linked) or it counts as drawn there — its base renews, and every other view follows that new base
-    const doc = JSON.parse(save(d)).document, rBase = doc.bones.attach.find((a: { line: string }) => a.line === 'r').base
-    if (!mb) {
-      expect(rBase.line).toEqual(cubic(d, FRONT, 'r'))
-      expect(cubic(d, SIDE, 'r')).toEqual(cubic(d, FRONT, 'r')) // BR is the same in both views: the identity
-    } else expect(rBase.bone).not.toEqual(cubic(d, FRONT, 'BR'))
+  it('bones mirror-linked: dragging one bone carries both sides; both stay mirrored at 0,0; one drag = ten drags; the file reopens', () => {
+    const one = pair(true), ten = pair(true), start = P(-10, 0), end = P(-8, 3)
+    one.edit(e => e.move([{ id: 'p1', target: end }]))
+    for (let k = 1; k <= 10; k++) ten.edit(e => e.move([{ id: 'p1', target: P(start.x + (k / 10) * (end.x - start.x), start.y + (k / 10) * (end.y - start.y)) }]))
+    expect(save(ten)).toBe(save(one))
+    const l = cubic(one, FRONT, 'l'), r = cubic(one, FRONT, 'r')
+    l.forEach((p, i) => { expect(r[i]!.x).toBeCloseTo(-p.x, 9); expect(r[i]!.y).toBeCloseTo(p.y, 9) })
+    const text = save(one)
+    expect(save(open(text))).toBe(text)
+  })
+  it('bones not mirror-linked: the mirror would pull the other side off its bone — refused, the drawing unchanged (dot 1792300101)', () => {
+    const d = pair(false), text = save(d)
+    expect(code(() => d.edit(e => e.move([{ id: 'p1', target: P(-8, 3) }])))).toBe('bone-settle-conflict')
+    expect(save(d)).toBe(text)
+  })
+})
+
+describe('springs never turn an attached line (dot 1792300055, 1792300101)', () => {
+  for (const view of [SIDE, FRONT]) it(`dot 1792300174 in ${view}: the ordinary handle at a smooth join with an attached line turns to it (its length kept); the file reopens`, () => {
+    const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })
+    d.edit(e => {
+      e.line('B', { id: 'b0', layer: 'L', position: P(0, 0) }, { id: 'b1', layer: 'L', position: P(40, 0) }, { ha: P(10, -10), hb: P(-10, -10) })
+      e.line('u', { id: 'u0', layer: 'L', position: P(2, -2) }, { id: 'u1', layer: 'L', position: P(38, -2) }, { ha: P(10, -12), hb: P(-10, -12) })
+    })
+    d.edit(e => e.markBone(['B']))
+    d.edit(e => e.line('tail', 'u1', { id: 't1', layer: 'L', position: P(50, -10) }))
+    d.edit(e => e.join('u1', 'u', 'tail', { mode: 'smooth' }))
+    d.edit(e => e.attach(['u'], 'B'))
+    const u = cubic(d, view, 'u')
+    d.editIn(view, e => e.moveHandle('tail', 'a', P(4, 1)))
+    expect(cubic(d, view, 'u')).toEqual(u)
+    const ha = d.in(view).snapshot().lines.find(l => l.id === 'tail')!.ha, hb = d.in(view).snapshot().lines.find(l => l.id === 'u')!.hb
+    expect(Math.hypot(ha.x, ha.y)).toBeCloseTo(Math.hypot(4, 1), 9)
+    expect(ha.x * hb.y - ha.y * hb.x).toBeCloseTo(0, 9) // collinear with the attached line's handle, opposite
+    expect(ha.x * hb.x + ha.y * hb.y).toBeLessThan(0)
+    const text = save(d)
+    expect(save(open(text))).toBe(text)
+  })
+  it('at 0,0: dragging an ordinary line joined smoothly to an attached one turns only the ordinary line; nothing is re-based', () => {
+    const d = scene()
+    d.edit(e => e.line('tail', 'u1', { id: 't1', layer: 'L', position: P(50, -10) }))
+    d.edit(e => e.join('u1', 'up', 'tail', { mode: 'smooth' }))
+    d.edit(e => e.attach(['up', 'lo'], 'B'))
+    const up = cubic(d, FRONT, 'up'), base = JSON.stringify(JSON.parse(save(d)).document.bones.attach)
+    d.edit(e => e.move([{ id: 't1', target: P(52, 4) }]))
+    expect(cubic(d, FRONT, 'up')).toEqual(up)
+    expect(JSON.stringify(JSON.parse(save(d)).document.bones.attach)).toBe(base)
     const text = save(d)
     expect(save(open(text))).toBe(text)
   })
