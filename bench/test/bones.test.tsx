@@ -280,4 +280,25 @@ describe('bones in the bench', () => {
     await t.press(20, t.Y + 22.5)
     expect(snap().attachments.some(a => a.line === t.id('up'))).toBe(false)
   })
+
+  it('a 绑骨 pick ends when another layer is chosen or the chosen lines change; nothing is attached afterwards (dot 1792308617)', async () => {
+    const t = await setup()
+    const M = `M${t.k}`
+    await act(async () => { bench().core.edit(e => e.layer(M, `另${t.k}`)); bench().refresh() })
+    await t.select(t.id('B')); await t.click('[data-testid="bone-mark"]')
+    await t.select(t.id('up')); await t.click('[data-testid="bone-attach"]')
+    expect(t.q('[data-testid="bone-pick-select"]')).not.toBeNull()
+    await t.click(`[data-layer-row="${M}"]`)
+    expect(t.q('[data-testid="bone-pick-hint"]')).toBeNull()
+    expect(t.q('[data-testid="bone-pick-select"]')).toBeNull()
+    await t.click('[data-layer-row="layer-1"]')
+    await t.press(t.boneAt.x, t.boneAt.y)
+    expect(snap().attachments.some(a => a.line === t.id('up'))).toBe(false)
+    // other lines chosen while picking: the pick ends too
+    await t.select(t.id('up')); await t.click('[data-testid="bone-attach"]')
+    await t.select(t.id('f'))
+    expect(t.q('[data-testid="bone-pick-hint"]')).toBeNull()
+    await t.press(t.boneAt.x, t.boneAt.y)
+    expect(snap().attachments.some(a => a.line === t.id('up') || a.line === t.id('f'))).toBe(false)
+  })
 })
