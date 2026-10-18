@@ -353,6 +353,24 @@ describe('the settle around derived lines (dot 1792298028: a real derivation, no
   })
 })
 
+describe('a bone point merged onto its attached line (found while making the B2 fixture)', () => {
+  it('a side-view drag that merges the bone\'s end into the line\'s end: the bone is not moved by its line; the file reopens', () => {
+    const d = Core.newDocument({ layer: { id: 'L', name: 'L' } })
+    d.edit(e => {
+      e.line('B', { id: 'b0', layer: 'L', position: P(0, 0) }, { id: 'b1', layer: 'L', position: P(40, 0) }, { ha: P(10, -10), hb: P(-10, -10) })
+      e.line('up', { id: 'u0', layer: 'L', position: P(2, -2) }, { id: 'u1', layer: 'L', position: P(38, -2) }, { ha: P(10, -12), hb: P(-10, -12) })
+    })
+    d.edit(e => e.markBone(['B'])); d.edit(e => e.attach(['up'], 'B'))
+    d.edit(e => e.move([{ id: 'b1', target: P(44, 3) }]))
+    d.editIn(SIDE, e => e.move([{ id: 'b0', target: P(2, -2) }]))
+    const pts = d.snapshot().points.map(p => p.id)
+    expect(pts).not.toContain('b0') // merged: the bone now starts at u0
+    for (const v of d.views()) expect(cubic(d, v, 'up')[0]).toEqual(cubic(d, v, 'B')[0])
+    const text = save(d)
+    expect(save(open(text))).toBe(text)
+  })
+})
+
 describe('a spring off the front (dot 1792299785: a real reopen failure)', () => {
   it('an ordinary line smoothly joined to an attached one; only a side view\'s bone moved: the file reopens', () => {
     const d = scene()

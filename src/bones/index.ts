@@ -187,6 +187,10 @@ export function derive(s: BonesState, network: net.NetworkState, ch: net.Changes
       try { target.set(o.point, same(by.base.bone, bone) ? { x: base.x, y: base.y } : boneMap(by.base.bone, bone)(base)) }
       catch (e) { refuse(e, net.lineObjects([by.line, by.bone])) }
     }
+    // a point a bone uses (a line merged onto a bone's point) stays where that bone has it: the bone is never moved by
+    // the lines it carries (else the derivation has no fixed point and the file does not reopen)
+    const bonePoint = (pt: Id) => net.linesAt(n, pt).some(x => S(s).bones.includes(x.line.id))
+    for (const a of carried) for (const pt of [net.line(n, a.line).a, net.line(n, a.line).b]) if (bonePoint(pt)) { const q = net.point(n, pt).position; target.set(pt, { x: q.x, y: q.y }) }
     for (const a of carried) {
       const l = net.line(n, a.line)
       let r: { shape: Cubic; maxError: number }
