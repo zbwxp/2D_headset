@@ -20,8 +20,11 @@
   value is refused (correction-not-reproduced), for every line; not changed here.
 
 ## 2. The derivation at a pose (P1, core)
-1. `Model` gains `bones?: { attach: [{ line, bone, base: { line, bone } }], owners: [{ point, bone }] }` (copies, from
-   `modelOf`). `evaluate` stays pure: it calls `bones/coords` (pure math), nothing else.
+1. `Model` gains `bones?` — pure data, enough topology to build everything below without the network (dot
+   1792475650): `bones: Id[]`; `attach: [{ line, bone, base: { line, bone } }]`; `owners: [{ point, bone }]`; `ends:
+   { [line]: { a, b } }` for every bone, every attached line and every ordinary line sharing a point with them; and,
+   if §2.4 A is chosen, the smooth joins at those points (`joins: [{ point, lines, mode }]`) so a turned handle keeps
+   the join smooth. Copies, from `modelOf`. `evaluate` stays pure: it calls `bones/coords` (pure math), nothing else.
 2. At a view (a pose with a single view weight 1): the view's stored shapes, exactly — never refit (dot 1792474596).
 3. Between the views, for each attached line: its bone as blended at this pose; the line = `boneLine(base.line,
    base.bone, bone@pose, ends)`, the fit with 16 samples (§6 checks its error separately).
@@ -35,9 +38,12 @@
 
 ## 3. When a pose cannot be generated (P1)
 - Causes: the blended bone degenerate (too short, no direction), a point ambiguous on it, a fit over its limit.
-- Rule (bowen 1792475406): that line, and every attached line sharing a point with it (so no join opens; dot
-  1792474630), are drawn from the plain blend at this pose; `Posed` lists them with the reason; never a non-finite
-  number, never the previous frame reused silently. The bench marks them (red) and names them in the status line.
+- Rule (bowen 1792475406): the failure group is the transitive closure of 「shares a point with」 over the attached
+  lines, starting from the failed one (A–B, B–C: A failing takes B and C; dot 1792475650). The whole group falls back
+  atomically to the plain blend at this pose, together with whatever §2.4 changed because of it — an ordinary line's end
+  moved, a smooth handle turned — so the final result is one consistent blend there. `Posed` lists the group with the
+  reason; never a non-finite number, never the previous frame reused silently. The bench marks them (red) and names
+  them in the status line.
 
 ## 4. Responses of attached lines (P1)
 - `evaluate` never reads them for attached lines (their shapes are generated).
