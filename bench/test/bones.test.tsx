@@ -394,4 +394,17 @@ describe('bones in the bench', () => {
     await act(async () => { await wait(300) })
     expect((bench() as unknown as { pose(): unknown }).pose()).toBeNull()
   }, 30000)
+
+  it('a bone hidden by its eye is not drawn outside playback, and a 绑骨 pick does not take it (bowen 1792479442)', async () => {
+    const t = await setup()
+    await t.select(t.id('B')); await t.click('[data-testid="bone-mark"]')
+    expect(t.q(`[data-bone="${t.id('B')}"]`)).not.toBeNull()
+    await act(async () => { bench().core.edit(e => (e as unknown as import('../../src').Editor).lineState(t.id('B'), { visible: false })); bench().refresh() })
+    expect(t.q(`[data-bone="${t.id('B')}"]`)).toBeNull()
+    await t.select(t.id('up')); await t.click('[data-testid="bone-attach"]'); await t.press(t.boneAt.x, t.boneAt.y)
+    expect(snap().attachments.some(a => a.line === t.id('up'))).toBe(false)
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
+    await act(async () => { bench().core.edit(e => (e as unknown as import('../../src').Editor).lineState(t.id('B'), { visible: true })); bench().refresh() })
+    expect(t.q(`[data-bone="${t.id('B')}"]`)).not.toBeNull()
+  })
 })

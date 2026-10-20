@@ -935,7 +935,7 @@ export function App() {
   const onBonePick = (e: React.PointerEvent) => {
     e.preventDefault()
     // only the bones of the chosen lines' layer (bowen 1792307973)
-    const at = toDoc(e), boneSet = new Set(pickBones)
+    const at = toDoc(e), boneSet = new Set(pickBones.filter(b => s.lines.find(l => l.id === b)?.state.visible))
     const hit = g.lines.filter(G => boneSet.has(G.id)).map(G => ({ id: G.id, d: curveDistance(G.curve, at) })).filter(x => x.d <= REACH.line * px).sort((a, b) => a.d - b.d)[0]
     if (!hit || !bonePick) { note(pickLayers.length > 1 ? '选中的线不在同一图层：每一层分开绑骨（Esc 取消）' : '没点到这一层的骨骼：点这一层的一根骨骼，或在下面的列表里选（Esc 取消）'); bump(); return }
     const lines = bonePick.lines
@@ -1950,7 +1950,8 @@ export function App() {
               const l = line(G.id), stroke = paintOf(G.id)
               // a bone: a bright line, never ink or fill; hidden in playback unless asked (docs/bone-lines-checklist.md §5)
               const bi = boneIndex.get(G.id)
-              if (bi !== undefined) return pose && !bonesInPlayback ? null
+              // a bone hidden by its eye (the layers panel) is hidden as any line is (bowen 1792479442)
+              if (bi !== undefined) return (pose && !bonesInPlayback) || !l.state.visible ? null
                 : <path key={G.id} data-bone={G.id} d={path(G.curve)} fill="none" stroke={BONE_COLOURS[bi % BONE_COLOURS.length]} strokeWidth={2 * px} strokeLinecap="round">{!pose && shown !== 'view:0,0' && s.boneMode === 'make' && <title>{boneSource(G.id)}</title>}</path>
               const drawn = lineElOf(G, l, stroke)
               // an attached line: highlighted with its bone; off the front, generated (hover)
