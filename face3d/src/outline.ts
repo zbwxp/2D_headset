@@ -4,7 +4,7 @@
 // window); a candidate point is visible when nothing of the head lies in front of it there. Not "on the outer
 // boundary": looking up from below, the jaw's outline sits inside the skull's outer edge yet is the line one draws.
 import { type Head } from './head'
-import { type V3, type View, dot, rotate, toCamera } from './view'
+import { type V3, type View, dot, norm, rotate, toCamera } from './view'
 
 export interface OutlinePoint { readonly u: number; readonly y: number; readonly p: V3 }
 export interface Grid { readonly nu: number; readonly ny: number }
@@ -14,7 +14,9 @@ export const MASK_PX = 0.01
 
 const TAU = Math.PI * 2
 const uOf = (i: number, nu: number) => -Math.PI + (i / nu) * TAU
-const yOf = (j: number, ny: number, head: Head) => head.shape.yMax - ((j + 0.5) / ny) * (head.shape.yMax - head.shape.yMin)
+// rows uniform in a polar angle from crown to chin (dense at both poles): where an outline skims past a pole the
+// pole fans are then tiny, so their linear interpolation does not misplace it (dot 1792491357)
+const yOf = (j: number, ny: number, head: Head) => head.shape.yMax - ((1 - Math.cos((Math.PI * (j + 0.5)) / ny)) / 2) * (head.shape.yMax - head.shape.yMin)
 
 /** Candidate outline loops (open polylines when they reach the grid's top or bottom row). */
 export function candidates(head: Head, view: View, grid: Grid = GRID): Loop[] {
@@ -41,9 +43,12 @@ export function candidates(head: Head, view: View, grid: Grid = GRID): Loop[] {
   // triangles meeting at the pole point; marching triangles through the fan connects the outline across the pole by
   // the sign of n · d — never by how close two ends are. The pole's normal is the mean of the normals round it.
   const fan = (row: number, yPole: number, tag: string) => {
+    // the pole's normal: the mean of the unit normals round it, normalised (dot 1792491357: unnormalised, its n · d grew
+    // with the number of cells round the ring and shifted every spoke crossing). On a smooth tip this is the tip's
+    // normal; where the tip is a corner (the default head's chin, see poles.test.ts) it is a convention.
     let nm: V3 = [0, 0, 0]
     for (let i = 0; i < nu; i++) { const n = head.normal(uOf(i, nu), yPole); nm = [nm[0] + n[0], nm[1] + n[1], nm[2] + n[2]] }
-    const gp = dot(nm, d), yr = yOf(row, ny, head)
+    const gp = dot(norm(nm), d), yr = yOf(row, ny, head)
     const spoke = (i: number): string | undefined => {
       const ii = ((i % nu) + nu) % nu, a = g[row]![ii]!
       if ((a < 0) === (gp < 0)) return undefined

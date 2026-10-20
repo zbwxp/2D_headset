@@ -34,18 +34,17 @@ describe('occlusion', () => {
     const view = { yaw: 0, pitch: -45 }, d = toCamera(view), chin = head.at(0, CHIN_Y)
     const extent = (l: { pts: { p: V3 }[] }) => Math.max(...[0, 1, 2].map(k => Math.max(...l.pts.map(q => q.p[k]!)) - Math.min(...l.pts.map(q => q.p[k]!))))
     const loops = candidates(head, view).filter(l => extent(l) >= 0.15)
-    const near = loops.flatMap((l, li) => l.pts.map((q, i) => ({ li, i, d: len(sub(q.p, chin)) }))).sort((a, b) => a.d - b.d)
-    let path: ReturnType<typeof walk> = []
-    for (const c of near.slice(0, 80)) {
-      const w = [walk(loops[c.li]!, c.i, 1), walk(loops[c.li]!, c.i, -1)].find(x => x.length > 8 && rotate(x[8]!.p, view)[0] - rotate(x[0]!.p, view)[0] > 0.01)
-      if (w) { path = w; break }
-    }
-    // the stretch from the diagnostic: points 43 … 88 of this walk (cut were 46 … 85)
-    const stretch = path.slice(43, 89), tris = mesh(720, 480), occ = occluder(head, view)
+    // every outline point in the jaw-fold region of the x+ side (u 15°–45°, y −1.05 … −0.82): the diagnostic's
+    // stretch, chosen by where it is on the head — not by a walk or by indices, which the grid's spacing changes
+    const wrapDeg = (u: number) => Math.abs(u - Math.round(u / (2 * Math.PI)) * 2 * Math.PI) * 57.3
+    const stretch = loops.flatMap(l => l.pts).filter(q => q.y > -1.05 && q.y < -0.82 && q.p[0] > 0 && wrapDeg(q.u) > 15 && wrapDeg(q.u) < 45)
+    void chin
+    const tris = mesh(720, 480), occ = occluder(head, view)
     const ref = stretch.map(q => rayHidden(q.p, head.normal(q.u, q.y), d, tris)), got = stretch.map(q => hiddenOn(occ, q.p, q.u, q.y))
     const hiddenRef = ref.filter(Boolean).length
     console.log(`stretch ${stretch.length}: reference hidden ${hiddenRef}, fine-mesh test hidden ${got.filter(Boolean).length}, disagree ${ref.filter((r, i) => r !== got[i]).length}`)
-    expect(hiddenRef).toBeGreaterThanOrEqual(25) // the hidden branch is there
+    expect(stretch.length).toBeGreaterThanOrEqual(30)
+    expect(hiddenRef).toBeGreaterThanOrEqual(15) // the hidden branch is there
     expect(got.map((g, i) => (g === ref[i] ? '.' : g ? 'H' : 'V')).join('')).toBe('.'.repeat(stretch.length))
   }, 120000)
   it('convergence: 360 × 240 and 720 × 480 agree on (nearly) every candidate outline point', () => {

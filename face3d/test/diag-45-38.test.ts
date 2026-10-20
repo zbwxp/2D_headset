@@ -35,7 +35,7 @@ const mesh = (NU: number, NY: number) => {
 
 it('(a) yaw 45 / pitch 38: target, mix, keys, visibility', () => {
   if (!dir) return
-  const v = { yaw: 45, pitch: 38 }, side: Side = 'pos'
+  const [vy, vp] = (process.env.F3D_DIAG_VIEW ?? '45,38').split(',').map(Number), v = { yaw: vy!, pitch: vp! }, side: Side = (process.env.F3D_DIAG_SIDE as Side) ?? 'pos'
   const W = weights(v.yaw, v.pitch), near = [...W].sort((a, b) => b.w - a.w)[0]!, nk = model.table.at(near.yaw, near.pitch)
   const ref: Partial<Record<Side, V3>> = {}
   for (const s of ['pos', 'neg'] as const) { const q = nk[s][0]!.samples[0]!; ref[s] = head.at(q.u, q.y) }
@@ -55,8 +55,8 @@ it('(a) yaw 45 / pitch 38: target, mix, keys, visibility', () => {
   W.forEach((w, n) => { const k = model.table.at(w.yaw, w.pitch); for (let seg = 0; seg < 3; seg++) svg += `<polyline fill="none" stroke="${kc[n]}" stroke-width="1.2" stroke-dasharray="${k[side][seg]!.present ? '' : '4 3'}" points="${k[side][seg]!.samples.map(q => P(head.at(q.u, q.y))).join(' ')}"/>`; svg += `<text x="10" y="${50 + n * 18}" font-size="13" fill="${kc[n]}">key ${w.yaw},${w.pitch} w ${w.w.toFixed(2)}（虚线 = 缺席段）</text>` })
   for (let seg = 0; seg < 3; seg++) { const ts = t[side][seg]; if (ts) ts.forEach((q, i) => { const [x, y] = P(head.at(q.u, q.y)).split(','); svg += `<circle cx="${x}" cy="${y}" r="3.5" fill="${t.vis[side][seg]![i] ? '#000' : 'none'}" stroke="#000"/>` }) }
   for (let i = 0; i + 1 < mixed.pts.length; i++) svg += `<polyline fill="none" stroke="#d32f2f" stroke-width="${0.6 + 3 * Math.min(mixed.vis[i]!, mixed.vis[i + 1]!)}" points="${P(mixed.pts[i]!)} ${P(mixed.pts[i + 1]!)}"/>`
-  writeFileSync(`${dir}/diag-45-38.svg`, svg + '</svg>')
-  writeFileSync(`${dir}/diag-45-38.txt`, report.join('\n'))
+  writeFileSync(`${dir}/diag-${v.yaw}-${v.pitch}.svg`, svg + '</svg>')
+  writeFileSync(`${dir}/diag-${v.yaw}-${v.pitch}.txt`, report.join('\n'))
   console.log(report.join('\n'))
 }, 120000)
 
