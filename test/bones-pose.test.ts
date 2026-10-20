@@ -4,7 +4,7 @@
 // the whole connected group back to the plain blend, reported, with finite numbers.
 import { describe, it, expect } from 'vitest'
 import { Core, type Vec } from '../src'
-import { boneLine, type Cubic } from '../src/bones/coords'
+import { boneLine, boneMap, fitLimit, type Cubic } from '../src/bones/coords'
 
 const P = (x: number, y = 0): Vec => ({ x, y })
 const SIDE = 'view:90,0'
@@ -57,6 +57,19 @@ describe('P0: attached lines at a pose follow their bone (docs/bone-poses-checkl
     }
     expect(json(cubicIn(on, 'f'))).toBe(json(cubicIn(off, 'f')))
     expect(json(cubicIn(on, 'B'))).toBe(json(cubicIn(off, 'B')))
+  })
+  it('against the carried curve itself (dot 1792477020): 400 points of the base mapped by the bone at the pose, both ways, within the fit limit, at poses on edges and inside cells', () => {
+    const d = scene(), front = (id: string) => cubicIn(d.atPose({ yaw: 0, pitch: 0 }), id)
+    for (const pose of [{ yaw: 30, pitch: 0 }, { yaw: 60, pitch: 0 }, { yaw: 45, pitch: 20 }, { yaw: 80, pitch: -30 }]) {
+      const on = d.atPose(pose, { followBones: true }), bone = cubicIn(on, 'B')
+      for (const id of ['up', 'up2']) {
+        const m = boneMap(front('B'), bone), carried = Array.from({ length: 401 }, (_, i) => m(at(front(id), i / 400)))
+        const shown = Array.from({ length: 401 }, (_, i) => at(cubicIn(on, id), i / 400))
+        const near = (p: Vec, poly: Vec[]) => Math.min(...poly.map(q => Math.hypot(q.x - p.x, q.y - p.y)))
+        const err = Math.max(...shown.map(p => near(p, carried)), ...carried.map(p => near(p, shown)))
+        expect([pose, id, err <= fitLimit(front(id), front('B'))]).toEqual([pose, id, true])
+      }
+    }
   })
   it('a 30° correction on the bone carries its lines there (off, they stay)', () => {
     const d = scene(), pose = { yaw: 30, pitch: 0 }
