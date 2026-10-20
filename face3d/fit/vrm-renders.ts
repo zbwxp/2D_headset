@@ -9,7 +9,7 @@ import { contourSegments, loadVrmHead, rasterHead } from '../mesh/vrmhead'
 
 const [file, out] = process.argv.slice(2)
 const b = readFileSync(file!), data = loadVrmHead(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength))
-const YAWS = [0, 15, 30, 45, 60, 75, 90], PITCHES = [45, 0, -45], C = 420, S = 120 // cell px, px per head-ball radius
+const YAWS = (process.env.YAWS ?? '0 15 30 45 60 75 90').split(' ').map(Number), PITCHES = (process.env.PITCHES ?? '45 0 -45').split(' ').map(Number), C = 420, S = 120 // cell px, px per head-ball radius
 
 function bmp(W: number, H: number, rgba: Uint8ClampedArray): Buffer {
   const row = Math.ceil((W * 3) / 4) * 4, buf = Buffer.alloc(54 + row * H)
