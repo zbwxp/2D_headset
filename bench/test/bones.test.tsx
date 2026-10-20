@@ -337,6 +337,13 @@ describe('bones in the bench', () => {
   it('测帧耗时（试验）: one at a time; leaving playback stops it (no pose set afterwards); a full run ends at the starting pose (dot 1792476848)', async () => {
     const t = await setup()
     const button = (label: string) => [...t.host.querySelectorAll('button')].find(x => x.textContent === label)!
+    // a drawing of its own, small: the page's drawing has every earlier test's lines (dot 1792477790)
+    const own = Core.newDocument({ layer: { id: 'L', name: 'L' } })
+    own.edit(e => e.line('q', { id: 'q0', layer: 'L', position: P(0, 0) }, { id: 'q1', layer: 'L', position: P(40, 0) }))
+    const ownInput = t.q('[data-testid="open"]') as HTMLInputElement
+    Object.defineProperty(ownInput, 'files', { value: [new File([save(own)], 'own.json', { type: 'application/json' })], configurable: true })
+    await act(async () => { ownInput.dispatchEvent(new Event('change', { bubbles: true })); await wait(100) })
+    expect(bench().core.snapshot().lines.length).toBe(1)
     await act(async () => { button('Playback').click() })
     const start = JSON.stringify((bench() as unknown as { pose(): unknown }).pose())
     // a full run
