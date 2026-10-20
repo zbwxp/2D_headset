@@ -54,8 +54,9 @@
 - Dropped (bowen 1792475406): the line's own handles' responses, and the responses of points used only by attached
   lines. Never a point an ordinary line or a bone also uses — those responses belong to that line or bone (dot
   1792474482).
-- When: on 绑骨 (in the same edit), and on opening an older file (archive v16 reads v15: the same drop, listed in the
-  open report with the line names — never silent).
+- When: on 绑骨 (in the same edit — one undo restores them), and on opening an older file (archive v16 reads v15: the
+  same drop, listed in the open report with the line names — never silent). Opening has no undo: the file on disk is
+  untouched until saved, and the report says so (dot 1792475715).
 
 ## 5. Corrections on bones (P2)
 - 录制标准: allowed. `correct`'s final check (nothing outside the targets changes at this pose, nothing outside the
@@ -84,12 +85,18 @@
 - A standard bone stores its responses (its two points and two handles, every edge and axis); save, import check
   (`checkKnots`), restore, copy isolation as for its views.
 - 捏脸: a paired bone's responses are written from its standard (points shared by paired bones: the smaller bone id).
+  Lifecycle, as for its side views (dot 1792475715): choosing or switching a standard writes the paired bones' responses
+  from it — a standard without responses writes none (linear); choosing none, or a bone left unpaired, keeps the
+  responses the bone has (they are its own again, edited in 录制标准); nothing is restored from earlier.
 - **To decide (bowen):** reuse keeps the progress per axis (what the numbers are) — on a bone turned against the
   standard's, the motion does not turn with it; or the standard's motion shape kept (needs another representation).
   Faces are made where the default face is (bowen 1792304469), so their bones are close in direction (dot 1792474596).
 
-## 8. Packages
-- P1 core: Model.bones, the derivation at a pose, fallback, responses dropped, archive v16 — §6 evidence.
-- P2 core: corrections on bones (dependency scope; 捏脸 refusals).
-- P3 core: standards carry responses.
-- P4 bench: fallback marking and status; the frame-time measurement.
+## 8. Packages (each shippable: no version that changes the picture or the data without saying so; dot 1792475715)
+- P1 core + its minimal bench: Model.bones, the derivation at a pose, fallback **with** the bench's mark and status
+  line, responses dropped **with** the open report, archive v16 — §6 evidence.
+- P2 core: corrections on bones in 录制标准 (the allowed set); standards carry responses and 捏脸 writes them (§7)
+  **in the same package** as 捏脸's refusals of correct / uncorrect / clearCorrections on bones — never the lock before
+  the standard's responses exist.
+- P3 bench: the frame-time measurement on a real drawing (median, p95), the 30° / 60° bone editing checked with a real
+  mouse.
