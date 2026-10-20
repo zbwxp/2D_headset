@@ -5,6 +5,7 @@ import { defaultShape } from '../src/head'
 import { type BParams, type Params, shapeOf, shapeOfB } from '../fit/shape'
 import fitted from '../fit/ref/fit-level.json'
 import benchFit from '../fit/ref/fit-bench-all.json'
+import wire from '../fit/ref/wire-0.9.3.json'
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
 const status = $('status')
@@ -21,11 +22,17 @@ status.textContent = `模型就绪（${headName}）：${(performance.now() - t0)
 const PART: Record<DrawnBone['part'], string> = { eye: '#8e24aa', brow: '#8e24aa', nose: '#1565c0', mouth: '#ef6c00', chin: '#c62828', ear: '#2e7d32', neck: '#2e7d32' }
 const SIDE = { pos: '#d32f2f', neg: '#1976d2' }
 
-interface Opts { mix: boolean; raw: boolean; outer: boolean; ghost: boolean; bones: boolean; anchors: boolean; w: number }
+interface Opts { wire: boolean; mix: boolean; raw: boolean; outer: boolean; ghost: boolean; bones: boolean; anchors: boolean; w: number }
 function draw(g: CanvasRenderingContext2D, view: View, cx: number, cy: number, S: number, o: Opts) {
   const P = (p: V3) => { const r = rotate(p, view); return [cx + r[0] * S, cy - r[1] * S] as const }
   const line = (pts: V3[], close = false) => { g.beginPath(); pts.forEach((p, i) => { const q = P(p); i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]) }); if (close) g.closePath(); g.stroke() }
   g.lineJoin = g.lineCap = 'round'
+  // bowen's September wireframe (landmarks-0.9.3, 语义点头部研究.json): its Bézier curves in 3D, put in head space by
+  // its head frame's centre; drawn thin, the part facing away dashed by depth sign is not attempted (wire only)
+  if (o.wire) {
+    const c = wire.headFrame.center as V3
+    for (const cv of wire.curves) { g.strokeStyle = /眼/.test(cv.name) ? '#8e24aa' : /颈|喉|枕/.test(cv.name) ? '#2e7d32' : /结构线/.test(cv.name) ? '#ef6c00' : '#1565c0'; g.lineWidth = o.w * 1.2; line(cv.pts.map(q => [q[0]! - c[0], q[1]! - c[1], q[2]! - c[2]] as V3)) }
+  }
   if (o.outer) { g.fillStyle = '#c8c8c8'; for (const [x, y] of outerBoundary(model, view)) g.fillRect(cx + x * S - o.w, cy - y * S - o.w, o.w * 2, o.w * 2) }
   if (o.raw) { g.strokeStyle = o.mix ? '#a0a0a0' : '#444'; g.lineWidth = o.w * 1.6; g.setLineDash([]); g.globalAlpha = 0.8; for (const run of visibleOutline(model, view)) line(run); g.globalAlpha = 1 }
   if (o.bones) for (const b of bonesAt(model, view)) {
@@ -52,7 +59,7 @@ function draw(g: CanvasRenderingContext2D, view: View, cx: number, cy: number, S
 
 // ---- the main view ----------------------------------------------------------------------------------------------------
 const cv = $<HTMLCanvasElement>('c'), g = cv.getContext('2d')!
-const read = (): Opts => ({ mix: $<HTMLInputElement>('mix').checked, raw: $<HTMLInputElement>('raw').checked, outer: $<HTMLInputElement>('outer').checked, ghost: $<HTMLInputElement>('ghost').checked, bones: $<HTMLInputElement>('bones').checked, anchors: $<HTMLInputElement>('anchors').checked, w: 1.5 })
+const read = (): Opts => ({ wire: $<HTMLInputElement>('wire').checked, mix: $<HTMLInputElement>('mix').checked, raw: $<HTMLInputElement>('raw').checked, outer: $<HTMLInputElement>('outer').checked, ghost: $<HTMLInputElement>('ghost').checked, bones: $<HTMLInputElement>('bones').checked, anchors: $<HTMLInputElement>('anchors').checked, w: 1.5 })
 const fromHash = () => { const m = /yaw=(-?\d+).*pitch=(-?\d+)/.exec(location.hash); return m ? { yaw: +m[1]!, pitch: +m[2]! } : { yaw: 30, pitch: 0 } }
 let view: View = fromHash(), pending = false
 const pitchName = (p: number) => p === 0 ? '平视' : p > 0 ? `仰视 ${p}°` : `俯视 ${-p}°`
@@ -69,7 +76,7 @@ function render() {
 const set = (yaw: number, pitch: number) => { view = { yaw: Math.max(-90, Math.min(90, Math.round(yaw))), pitch: Math.max(-45, Math.min(45, Math.round(pitch))) }; if (!pending) { pending = true; requestAnimationFrame(render) } }
 $<HTMLInputElement>('yaw').oninput = e => set(+(e.target as HTMLInputElement).value, view.pitch)
 $<HTMLInputElement>('pitch').oninput = e => set(view.yaw, +(e.target as HTMLInputElement).value)
-for (const id of ['mix', 'raw', 'outer', 'ghost', 'bones', 'anchors']) $(id).onchange = () => { set(view.yaw, view.pitch); drawGrid() }
+for (const id of ['wire', 'mix', 'raw', 'outer', 'ghost', 'bones', 'anchors']) $(id).onchange = () => { set(view.yaw, view.pitch); drawGrid() }
 let drag: { x: number; y: number; v: View } | undefined
 cv.onpointerdown = e => { drag = { x: e.clientX, y: e.clientY, v: view }; cv.setPointerCapture(e.pointerId); cv.style.cursor = 'grabbing' }
 cv.onpointermove = e => { if (!drag) return; const k = 180 / cv.clientWidth; set(drag.v.yaw + (e.clientX - drag.x) * k, drag.v.pitch - (e.clientY - drag.y) * k) }
