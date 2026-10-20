@@ -6,7 +6,8 @@
 // the normalised pole normal — wrong; both remain (~0.36-0.40 R, about twice their value before the pole fix: 0.178,
 // 0.192). The 7 items that did go at ba6d532 were coverage 15,-38 neg0 / 45,15 pos0 / 75,-15 neg0 / 75,-38 neg0,
 // crossing 60,37.5 pos, error 45,38 pos0 / pos1. With the adaptive tip normals (this ledger): same item set; error
-// 75,15 pos0 0.3565 -> 0.3984 and 75,15 neg0 0.3724 -> 0.3984 worse, two items slightly better.
+// 75,15 pos0 0.3565 -> 0.3984 and 75,15 neg0 0.3724 -> 0.3984 worse, two items slightly better. With the tip step at
+// 5 % of the distance to the tip: same items, 75,15 pos0 / neg0 0.3985 (+0.0001), coverage 75,15 neg0 3 -> 2.
 export const KNOWN: Record<string, { max: number; tol: number }> = {
   'coverage 15,15 pos0': { max: 1, tol: 0 },
   'coverage 15,15 pos1': { max: 1, tol: 0 },
@@ -19,7 +20,7 @@ export const KNOWN: Record<string, { max: number; tol: number }> = {
   'coverage 45,38 pos1': { max: 2, tol: 0 },
   'coverage 45,38 pos2': { max: 2, tol: 0 },
   'coverage 75,-38 neg1': { max: 2, tol: 0 },
-  'coverage 75,15 neg0': { max: 3, tol: 0 },
+  'coverage 75,15 neg0': { max: 2, tol: 0 },
   'coverage 75,38 pos1': { max: 3, tol: 0 },
   'crossing 0,37.5 neg': { max: 1, tol: 0 },
   'crossing 22.5,-37.5 neg': { max: 1, tol: 0 },
@@ -40,8 +41,8 @@ export const KNOWN: Record<string, { max: number; tol: number }> = {
   'error 45,15 pos0': { max: 0.364, tol: 0.01 },
   'error 45,38 pos2': { max: 0.1645, tol: 0.01 },
   'error 75,-38 neg1': { max: 0.1509, tol: 0.01 },
-  'error 75,15 neg0': { max: 0.3984, tol: 0.01 },
-  'error 75,15 pos0': { max: 0.3984, tol: 0.01 },
+  'error 75,15 neg0': { max: 0.3985, tol: 0.01 },
+  'error 75,15 pos0': { max: 0.3985, tol: 0.01 },
   'error 75,38 pos0': { max: 0.447, tol: 0.01 },
   'error 75,38 pos1': { max: 0.4382, tol: 0.01 },
   'ghost 15,15 neg0': { max: 12, tol: 0 },
@@ -140,7 +141,7 @@ export const KNOWN_FIXED: Record<string, { max: number; tol: number }> = {
   'error 75,-38 neg1': { max: 0.1509, tol: 0.01 },
   'error 75,-38 pos1': { max: 0.4139, tol: 0.01 },
   'error 75,-38 pos2': { max: 0.5296, tol: 0.01 },
-  'error 75,15 pos0': { max: 0.5, tol: 0.01 },
+  'error 75,15 pos0': { max: 0.5001, tol: 0.01 },
   'error 75,38 neg0': { max: 0.7135, tol: 0.01 },
   'error 75,38 pos0': { max: 0.7112, tol: 0.01 },
   'ghost 15,15 neg0': { max: 12, tol: 0 },

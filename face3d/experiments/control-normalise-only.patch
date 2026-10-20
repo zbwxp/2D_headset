@@ -1,7 +1,16 @@
-Control (dot 1792492222 / 1792492402): the pole normal normalised, rows NOT made dense at the poles — undo the
-polar-angle row spacing of ba6d532 on top of it. Apply with `git apply face3d/experiments/control-normalise-only.patch`
-at ba6d532, run `F3D_RECORD=1 npx vitest run --root . --dir face3d face3d/test/evidence.test.ts -t prints`, then
-`git apply -R` to undo. Measured 2026-10-20: error 45,15 pos0 0.3684, error 75,15 pos0 0.3540 (ledger 67 items).
+Control (dot 1792492222 / 1792492402 / 1792492800): the pole normal normalised, rows NOT made dense at the poles —
+it undoes only the polar-angle row spacing on top of the normalised version. This file was added at 84f35e6 (it did not
+exist at ba6d532). To reproduce, in a separate worktree so nothing else is touched:
+
+  git -C ~/Documents/headset-face3d show 84f35e6:face3d/experiments/control-normalise-only.patch > /tmp/control.patch
+  git -C ~/Documents/headset-face3d worktree add /tmp/face3d-control ba6d532
+  cd /tmp/face3d-control && ln -s ~/Documents/headset-core/node_modules node_modules
+  git -C /tmp/face3d-control apply /tmp/control.patch
+  F3D_RECORD=1 npx vitest run --root /tmp/face3d-control --dir face3d face3d/test/evidence.test.ts -t prints
+  # undo:   git -C /tmp/face3d-control apply -R /tmp/control.patch
+  # remove: git -C ~/Documents/headset-face3d worktree remove --force /tmp/face3d-control
+
+Measured 2026-10-20 (on ba6d532 with this patch): error 45,15 pos0 0.3684, error 75,15 pos0 0.3540; ledger 67 items.
 
 --- a/face3d/src/outline.ts
 +++ b/face3d/src/outline.ts

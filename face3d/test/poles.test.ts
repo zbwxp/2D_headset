@@ -70,19 +70,25 @@ describe('the default head through the production path', () => {
     }
     const us = Array.from({ length: 72 }, (_, i) => -Math.PI + (i / 72) * 2 * Math.PI)
     const spread = (f: (u: number) => V3) => { const ns = us.map(f); let s = 0; for (const a of ns) for (const b of ns) s = Math.max(s, Math.acos(Math.max(-1, Math.min(1, dot(a, b))))); return s * 57.3 }
+    const worstAll: [string, number][] = []
     for (const [tip, y0, away] of [['chin', defaultShape.yMin, 1], ['crown', defaultShape.yMax, -1]] as const) for (const dy of [1e-2, 1e-3, 1e-4, 1e-5, 1e-6]) {
       const y = y0 + away * dy
       const prod = spread(u => head.normal(u, y)), one1 = spread(u => oneSided(u, y, 0.1, away)), one2 = spread(u => oneSided(u, y, 0.01, away))
-      out.push(`${tip} ring ${dy}: spread of normals round the ring — production ${prod.toFixed(1)}°, one-sided 0.1·d ${one1.toFixed(1)}°, 0.01·d ${one2.toFixed(1)}°`)
-      expect([tip, dy, Math.abs(prod - one2) < 2]).toEqual([tip, dy, true])
+      // point by point: at the same (u, y) the production normal and the small one-sided one agree (dot 1792492800)
+      const worst = Math.max(...us.map(u => Math.acos(Math.max(-1, Math.min(1, dot(head.normal(u, y), oneSided(u, y, 0.01, away))))) * 57.3))
+      out.push(`${tip} ring ${dy}: spread round the ring — production ${prod.toFixed(1)}°, one-sided 0.1·d ${one1.toFixed(1)}°, 0.01·d ${one2.toFixed(1)}°; same-point disagreement ≤ ${worst.toFixed(2)}°`)
+      worstAll.push([`${tip} ${dy}`, worst])
     }
     console.log(out.join('\n'))
+    expect(worstAll.filter(([, w]) => !(w < 1)).map(([k, w]) => `${k}: ${w.toFixed(2)}°`)).toEqual([])
   })
   it('the outline across grids: loop count, closedness, two-way position distance to the finest grid', () => {
     const views = [{ yaw: 0, pitch: 0 }, { yaw: 0, pitch: 1 }, { yaw: 0, pitch: -1 }, { yaw: 45, pitch: 15 }, { yaw: 75, pitch: 15 }, { yaw: 45, pitch: 38 }, { yaw: 0, pitch: -45 }, { yaw: 90, pitch: 30 }]
-    const rows: string[] = []
+    const rows: string[] = [], facts: { view: string; closed: boolean; counts: number[]; dist: number[] }[] = []
     for (const v of views) {
       const per = GRIDS.map(g => candidates(head, v, g)), fine = per[2]!.flatMap(l => l.pts.map(q => q.p))
+      const dist = per.slice(0, 2).map(L => { const pts = L.flatMap(l => l.pts.map(q => q.p)); return Math.max(Math.max(...pts.map(p => toLoops(p, per[2]!))), Math.max(...fine.filter((_, k) => k % 7 === 0).map(p => toLoops(p, L)))) })
+      facts.push({ view: `${v.yaw},${v.pitch}`, closed: per.every(L => L.every(l => l.closed)), counts: per.map(L => L.length), dist })
       rows.push(`${v.yaw},${v.pitch}: ` + per.map((L, i) => {
         const pts = L.flatMap(l => l.pts.map(q => q.p))
         const d = i === 2 ? 0 : Math.max(Math.max(...pts.map(p => toLoops(p, per[2]!))), Math.max(...fine.filter((_, k) => k % 7 === 0).map(p => toLoops(p, L))))
@@ -91,5 +97,10 @@ describe('the default head through the production path', () => {
     }
     console.log(rows.join('\n'))
     expect(rows.length).toBe(views.length)
+    expect(facts.filter(f => !f.closed || f.counts.some(c => c !== f.counts[0]) || !f.dist.every(Number.isFinite)).map(f => f.view)).toEqual([])
+    // convergence: the middle grid nearer the finest than the coarsest is — except the views listed as not converging
+    // (kept visible, dot 1792492800: 75,15 measured 0.034 then 0.040)
+    const NOT_CONVERGING = ['75,15']
+    expect(facts.filter(f => !(f.dist[1]! <= f.dist[0]!)).map(f => f.view)).toEqual(NOT_CONVERGING)
   }, 600000)
 })
