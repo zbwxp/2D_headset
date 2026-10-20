@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { attach, BONE_DEFS, place } from '../src/bones'
 import { COUNTS, keyTable, mixContour, PITCH_KEYS, weights, YAW_KEYS } from '../src/contour'
 import { defaultShape, makeHead } from '../src/head'
-import { candidates, mask, visible } from '../src/outline'
+import { candidates, hiddenOn, occluder } from '../src/outline'
 import { type V3, dot, len, mirror, rotate, screenAxes, sub, toCamera } from '../src/view'
 
 const head = makeHead(defaultShape)
@@ -41,17 +41,17 @@ describe('rough head', () => {
 
 describe('outline', () => {
   it('level front view: the outline runs down both sides at x = ±half-width, visible', () => {
-    const v = { yaw: 0, pitch: 0 }, m = mask(head, v)
+    const v = { yaw: 0, pitch: 0 }, occ = occluder(head, v)
     const pts = candidates(head, v).flatMap(l => l.pts)
     for (const y of [-0.3, -0.7]) {
       const near = pts.filter(q => Math.abs(q.y - y) < 0.02 && q.p[0] > 0)
       expect(near.length).toBeGreaterThan(0)
-      for (const q of near) { expect(Math.abs(q.p[0] - head.section(y).a)).toBeLessThan(0.02); expect(visible(m, q.p, v, head.normal(q.u, q.y))).toBe(true) }
+      for (const q of near) { expect(Math.abs(q.p[0] - head.section(y).a)).toBeLessThan(0.02); expect(hiddenOn(occ, q.p, q.u, q.y)).toBe(false) }
     }
   })
-  it('a point behind the face is not visible (the depth test works)', () => {
-    const v = { yaw: 0, pitch: 0 }, m = mask(head, v), u = Math.PI, y = -0.2
-    expect(visible(m, head.at(u, y), v, head.normal(u, y))).toBe(false)
+  it('a point at the back of the head is hidden behind the face (the occlusion test works)', () => {
+    const v = { yaw: 0, pitch: 0 }, occ = occluder(head, v), u = Math.PI, y = -0.2
+    expect(hiddenOn(occ, head.at(u, y), u, y)).toBe(true)
   })
 })
 

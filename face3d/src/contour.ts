@@ -1,7 +1,7 @@
 // Contour bones (PLAN §4): per key view, the face contour of each side as three segments chin → jaw angle → cheek →
 // temple, found on the head's candidate outline; between key views the corresponding samples are mixed on the surface.
 import { CHIN_Y, type Head } from './head'
-import { type Loop, type OutlinePoint, candidates, mask, visible } from './outline'
+import { type Loop, type OutlinePoint, candidates, hiddenOn, occluder } from './outline'
 import { type V3, type View, add, len, mirror, rotate, scale, screenAxes, sub } from './view'
 
 export const YAW_KEYS = [0, 30, 60, 90] as const
@@ -62,30 +62,6 @@ export function walk(loop: Loop, i0: number, dir: 1 | -1): OutlinePoint[] {
   return out
 }
 
-/** Remove out-and-back spurs on screen: where an outline curve has a cusp it runs out past the visible edge and comes
- *  back (that stretch is behind the surface but grazing, so the depth test can miss it). A later point returning within
- *  SPUR_EPS of an earlier one, after more than 3 × SPUR_EPS and at most SPUR_MAX_ARC of arc in between (a spur is short; a
- *  walk that comes round near its start is not one), cuts that stretch out. Depends only on the
- *  view, so the result is the same however the view was reached. */
-export const SPUR_EPS = 0.02, SPUR_MAX_ARC = 0.7
-export function pruneSpurs(path: OutlinePoint[], view: View): OutlinePoint[] {
-  const P = path.map(q => rotate(q.p, view))
-  const keep: number[] = []
-  let i = 0
-  while (i < path.length) {
-    keep.push(i)
-    // the furthest later point that comes back next to point i after a long enough excursion
-    let jump = -1, arc = 0
-    for (let j = i + 1; j < path.length; j++) {
-      arc += Math.hypot(P[j]![0] - P[j - 1]![0], P[j]![1] - P[j - 1]![1])
-      if (arc > SPUR_MAX_ARC) break
-      if (arc > 3 * SPUR_EPS && Math.hypot(P[j]![0] - P[i]![0], P[j]![1] - P[i]![1]) < SPUR_EPS) jump = j
-    }
-    i = jump > 0 ? jump : i + 1
-  }
-  return keep.map(k => path[k]!)
-}
-
 /** Split a side's walk (starting at the chin) at the first crossing of each anchor height. */
 function segmentsOf(head: Head, path: OutlinePoint[], anchors: readonly number[] = ANCHOR_Y, jawFirst = true): (OutlinePoint[] | undefined)[] {
   const segs: (OutlinePoint[] | undefined)[] = []
@@ -120,7 +96,7 @@ function segmentsOf(head: Head, path: OutlinePoint[], anchors: readonly number[]
 export function traceKey(head: Head, view: View, ref: Partial<Record<Side, V3>> = {}): { pos: (Sample[] | undefined)[]; neg: (Sample[] | undefined)[]; vis: { pos: boolean[][]; neg: boolean[][] }; chinLoop: number } {
   // tiny loops (the rounded chin cap makes a small one of its own) are not face outlines
   const extent = (l: Loop) => { const ps = l.pts.map(q => q.p); return Math.max(...[0, 1, 2].map(k => Math.max(...ps.map(p => p[k]!)) - Math.min(...ps.map(p => p[k]!)))) }
-  const loops = candidates(head, view).filter(l => extent(l) >= MIN_LOOP), m = mask(head, view)
+  const loops = candidates(head, view).filter(l => extent(l) >= MIN_LOOP), occ = occluder(head, view)
   const chin: V3 = head.at(0, CHIN_Y)
   const sides: Record<Side, OutlinePoint[]> = { pos: [], neg: [] }
   let chinLoop = -1
@@ -148,7 +124,7 @@ export function traceKey(head: Head, view: View, ref: Partial<Record<Side, V3>> 
     for (const c of near.slice(0, 80)) {
       const loop = loops[c.l]!, A = walk(loop, c.i, 1), B = walk(loop, c.i, -1)
       const w = [A, B].filter(x => toward(x) > TOWARD_MIN && !overlaps(x)).sort((x, y) => toward(y) - toward(x))[0]
-      if (w) { sides[s] = pruneSpurs(w, view); if (s === 'pos') chinLoop = c.l; break }
+      if (w) { sides[s] = w; if (s === 'pos') chinLoop = c.l; break }
     }
   }
   const out = { pos: [] as (Sample[] | undefined)[], neg: [] as (Sample[] | undefined)[], vis: { pos: [] as boolean[][], neg: [] as boolean[][] }, chinLoop }
@@ -157,7 +133,7 @@ export function traceKey(head: Head, view: View, ref: Partial<Record<Side, V3>> 
     segs.forEach((seg, i) => {
       const samples = seg && seg.length >= 2 ? resample(head, seg, COUNTS[i]!) : undefined
       out[s].push(samples)
-      out.vis[s].push(samples ? samples.map(q => visible(m, head.at(q.u, q.y), view, head.normal(q.u, q.y))) : [])
+      out.vis[s].push(samples ? samples.map(q => !hiddenOn(occ, head.at(q.u, q.y), q.u, q.y)) : [])
     })
   }
   return out
@@ -174,7 +150,7 @@ export type JawMode = 'traced' | 'fixed'
 /** Cheek and temple segments at a view, traced upward from a fixed jaw-angle point on each side. */
 export function traceFromJaw(head: Head, view: View, jaw: Record<Side, Sample>): { pos: (Sample[] | undefined)[]; neg: (Sample[] | undefined)[]; vis: { pos: boolean[][]; neg: boolean[][] } } {
   const extent = (l: Loop) => { const ps = l.pts.map(q => q.p); return Math.max(...[0, 1, 2].map(k => Math.max(...ps.map(p => p[k]!)) - Math.min(...ps.map(p => p[k]!)))) }
-  const loops = candidates(head, view).filter(l => extent(l) >= MIN_LOOP), m = mask(head, view)
+  const loops = candidates(head, view).filter(l => extent(l) >= MIN_LOOP), occ = occluder(head, view)
   const out = { pos: [] as (Sample[] | undefined)[], neg: [] as (Sample[] | undefined)[], vis: { pos: [] as boolean[][], neg: [] as boolean[][] } }
   for (const s of ['pos', 'neg'] as const) {
     const j = jaw[s], jp = head.at(j.u, j.y)
@@ -186,7 +162,7 @@ export function traceFromJaw(head: Head, view: View, jaw: Record<Side, Sample>):
     let path: OutlinePoint[] = []
     for (const c of near.slice(0, 40)) {
       const loop = loops[c.l]!, w = [walk(loop, c.i, 1), walk(loop, c.i, -1)].filter(x => climb(x) > 0.005).sort((x, y) => climb(y) - climb(x))[0]
-      if (w) { path = pruneSpurs(w, view); break }
+      if (w) { path = w; break }
     }
     // the segments start at the fixed jaw angle itself (shared anchor); the bridge to the outline is part of segment 1
     const start: OutlinePoint = { u: j.u, y: j.y, p: jp }
@@ -194,7 +170,7 @@ export function traceFromJaw(head: Head, view: View, jaw: Record<Side, Sample>):
     segs.forEach((seg, i) => {
       const samples = seg && seg.length >= 2 ? resample(head, seg, COUNTS[i + 1]!) : undefined
       out[s].push(samples)
-      out.vis[s].push(samples ? samples.map(q => visible(m, head.at(q.u, q.y), view, head.normal(q.u, q.y))) : [])
+      out.vis[s].push(samples ? samples.map(q => !hiddenOn(occ, head.at(q.u, q.y), q.u, q.y)) : [])
     })
   }
   return out
@@ -256,13 +232,13 @@ function fixedJawTable(head: Head): KeyTable {
   const level = keyTable(head, 'traced').at(0, 0)
   const keys: KeyContour[] = []
   for (const yaw of YAW_KEYS) for (const pitch of PITCH_KEYS) {
-    const view = { yaw, pitch }, m = mask(head, view)
+    const view = { yaw, pitch }, occ = occluder(head, view)
     const jawSeg = (s: Side) => level[s][0]!.samples
     const jawEnd = (s: Side) => jawSeg(s)[jawSeg(s).length - 1]!
     const up = traceFromJaw(head, view, { pos: jawEnd('pos'), neg: jawEnd('neg') })
     const side = (s: Side): Segment[] => {
       const fixed = jawSeg(s)
-      const segs: Segment[] = [{ present: true, samples: fixed, vis: fixed.map(q => visible(m, head.at(q.u, q.y), view, head.normal(q.u, q.y))) }]
+      const segs: Segment[] = [{ present: true, samples: fixed, vis: fixed.map(q => !hiddenOn(occ, head.at(q.u, q.y), q.u, q.y)) }]
       for (let i = 0; i < 2; i++) {
         const own = up[s][i]
         if (own) { segs.push({ present: true, samples: own, vis: up.vis[s][i]! }); continue }

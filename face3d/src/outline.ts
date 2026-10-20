@@ -123,3 +123,57 @@ export function boundaryPoints(m: Mask): [number, number][] {
   for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) if (boundaryPx(m, x, y)) out.push([m.x0 + (x + 0.5) * m.px, m.y0 + (y + 0.5) * m.px])
   return out
 }
+
+// ---- occlusion on a fine mesh, continuous screen coordinates (dot 1792490326) -----------------------------------------
+// The depth buffer above is coarse (120 × 90, pixel-quantised, tested 0.02 R outward): at the jaw's folds it called
+// hidden points visible (diag-spur). Here a point is hidden when a triangle of a fine mesh covers its exact screen
+// position with depth nearer than the point's by more than OCC_TOL. Triangles within OCC_OWN grid cells of the point on
+// the surface are its own neighbourhood and are skipped: at a grazing angle a facet of the surface itself can sit a
+// little in front of a point on the true outline. Still a discrete approximation (mesh + tolerance), checked against a
+// finer mesh in the tests.
+export const OCC_GRID: Grid = { nu: 360, ny: 240 }
+export const OCC_TOL = 0.002, OCC_CELL = 0.02, OCC_OWN = 2
+export interface Occluder { readonly view: View; readonly nu: number; readonly ny: number; readonly yMax: number; readonly yMin: number; readonly cells: Map<number, number[]>; readonly tri: Float64Array; readonly ij: Int32Array; readonly rowA: Float64Array }
+
+export function occluder(head: Head, view: View, grid: Grid = OCC_GRID): Occluder {
+  const { nu, ny } = grid, yMax = head.shape.yMax, yMin = head.shape.yMin
+  const V: V3[] = []
+  for (let j = 0; j <= ny; j++) for (let i = 0; i < nu; i++) V.push(rotate(head.at(uOf(i, nu), yMax - (j / ny) * (yMax - yMin)), view))
+  const at = (i: number, j: number) => V[j * nu + (((i % nu) + nu) % nu)]!
+  const n = nu * ny * 2, tri = new Float64Array(n * 9), ij = new Int32Array(n * 2), cells = new Map<number, number[]>()
+  let t = 0
+  const key = (cx: number, cy: number) => cx * 100003 + cy
+  const add = (a: V3, b: V3, c: V3, i: number, j: number) => {
+    tri.set([a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]], t * 9); ij[t * 2] = i; ij[t * 2 + 1] = j
+    const x0 = Math.floor(Math.min(a[0], b[0], c[0]) / OCC_CELL), x1 = Math.floor(Math.max(a[0], b[0], c[0]) / OCC_CELL)
+    const y0 = Math.floor(Math.min(a[1], b[1], c[1]) / OCC_CELL), y1 = Math.floor(Math.max(a[1], b[1], c[1]) / OCC_CELL)
+    for (let cx = x0; cx <= x1; cx++) for (let cy = y0; cy <= y1; cy++) { const k = key(cx, cy); const l = cells.get(k); if (l) l.push(t); else cells.set(k, [t]) }
+    t++
+  }
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nu; i++) { const a = at(i, j), b = at(i + 1, j), c = at(i, j + 1), d = at(i + 1, j + 1); add(a, b, d, i, j); add(a, d, c, i, j) }
+  const rowA = new Float64Array(ny + 1)
+  for (let j = 0; j <= ny; j++) rowA[j] = head.section(yMax - (j / ny) * (yMax - yMin)).a
+  return { view, nu, ny, yMax, yMin, cells, tri, ij, rowA }
+}
+
+/** Is the head point at surface parameters (u, y) hidden behind another part of the head at this occluder's view? */
+export function hiddenOn(o: Occluder, p: V3, u: number, y: number): boolean {
+  const r = rotate(p, o.view), k = Math.floor(r[0] / OCC_CELL) * 100003 + Math.floor(r[1] / OCC_CELL)
+  const pi = ((u + Math.PI) / (2 * Math.PI)) * o.nu, pj = ((o.yMax - y) / (o.yMax - o.yMin)) * o.ny
+  for (const t of o.cells.get(k) ?? []) {
+    const ti = o.ij[t * 2]!, tj = o.ij[t * 2 + 1]!
+    // own neighbourhood: OCC_OWN cells in height; round the section, the same physical distance — near the chin pole a
+    // section is tiny, so there the whole ring of angles is next to the point
+    const di = Math.abs(((ti + 0.5 - pi) % o.nu + o.nu * 1.5) % o.nu - o.nu / 2)
+    const a = o.rowA[Math.min(o.ny, Math.max(0, Math.round(pj)))]!
+    if (Math.abs(tj + 0.5 - pj) <= OCC_OWN + 0.5 && di * Math.max(a, 1e-3) <= OCC_OWN + 0.5) continue
+    const b = t * 9, ax = o.tri[b]!, ay = o.tri[b + 1]!, bx = o.tri[b + 3]!, by = o.tri[b + 4]!, cx = o.tri[b + 6]!, cy = o.tri[b + 7]!
+    const det = (bx - ax) * (cy - ay) - (cx - ax) * (by - ay)
+    if (Math.abs(det) < 1e-14) continue
+    const w1 = ((r[0] - ax) * (cy - ay) - (cx - ax) * (r[1] - ay)) / det, w2 = ((bx - ax) * (r[1] - ay) - (r[0] - ax) * (by - ay)) / det
+    if (w1 < 0 || w2 < 0 || w1 + w2 > 1) continue
+    const z = o.tri[b + 2]! * (1 - w1 - w2) + o.tri[b + 5]! * w1 + o.tri[b + 8]! * w2
+    if (z > r[2] + OCC_TOL) return true
+  }
+  return false
+}
