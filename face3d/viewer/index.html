@@ -40,8 +40,8 @@
     <label>pitch：<span class="val" id="pv"></span></label>
     <input type="range" id="pitch" min="-45" max="45" step="1" value="0">
     <div class="checks">
-      <label><input type="checkbox" id="mix" checked>脸轮廓：关键视角 mix（红 / 蓝）</label>
-      <label><input type="checkbox" id="raw" checked>对照：粗头模的深度可见轮廓（灰，含仰视时的内部颌线）</label>
+      <label><input type="checkbox" id="mix">脸轮廓：关键视角 mix（红 / 蓝；仰视等角度会出现横穿脸的错线，默认关）</label>
+      <label><input type="checkbox" id="raw" checked>头模的真实可见轮廓（深灰，含仰视时的内部颌线）</label>
       <label><input type="checkbox" id="outer">对照：粗头模投影的外边界（浅灰点）</label>
       <label><input type="checkbox" id="ghost">调试：显示不可见段（幽灵线）</label>
       <label><input type="checkbox" id="bones" checked>表面骨线（眼、眉、鼻、嘴、下巴尖、耳）</label>

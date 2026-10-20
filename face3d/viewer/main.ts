@@ -23,7 +23,7 @@ function draw(g: CanvasRenderingContext2D, view: View, cx: number, cy: number, S
   const line = (pts: V3[], close = false) => { g.beginPath(); pts.forEach((p, i) => { const q = P(p); i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]) }); if (close) g.closePath(); g.stroke() }
   g.lineJoin = g.lineCap = 'round'
   if (o.outer) { g.fillStyle = '#c8c8c8'; for (const [x, y] of outerBoundary(model, view)) g.fillRect(cx + x * S - o.w, cy - y * S - o.w, o.w * 2, o.w * 2) }
-  if (o.raw) { g.strokeStyle = '#a0a0a0'; g.lineWidth = o.w * 1.6; g.setLineDash([]); g.globalAlpha = 0.8; for (const run of visibleOutline(model, view)) line(run); g.globalAlpha = 1 }
+  if (o.raw) { g.strokeStyle = o.mix ? '#a0a0a0' : '#444'; g.lineWidth = o.w * 1.6; g.setLineDash([]); g.globalAlpha = 0.8; for (const run of visibleOutline(model, view)) line(run); g.globalAlpha = 1 }
   if (o.bones) for (const b of bonesAt(model, view)) {
     g.strokeStyle = PART[b.part]
     for (let i = 0; i < b.pts.length - (b.closed ? 0 : 1); i++) {
