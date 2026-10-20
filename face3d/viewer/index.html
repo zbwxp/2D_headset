@@ -41,7 +41,9 @@
     <input type="range" id="pitch" min="-45" max="45" step="1" value="0">
     <div class="checks">
       <label><input type="checkbox" id="mix" checked>脸轮廓：关键视角 mix（红 / 蓝）</label>
-      <label><input type="checkbox" id="raw" checked>对照：直接从粗头模取的可见轮廓（灰）</label>
+      <label><input type="checkbox" id="raw" checked>对照：粗头模的深度可见轮廓（灰，含仰视时的内部颌线）</label>
+      <label><input type="checkbox" id="outer">对照：粗头模投影的外边界（浅灰点）</label>
+      <label><input type="checkbox" id="ghost">调试：显示不可见段（幽灵线）</label>
       <label><input type="checkbox" id="bones" checked>表面骨线（眼、眉、鼻、嘴、下巴尖、耳）</label>
       <label><input type="checkbox" id="anchors">轮廓锚点（下巴 / 颌角 / 颊 / 额）</label>
     </div>
@@ -55,7 +57,7 @@
       <div><span class="sw" style="border-color:#c62828"></span>下巴尖</div>
       <div><span class="sw" style="border-color:#2e7d32"></span>耳、颈</div>
     </div>
-    <p class="note">轮廓线颜色越淡，表示这一段在这个角度不在外沿上（缺席段借平视位置，淡出）。表面骨线转到背面时画成淡虚线。</p>
+    <p class="note">轮廓线的深浅 = 这一段在这个角度的可见程度，完全不可见就不画（打开「幽灵线」才会淡淡显示）。表面骨线转到背面时画成淡虚线。</p>
     <div class="note"><b>还没做：</b></div>
     <ul class="todo">
       <li>90° 侧鼻线（侧面时鼻子的外轮廓）</li>

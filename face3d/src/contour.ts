@@ -1,5 +1,5 @@
 // Contour bones (PLAN §4): per key view, the face contour of each side as three segments chin → jaw angle → cheek →
-// temple, found on the head's candidate outline; between key views the corresponding samples are mixed in 3D.
+// temple, found on the head's candidate outline; between key views the corresponding samples are mixed on the surface.
 import { CHIN_Y, type Head } from './head'
 import { type Loop, type OutlinePoint, candidates, mask, visible } from './outline'
 import { type V3, type View, add, len, mirror, rotate, scale, screenAxes, sub } from './view'
@@ -53,9 +53,11 @@ function walk(loop: Loop, i0: number, dir: 1 | -1): OutlinePoint[] {
     let j = i + dir
     if (j < 0 || j >= n) { if (!loop.closed) break; j = (j + n) % n }
     if (j === i0) break
-    const p = loop.pts[j]!
-    if (!inFace(p)) break
-    out.push(p); i = j
+    const q = loop.pts[j]!
+    if (!inFace(q)) break
+    // u unwrapped along the walk (dot 1792489423): anchors and resampling interpolate u, which must not jump at ±π
+    const prev = out[out.length - 1]!
+    out.push({ ...q, u: q.u + 2 * Math.PI * Math.round((prev.u - q.u) / (2 * Math.PI)) }); i = j
   }
   return out
 }
@@ -159,12 +161,22 @@ export function keyTable(head: Head): KeyTable {
     for (const yaw of YAW_KEYS.slice(1)) { prev = traceKey(head, { yaw, pitch }, anchorOf(prev)); raw.set(`${yaw},${pitch}`, prev) }
   }
   const level = raw.get('0,0')!
-  const fill = (r: ReturnType<typeof traceKey>, s: Side, i: number): Segment => {
-    const own = r[s][i]
-    if (own) return { present: true, samples: own, vis: r.vis[s][i]! }
-    const lv = level[s][i]
-    if (!lv) throw new Error(`level key has no ${s} segment ${i}: the head's front outline is incomplete`)
-    return { present: false, samples: lv, vis: lv.map(() => false) }
+  // an absent segment borrows the level key's (u, y), re-attached so it starts at this key's own previous anchor (dot
+  // 1792489423: never a jump between segments): the start difference fades linearly to zero along the segment, so the
+  // segment ends at the level's anchor, where the next borrowed segment begins
+  const fillSide = (r: ReturnType<typeof traceKey>, s: Side): Segment[] => {
+    const out: Segment[] = []
+    for (let i = 0; i < 3; i++) {
+      const own = r[s][i]
+      if (own) { out.push({ present: true, samples: own, vis: r.vis[s][i]! }); continue }
+      const lv = level[s][i]
+      if (!lv) throw new Error(`level key has no ${s} segment ${i}: the head's front outline is incomplete`)
+      const prevEnd = i > 0 ? out[i - 1]!.samples[out[i - 1]!.samples.length - 1]! : undefined
+      const du = prevEnd ? prevEnd.u - lv[0]!.u : 0, dy = prevEnd ? prevEnd.y - lv[0]!.y : 0
+      const n = lv.length - 1
+      out.push({ present: false, samples: lv.map((q, k) => ({ u: q.u + du * (1 - k / n), y: q.y + dy * (1 - k / n) })), vis: lv.map(() => false) })
+    }
+    return out
   }
   // yaw 0 keys are symmetric views of a symmetric head: the x− side is the x+ side mirrored (u → −u), so tracing noise
   // cannot make the two sides differ there
@@ -175,7 +187,7 @@ export function keyTable(head: Head): KeyTable {
   const keys: KeyContour[] = []
   for (const yaw of YAW_KEYS) for (const pitch of PITCH_KEYS) {
     const r = raw.get(`${yaw},${pitch}`)!
-    keys.push({ view: { yaw, pitch }, pos: [0, 1, 2].map(i => fill(r, 'pos', i)), neg: [0, 1, 2].map(i => fill(r, 'neg', i)), chinLoop: r.chinLoop })
+    keys.push({ view: { yaw, pitch }, pos: fillSide(r, 'pos'), neg: fillSide(r, 'neg'), chinLoop: r.chinLoop })
   }
   return { keys, at: (yaw, pitch) => keys.find(k => k.view.yaw === yaw && k.view.pitch === pitch)! }
 }
@@ -200,7 +212,7 @@ export function weights(yaw: number, pitch: number): { yaw: number; pitch: numbe
 
 export interface ContourLine { readonly side: Side; readonly pts: V3[]; readonly vis: number[]; readonly anchors: number[] }
 
-/** The face contour at any view: corresponding samples of the surrounding keys mixed in 3D (PLAN §4). */
+/** The face contour at any view: corresponding samples of the surrounding keys mixed on the surface (PLAN §4). */
 export function mixContour(head: Head, table: KeyTable, view: View, offsets: Offsets = new Map()): ContourLine[] {
   const flip = view.yaw < 0, yaw = Math.abs(view.yaw)
   const W = weights(yaw, view.pitch)

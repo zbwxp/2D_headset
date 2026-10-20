@@ -2,7 +2,7 @@
 import { type Bone, attachAll, isAttach, place } from './bones'
 import { type ContourLine, type KeyTable, keyTable, mixContour } from './contour'
 import { type Head, type HeadShape, defaultShape, makeHead } from './head'
-import { candidates, mask, visible } from './outline'
+import { boundaryPoints, candidates, mask, visible } from './outline'
 import { type V3, type View, dot, toCamera } from './view'
 
 export interface Model { readonly head: Head; readonly bones: Bone[]; readonly table: KeyTable }
@@ -26,8 +26,9 @@ export function bonesAt(m: Model, view: View): DrawnBone[] {
 
 export const contourAt = (m: Model, view: View): ContourLine[] => mixContour(m.head, m.table, view)
 
-/** The rough head's own visible outline at this view (the comparison switch, dot constraint 2): visible candidates. */
-export function headOutline(m: Model, view: View): V3[][] {
+/** The rough head's depth-visible outline at this view: candidate outline points nothing of the head covers — the outer
+ *  edge AND inner lines such as the jaw seen from below (dot 1792489423: named apart from the outer boundary). */
+export function visibleOutline(m: Model, view: View): V3[][] {
   const mk = mask(m.head, view), out: V3[][] = []
   for (const loop of candidates(m.head, view, { nu: 160, ny: 110 })) {
     let run: V3[] = []
@@ -36,3 +37,6 @@ export function headOutline(m: Model, view: View): V3[][] {
   }
   return out
 }
+
+/** The rough head's outer boundary at this view: the projected head's edge pixels (screen points, head units). */
+export const outerBoundary = (m: Model, view: View): [number, number][] => boundaryPoints(mask(m.head, view))
