@@ -11,13 +11,17 @@
 //     the four controls dropped so the outline does not change while scrubbing.
 // Run: npx vite-node face3d/fit/bench-task.ts <drawing.png> <yaw> <pitch> <out-dir> [template.json]
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { open, save } from '../../../headset-core/src/archive/index'
+import { rotate } from '../src/view'
+import { controlsAt, LINES } from './outline-sym'
 import { C, CX, CY, S, darkDT, readBmp, register, renderContour, toDrawing, writeBmp } from './lineart'
 
 type P = [number, number]
 const [drawing, yawA, pitchA, outDir, template] = process.argv.slice(2)
 const yaw = Number(yawA), pitch = Number(pitchA), name = `B-yaw${yaw}-pitch${pitch}`
+// never overwrite an archive (bowen may have fine-tuned it; dot 1792518618): a rebuild goes to a new folder
+if (existsSync(`${outDir}/${name}.json`)) { console.error(`refused: ${outDir}/${name}.json exists — use a new out-dir`); process.exit(1) }
 mkdirSync(outDir!, { recursive: true })
 const tmp = `${outDir}/.${name}-drawing.bmp`
 execFileSync('sips', ['-s', 'format', 'bmp', drawing!, '--out', tmp], { stdio: 'ignore' })
@@ -55,7 +59,15 @@ execFileSync('sips', ['-s', 'format', 'png', `${outDir}/.${name}-ref.bmp`, '--ou
 const PX = 82, toCanvas = ([x, y]: P): P => [((x - CX) * PX) / S, ((y - CY) * PX) / S]
 const T = [...lowerT, ...craniumT].map(toCanvas)
 const crown = T.reduce((a, p) => (p[1] < a[1] ? p : a)), chinP = toCanvas(lowerT.length ? lowerT.reduce((a, p) => (p[1] > a[1] ? p : a)) : chin)
-const level = T.filter(p => Math.abs(p[1]) < 5), L = level.reduce((a, p) => (p[0] > a[0] ? p : a), level[0] ?? [60, 0]), R = level.reduce((a, p) => (p[0] < a[0] ? p : a), level[0] ?? [-60, 0])
+const level = T.filter(p => Math.abs(p[1]) < 5), L = level.reduce((a, p) => (p[0] > a[0] ? p : a), level[0] ?? [60, 0])
+// the far-side point (右): in bowen's own outline it is a fixed spot on the side of the head in front of the ear, turning
+// with the head — its x follows −55.7·cos(yaw) canvas px at yaw 0 … 90 (123.json: −45.5 at 30, −27.6 at 60, −14.1 at
+// 75, −0.6 at 90), not the back-of-skull silhouette (which made the first matches at 60 … 90 fold back under the ear;
+// dot 1792518360). Turned views put it there (head space (−0.68, −0.05, 0) ball radii) and match the far-side lines only
+// to targets in front of it; the front view keeps the drawing's level extreme
+const Rh = rotate([-0.68, -0.05, 0], { yaw, pitch })
+const R: P = yaw > 0 ? [Rh[0] * PX, -Rh[1] * PX] : level.reduce((a, p) => (p[0] < a[0] ? p : a), level[0] ?? [-60, 0])
+const front = (p: P) => yaw <= 0 || p[0] >= R[0] - 6
 const ang = (p: P) => Math.atan2(p[1], p[0]) // y down: L ≈ 0, crown ≈ −90°, chin ≈ +90°, R ≈ ±180°
 const inArc = (p: P, a0: number, a1: number) => { let t = ang(p); if (a1 < a0) { if (t < a0) t += 2 * Math.PI; return t >= a0 && t <= a1 + 2 * Math.PI } return t >= a0 && t <= a1 }
 function fit(A: P, B: P, pts: P[]): { ha: P; hb: P } {
@@ -75,11 +87,13 @@ function fit(A: P, B: P, pts: P[]): { ha: P; hb: P } {
   return { ha, hb }
 }
 const aL = ang(L), aR = ang(R), aC = ang(crown), aN = ang(chinP)
+const benchHandles = (n: string) => { const l = LINES.find(x => x.name === n)!, h = controlsAt({ yaw, pitch }).lines[l.id]!; return { ha: [h.ha.x, h.ha.y] as P, hb: [h.hb.x, h.hb.y] as P } }
 const segFit = {
   左颅: { a: L, b: crown, ...fit(L, crown, T.filter(p => inArc(p, aC, aL))) },
   左下颌: { a: L, b: chinP, ...fit(L, chinP, T.filter(p => inArc(p, aL, aN))) },
-  右下颌: { a: R, b: chinP, ...fit(R, chinP, T.filter(p => inArc(p, aN, aR))) },
-  右颅: { a: R, b: crown, ...fit(R, crown, T.filter(p => inArc(p, aR, aC))) },
+  右下颌: { a: R, b: chinP, ...fit(R, chinP, T.filter(p => inArc(p, aN, aR) && front(p))) },
+  // turned views: 右颅 runs under the hair (nothing drawn to match), so its handles are bowen's own at this view
+  右颅: { a: R, b: crown, ...(yaw > 0 ? benchHandles('右颅') : fit(R, crown, T.filter(p => inArc(p, aR, aC)))) },
 }
 // fit() solves for the handle VECTORS (P1 − A, P2 − B), which is what bench stores as ha (from a) and hb (from b)
 
@@ -128,9 +142,11 @@ const notes = {
   status: '生成线稿是候选，角度未校准（dot 1792513207）；配准只用下半张脸',
   // large pitch: the generated drawings weaken the angle (dot 1792515820) and the jaw registers onto the eyes (checked
   // on the previews 2026-10-21) — not to be traced
-  candidate: Math.abs(pitch) >= 45 ? '待修：大俯仰角度被生成图弱化，配准把下颌落到了眼睛上；首次匹配不可信，先不要照着描' : '候选：可以细调',
+  // CANDIDATE=ok / fix overrides the rule after looking at the preview; NOTE adds a line (e.g. the drawing's version)
+  ...(process.env.NOTE ? { note: process.env.NOTE } : {}),
+  candidate: (process.env.CANDIDATE ? process.env.CANDIDATE === 'fix' : Math.abs(pitch) >= 45) ? '待修：大俯仰角度被生成图弱化，配准把下颌落到了眼睛上；首次匹配不可信，先不要照着描' : '候选：可以细调',
   limits: [
-    ...(yaw >= 60 ? ['后下颌一根三次曲线绕不过耳下：首次匹配在耳下有 S 形绕道，需要手调（以后可能加圆弧）'] : []),
+    ...(yaw > 0 ? ['远侧点（右）按 bowen 123.json 的规律放在耳前的固定位置（x ≈ −55.7·cos yaw），后脑勺轮廓不算脸轮廓；这是照现有存档推的，待 bowen 确认；右颅在头发下没有线可贴，手柄取 123.json 同角度的值'] : []),
     '发际线高亮还没做',
   ],
   sources: { template: template ?? '/Users/bowen/Desktop/123.json（只读）', renderer: 'face3d/fit/vrm-renders.ts + mesh/vrmhead.ts（VRoid test.vrm）', builder: 'face3d/fit/bench-task.ts' },
