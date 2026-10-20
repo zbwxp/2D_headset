@@ -370,7 +370,7 @@ export function App() {
   const [followBones, setFollowBones] = useState(false)
   const [frameTimes, setFrameTimes] = useState<string | null>(null)
   // the measurement in progress (one at a time); it stops when playback is left, re-entered or the drawing changes (dot 1792476848)
-  const [measuring, setMeasuring] = useState(false), measuringOn = useRef(false)
+  const [measuring, setMeasuring] = useState(false), measuringOn = useRef(false), measureStop = useRef(false)
   // 录制标准 / 捏脸 and standards (docs/bone-lines-checklist.md §6b): a name being typed per layer, a pending 覆盖 (a second
   // press confirms), a file's standards being imported (into the drawing it was read for)
   const [stdName, setStdName] = useState<Record<Id, string>>({})
@@ -1258,6 +1258,7 @@ export function App() {
       if (e.key === 'Escape' && gesture.current) { gesture.current.cancel('Esc'); e.preventDefault(); return }
       if (e.key === 'Escape' && applyFromOn.current) { setApplyFrom(false); e.preventDefault(); return }
       if (e.key === 'Escape' && bgPickOn.current) { setBgPick(null); e.preventDefault(); return }
+      if (e.key === 'Escape' && measuringOn.current) { measureStop.current = true; e.preventDefault(); return }
       if (e.key === 'Escape' && bonePickOn.current) { setBonePick(null); e.preventDefault(); return }
       // playback: Esc clears the playback selection (docs/playback-tools-checklist.md §1)
       if (e.key === 'Escape' && posing.current) setPbSel(v => (v.ids.length ? { core, ids: [] } : v))
@@ -1449,16 +1450,16 @@ export function App() {
             <label data-testid="follow-bones-row" title="试验：回放的中间角度，语义线按骨线在该角度的样子重新生成；只影响显示，不写入文件"><input type="checkbox" data-testid="follow-bones" checked={followBones} onChange={e => setFollowBones(e.target.checked)} /> 语义线跟骨线（试验）</label>
             <button data-testid="measure-frames" disabled={measuring} title="沿当前 pitch 把 yaw 从 −89° 扫到 89°（只取中间角度），开关关、开各一遍，记录每帧的计算 + 渲染 + 排版耗时（不含像素绘制）；结束后回到原来的角度" onClick={async () => {
               if (!pose || measuringOn.current) return
-              measuringOn.current = true; setMeasuring(true)
+              measuringOn.current = true; measureStop.current = false; setMeasuring(true)
               const start = { ...pose }, keep = followBones, out: string[] = [], mine = core, gen = poseGen.current
-              // left playback, entered it again, or another drawing: the sweep stops and writes nothing
-              const gone = () => !posing.current || poseGen.current !== gen || core !== mine
+              // left playback, entered it again, another drawing, or Esc: the sweep stops and reports nothing
+              const gone = () => measureStop.current || !posing.current || poseGen.current !== gen || core !== mine
               try {
                 for (const on of [false, true]) {
                   flushSync(() => setFollowBones(on))
                   const times: number[] = []
                   for (let yaw = -89; yaw <= 89; yaw += 2) {
-                    if (gone()) return
+                    if (gone()) { if (measureStop.current && posing.current && poseGen.current === gen && core === mine) flushSync(() => setPose(start)); return }
                     const t0 = performance.now()
                     flushSync(() => setPose({ yaw, pitch: start.pitch }))
                     void document.body.offsetHeight // layout included
@@ -1473,7 +1474,9 @@ export function App() {
                 flushSync(() => setPose(start))
                 setFrameTimes(`帧耗时（pitch ${start.pitch}，${core.snapshot().attachments.length} 条语义线；计算 + 渲染 + 排版，不含像素绘制）— ${out.join('；')}`)
               } finally {
-                setFollowBones(keep); measuringOn.current = false; setMeasuring(false)
+                // the switch goes back only for the drawing this run belongs to (dot 1792476895)
+                if (core === mine) setFollowBones(keep)
+                measuringOn.current = false; setMeasuring(false)
               }
             }}>{measuring ? '测量中…' : '测帧耗时（试验）'}</button>
             {frameTimes && <div data-testid="frame-times" style={{ fontSize: 11, color: '#555' }}>{frameTimes}</div>}
