@@ -163,7 +163,8 @@ const notes = {
   ...(process.env.NOTE ? { note: process.env.NOTE } : {}),
   // two separate marks (dot 1792518737): the drawing's angle, and whether the first match can be fine-tuned
   angle: Math.abs(pitch) >= 45 ? '未校准；大俯仰角度被生成图弱化（dot 1792515820）' : '未校准（生成线稿是候选，dot 1792513207）',
-  match: fixMatch ? '粗匹配待修：配准把下颌落到了眼睛上，先不要照着描；轮廓先用 123.json 原样' : '可细调',
+  // MATCH=<text> sets the status outright (e.g. 姿态待核对 for the combined-view trial, dot 1792525242)
+  match: process.env.MATCH ? process.env.MATCH : fixMatch ? '粗匹配待修：配准把下颌落到了眼睛上，先不要照着描；轮廓先用 123.json 原样' : '可细调',
   limits: [
     ...(yaw > 0 ? ['远侧点（右）沿用 123.json：在耳前，转头时跟着头走（来源：123.json 各视角的点位；它是不是脸轮廓的最终含义，待 bowen 确认）'] : []),
     ...(yaw >= 30 ? ['耳前缘往后那段（头部 z < 0.1：耳下、后颈）不高亮、不拟合：生成图那里是发梢，下颌在哪待判断（dot 1792520014）'] : []),
