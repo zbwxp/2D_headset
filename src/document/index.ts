@@ -908,7 +908,8 @@ function poseReader(s: State, pose: evaluate.Pose, idle: (what: string) => void,
   if (!evaluate.inRange(pose)) throw new net.Refusal('pose-out-of-range', `pose-out-of-range: yaw ${pose.yaw}, pitch ${pose.pitch} (yaw within ±${evaluate.YAW_LIMIT}, pitch within ±${evaluate.PITCH_LIMIT})`)
   let posed: evaluate.Posed
   // a drawing with no finite value at this pose is refused; only that error, nothing else (docs/stage3b-pkg4-move.md §7a)
-  try { posed = evaluate.evaluate(modelOf(s), pose) } catch (err) {
+  const model = modelOf(s)
+  try { posed = evaluate.evaluate(model, pose) } catch (err) {
     if (err instanceof evaluate.PoseNotFinite) throw new net.Refusal('pose-not-finite', err.message)
     throw err
   }
@@ -918,7 +919,7 @@ function poseReader(s: State, pose: evaluate.Pose, idle: (what: string) => void,
   if (opts.followBones && !atView && bones.attachments(s.bones).length) {
     // each view's offset (its stored shape minus what the pose fit makes there), blended by the pose's view weights:
     // exact at the views, continuous between (docs/bone-poses-checklist.md §6); cached per state
-    const data = poseBonesOf(s), model = modelOf(s)
+    const data = poseBonesOf(s)
     let cache = viewOffsetCache.get(s)
     if (!cache) { cache = new Map(); viewOffsetCache.set(s, cache) }
     const ws = evaluate.weights(model, pose).map(w => {
