@@ -17,7 +17,7 @@ async function load() {
   const NECK = Number(new URLSearchParams(location.search).get('neck') ?? 1.47)
   // one welded vertex list over all parts (VRoid's face and body skins meet at a seam with separate vertices)
   const key = (x: number, y: number, z: number) => `${Math.round(x * 2e4)},${Math.round(y * 2e4)},${Math.round(z * 2e4)}`
-  const index = new Map<string, number>(), pos: number[] = [], out: Part[] = []
+  const index = new Map<string, number>(), pos: number[] = [], fileN: number[] = [], out: Part[] = []
   const COLORS: [RegExp, [number, number, number]][] = [[/EyeWhite/, [245, 245, 245]], [/EyeIris/, [70, 110, 160]], [/EyeHighlight/, [255, 255, 255]], [/Brow|Eyelash|Eyeline/, [40, 30, 30]], [/Mouth/, [180, 90, 90]]]
   for (const p of parts) {
     const skin = /_SKIN/.test(p.material), color = COLORS.find(([r]) => r.test(p.material))?.[1]
@@ -29,7 +29,7 @@ async function load() {
       for (const v of vs) {
         const k = key(p.positions[3 * v]!, p.positions[3 * v + 1]!, p.positions[3 * v + 2]!)
         let i = index.get(k)
-        if (i === undefined) { i = pos.length / 3; index.set(k, i); pos.push(p.positions[3 * v]!, p.positions[3 * v + 1]!, p.positions[3 * v + 2]!) }
+        if (i === undefined) { i = pos.length / 3; index.set(k, i); pos.push(p.positions[3 * v]!, p.positions[3 * v + 1]!, p.positions[3 * v + 2]!); fileN.push(p.normals?.[3 * v] ?? NaN, p.normals?.[3 * v + 1] ?? NaN, p.normals?.[3 * v + 2] ?? NaN) }
         tris.push(i)
       }
     }
@@ -55,6 +55,9 @@ async function load() {
     for (const q of [i, j, k]) for (let d = 0; d < 3; d++) N[q]![d]! += n[d]!
   }
   for (const n of N) { const m = Math.hypot(n[0]!, n[1]!, n[2]!) || 1; n[0]! /= m; n[1]! /= m; n[2]! /= m }
+  // the file's own (authored) normals where it has them — VRoid's smoothing, not one recomputed from the triangles
+  // (bowen 1792510526: the recomputed shading looked crumpled); rotation and uniform scale leave a normal's direction
+  if (new URLSearchParams(location.search).get('normals') !== 'computed') N.forEach((n, i) => { if (!Number.isNaN(fileN[3 * i]!)) { n[0] = fileN[3 * i]!; n[1] = fileN[3 * i + 1]!; n[2] = fileN[3 * i + 2]! } })
   // skin edges with their two triangles, for the contour
   const edges = new Map<string, number[]>()
   for (let t = 0; t < skinTris.length; t += 3) for (let e = 0; e < 3; e++) {
@@ -65,7 +68,7 @@ async function load() {
 }
 
 const cv = $<HTMLCanvasElement>('c'), g = cv.getContext('2d')!
-let zoom = 1, view: View = { yaw: 30, pitch: 0 }, data: Awaited<ReturnType<typeof load>> | undefined, pending = false
+let zoom = Number(new URLSearchParams(location.search).get('zoom') ?? 1), view: View = { yaw: 30, pitch: 0 }, data: Awaited<ReturnType<typeof load>> | undefined, pending = false
 function render() {
   pending = false
   if (!data) return
@@ -98,6 +101,18 @@ function render() {
     }
   }
   g.putImageData(img, 0, 0)
+  // the mesh itself (bowen 1792510580): every skin edge of a triangle facing the camera, kept where the depth buffer
+  // shows its midpoint
+  if ($<HTMLInputElement>('wire').checked) {
+    g.strokeStyle = 'rgba(30,60,140,0.55)'; g.lineWidth = 1; g.beginPath()
+    for (const e of data.edges) {
+      if (!(facing(data.skinTris, e.t[0]) > 0 || facing(data.skinTris, e.t[1]) > 0)) continue
+      const a = r[e.a]!, b = r[e.b]!, x = Math.round(cx + ((a[0] + b[0]) / 2) * S), y = Math.round(cy - ((a[1] + b[1]) / 2) * S)
+      if (x < 0 || y < 0 || x >= W || y >= H || (a[2] + b[2]) / 2 < zb[y * W + x]! - 0.01) continue
+      g.moveTo(cx + a[0] * S, cy - a[1] * S); g.lineTo(cx + b[0] * S, cy - b[1] * S)
+    }
+    g.stroke()
+  }
   // the true contour: skin edges between a front- and a back-facing triangle, drawn where the depth buffer shows them
   if ($<HTMLInputElement>('contour').checked) {
     g.strokeStyle = '#111'; g.lineWidth = 2; g.lineCap = 'round'; g.beginPath()
@@ -121,7 +136,7 @@ const set = (yaw: number, pitch: number) => { view = { yaw: Math.max(-180, Math.
 const m = /yaw=(-?\d+).*pitch=(-?\d+)/.exec(location.hash); if (m) view = { yaw: +m[1]!, pitch: +m[2]! }
 $<HTMLInputElement>('yaw').oninput = e => set(+(e.target as HTMLInputElement).value, view.pitch)
 $<HTMLInputElement>('pitch').oninput = e => set(view.yaw, +(e.target as HTMLInputElement).value)
-$('contour').onchange = () => set(view.yaw, view.pitch)
+$('contour').onchange = $('wire').onchange = () => set(view.yaw, view.pitch)
 let drag: { x: number; y: number; v: View } | undefined
 cv.onpointerdown = e => { drag = { x: e.clientX, y: e.clientY, v: view }; cv.setPointerCapture(e.pointerId) }
 cv.onpointermove = e => { if (drag) { const k = 180 / cv.clientWidth; set(drag.v.yaw + (e.clientX - drag.x) * k, drag.v.pitch - (e.clientY - drag.y) * k) } }

@@ -17,6 +17,7 @@
     <div>yaw：<span id="yv"></span></div><input type="range" id="yaw" min="-180" max="180" value="30">
     <div>pitch（+ = 仰视）：<span id="pv"></span></div><input type="range" id="pitch" min="-80" max="80" value="0">
     <label><input type="checkbox" id="contour" checked>网格轮廓预览（黑）</label>
+    <label><input type="checkbox" id="wire">显示网格（蓝色线框，只画看得见的皮肤边）</label>
     <p style="font-size:12px;color:#555">拖动画面转头，滚轮缩放。皮肤在脖子处切开；黑线 = 网格轮廓预览：皮肤上一侧朝前、一侧朝后的边，按边中点判断遮挡，不是精确的可见轮廓。五官是 VRoid 自带的贴片，只按颜色显示；画时往前偏了一点深度，五官遮挡不作准。这是基础网格的简化预览，不是 VRoid 导出效果的完整还原。</p>
     <div id="status"></div>
   </div>

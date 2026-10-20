@@ -1,7 +1,7 @@
 // A minimal binary glTF (.glb / .vrm) reader for a head shell (bowen 1792508212: a 捏脸 head from e.g. VRoid Studio):
 // the meshes' triangle lists (POSITION + indices, every primitive), named by mesh / node, positions in the mesh's own
 // space. Browser- and node-safe (takes an ArrayBuffer). Skins, morphs and materials are ignored.
-export interface ShellPart { name: string; material: string; positions: Float32Array; indices: Uint32Array }
+export interface ShellPart { name: string; material: string; positions: Float32Array; indices: Uint32Array; normals?: Float32Array }
 
 export function readGlb(buf: ArrayBuffer): ShellPart[] {
   const dv = new DataView(buf)
@@ -29,7 +29,7 @@ export function readGlb(buf: ArrayBuffer): ShellPart[] {
   ;(json.meshes ?? []).forEach((m: any, mi: number) => m.primitives.forEach((p: any, pi: number) => {
     if (p.attributes?.POSITION === undefined || (p.mode ?? 4) !== 4) return
     const pos = read(p.attributes.POSITION), idx = p.indices !== undefined ? read(p.indices) : pos.map((_, i) => i).filter(i => i < pos.length / 3)
-    parts.push({ name: `${m.name ?? `mesh${mi}`}#${pi}`, material: json.materials?.[p.material]?.name ?? '', positions: new Float32Array(pos), indices: new Uint32Array(idx) })
+    parts.push({ name: `${m.name ?? `mesh${mi}`}#${pi}`, material: json.materials?.[p.material]?.name ?? '', positions: new Float32Array(pos), indices: new Uint32Array(idx), ...(p.attributes.NORMAL !== undefined ? { normals: new Float32Array(read(p.attributes.NORMAL)) } : {}) })
   }))
   return parts
 }
