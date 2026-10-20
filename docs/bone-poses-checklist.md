@@ -93,10 +93,14 @@
   Faces are made where the default face is (bowen 1792304469), so their bones are close in direction (dot 1792474596).
 
 ## 8. Packages (each shippable: no version that changes the picture or the data without saying so; dot 1792475715)
+- P0 isolated prototype (performance is bowen's condition for ①; dot 1792475775): the derivation at a pose as its own
+  function, reached only through a bench switch 「语义线跟骨线（试验）」, off by default — the document, files and
+  corrections untouched. Measured in the bench on a real drawing: a full drag through playback, every frame drawn
+  (ink, fills, fallbacks included), median and p95, with and without the switch. Shown to bowen with the numbers; P1
+  enables it only after that.
 - P1 core + its minimal bench: Model.bones, the derivation at a pose, fallback **with** the bench's mark and status
   line, responses dropped **with** the open report, archive v16 — §6 evidence.
 - P2 core: corrections on bones in 录制标准 (the allowed set); standards carry responses and 捏脸 writes them (§7)
   **in the same package** as 捏脸's refusals of correct / uncorrect / clearCorrections on bones — never the lock before
   the standard's responses exist.
-- P3 bench: the frame-time measurement on a real drawing (median, p95), the 30° / 60° bone editing checked with a real
-  mouse.
+- P3 bench: the 30° / 60° bone editing checked with a real mouse; frame time measured again on the enabled build.
