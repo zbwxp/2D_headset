@@ -32,11 +32,16 @@ export function renderContour(view: View) {
   // between the cheek under the eyes and the chin (head y −1.38 … −0.6), the neck below left out
   const inBand = (i: number) => { const y = data.P[i]![1]; return y > -1.38 && y < -0.6 }
   const band = contourSegments({ ...data, edges: noEar.filter(e => inBand(e.a) && inBand(e.b)) }, f, ras)
+  // the band without its part from the ear's front edge back (head z < 0.1; the ear spans z −0.4 … 0.1): in the turned
+  // drawings hair tips hang there (under the ear, the nape), not the jaw (dot 1792520014) — turned views highlight only
+  // the rest; z < −0.15 (behind the ear's centre) and a far-side-only test still left hair under the ear and the nape
+  const behindEar = (i: number) => data.P[i]![2] < 0.1
+  const bandFront = contourSegments({ ...data, edges: noEar.filter(e => inBand(e.a) && inBand(e.b) && !(behindEar(e.a) && behindEar(e.b))) }, f, ras)
   // the chin tip: the lowest skin point near the middle line and toward the face (head space), projected
   let tip = data.P[0]!
   for (const p of data.P) if (Math.abs(p[0]) < 0.05 && p[2] > 0.5 && p[1] < tip[1]) tip = p
   const r = rotate(tip, view)
-  return { segs, band, chin: [CX + r[0] * S, CY - r[1] * S] as [number, number] }
+  return { segs, band, bandFront, chin: [CX + r[0] * S, CY - r[1] * S] as [number, number] }
 }
 /** distance transform of a drawing's dark pixels (two-pass chamfer, drawing px) */
 export function darkDT(D: Bmp) {

@@ -25,14 +25,16 @@ if (existsSync(`${outDir}/${name}.json`)) { console.error(`refused: ${outDir}/${
 mkdirSync(outDir!, { recursive: true })
 const tmp = `${outDir}/.${name}-drawing.bmp`
 execFileSync('sips', ['-s', 'format', 'bmp', drawing!, '--out', tmp], { stdio: 'ignore' })
-const D = readBmp(tmp), dt = darkDT(D), { segs, band, chin } = renderContour({ yaw, pitch }), reg = register(D, dt, band)
+const D = readBmp(tmp), dt = darkDT(D), { segs, band, bandFront, chin } = renderContour({ yaw, pitch }), reg = register(D, dt, band)
 
 // ---- targets (render px): the drawing's dark pixels next to the render's lower contour; the render's cranium contour
 // the drawing's strokes are matched only along the render's jaw band (cheek under the eyes → chin, on the head; the far
 // eye, hair and neck are not in it); the cranium and the back of the head are hair in the drawing, so the render's
 // contour outside the band is the guide there (blue)
 const near = new Set<number>(), bandKeys = new Set<string>(band.map(s => s.join(',')))
-for (const [x0, y0, x1, y1] of band) for (let i = 0; i <= 6; i++) { const x = x0 + ((x1 - x0) * i) / 6, y = y0 + ((y1 - y0) * i) / 6; for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) near.add(Math.round(y + dy) * C + Math.round(x + dx)) }
+// turned views (yaw ≥ 30): the far side behind the ear is left blank (hair tips there), marked 待判断 in the notes
+const redBand = yaw >= 30 ? bandFront : band
+for (const [x0, y0, x1, y1] of redBand) for (let i = 0; i <= 6; i++) { const x = x0 + ((x1 - x0) * i) / 6, y = y0 + ((y1 - y0) * i) / 6; for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) near.add(Math.round(y + dy) * C + Math.round(x + dx)) }
 const darkAt = (x: number, y: number) => { const [X, Y] = toDrawing(reg, x, y); return dt.at(X, Y) < 0.5 }
 const lowerT: P[] = [], craniumT: P[] = []
 for (const k of near) { const x = k % C, y = Math.floor(k / C); if (darkAt(x, y)) lowerT.push([x, y]) }
@@ -102,8 +104,12 @@ const segFit = Object.fromEntries(LINES.map(l => {
   const a0 = ang(A), a1 = ang(B), pts = red.filter(p => (l.name.startsWith('左') ? inArc(p, a0, a1) : inArc(p, a1, a0)))
   const h1 = fit(A, B, pts), chord = Math.hypot(B[0] - A[0], B[1] - A[1])
   const before = curveCost(A, B, h0, pts), after = curveCost(A, B, h1, pts)
-  const used = pts.length >= 8 && after < before && Math.hypot(...h1.ha) < chord && Math.hypot(...h1.hb) < chord
-  refit[l.name] = { before: +before.toFixed(1), after: +after.toFixed(1), used }
+  // the strokes must run along most of the line (≥ 60 % of its parameter): a short piece left after blanking the part
+  // behind the ear bent the whole line into a hook at 45 (r3 preview)
+  const tOf = (p: P) => { let best = 0, bd = Infinity; for (let k = 0; k <= 100; k++) { const t = k / 100, u = 1 - t, x = u * u * u * A[0] + 3 * u * u * t * (A[0] + h1.ha[0]) + 3 * u * t * t * (B[0] + h1.hb[0]) + t * t * t * B[0], y = u * u * u * A[1] + 3 * u * u * t * (A[1] + h1.ha[1]) + 3 * u * t * t * (B[1] + h1.hb[1]) + t * t * t * B[1], d = (x - p[0]) ** 2 + (y - p[1]) ** 2; if (d < bd) { bd = d; best = t } } return best }
+  const ts = pts.map(tOf), span = ts.length ? Math.max(...ts) - Math.min(...ts) : 0
+  const used = pts.length >= 8 && span >= 0.6 && after < before && Math.hypot(...h1.ha) < chord && Math.hypot(...h1.hb) < chord
+  refit[l.name] = { before: +before.toFixed(1), after: +after.toFixed(1), span: +span.toFixed(2), used }
   return [l.name, { a: A, b: B, ...(used ? h1 : h0) }]
 })) as Record<string, { a: P; b: P; ha: P; hb: P }>
 // fit() solves for the handle VECTORS (P1 − A, P2 − B), which is what bench stores as ha (from a) and hb (from b)
@@ -159,7 +165,8 @@ const notes = {
   angle: Math.abs(pitch) >= 45 ? '未校准；大俯仰角度被生成图弱化（dot 1792515820）' : '未校准（生成线稿是候选，dot 1792513207）',
   match: fixMatch ? '粗匹配待修：配准把下颌落到了眼睛上，先不要照着描；轮廓先用 123.json 原样' : '可细调',
   limits: [
-    ...(yaw > 0 ? ['远侧点（右）沿用 123.json：在耳前，转头时跟着头走，后脑勺不算脸轮廓（照现有存档推的，待 bowen 确认）'] : []),
+    ...(yaw > 0 ? ['远侧点（右）沿用 123.json：在耳前，转头时跟着头走（来源：123.json 各视角的点位；它是不是脸轮廓的最终含义，待 bowen 确认）'] : []),
+    ...(yaw >= 30 ? ['耳前缘往后那段（头部 z < 0.1：耳下、后颈）不高亮、不拟合：生成图那里是发梢，下颌在哪待判断（dot 1792520014）'] : []),
     '参考图按 123.json 的 0,0 头顶 / 下巴和 90,0 下巴 / 脸前定比例；VRoid 下巴比 bowen 的头更靠后，90 度附近差约 8 px',
     '发际线高亮还没做',
   ],
