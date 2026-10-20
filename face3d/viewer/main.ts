@@ -2,17 +2,21 @@
 import { type DrawnBone, bonesAt, contourAt, makeModel, outerBoundary, visibleOutline } from '../src/model'
 import { type V3, type View, rotate } from '../src/view'
 import { defaultShape } from '../src/head'
-import { type Params, shapeOf } from '../fit/shape'
+import { type BParams, type Params, shapeOf, shapeOfB } from '../fit/shape'
 import fitted from '../fit/ref/fit-level.json'
+import benchFit from '../fit/ref/fit-bench-all.json'
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
 const status = $('status')
 status.textContent = '正在建模型（约 2 秒）…'
 const t0 = performance.now()
-// the head: fitted to the reference sheet's level row (bowen 1792498982) unless ?head=old asks for the earlier one
-const oldHead = new URLSearchParams(location.search).get('head') === 'old'
-const model = makeModel(oldHead ? defaultShape : shapeOf(fitted as Params))
-status.textContent = `模型就绪（${oldHead ? '旧头型' : '按画稿拟合的头型'}）：${(performance.now() - t0).toFixed(0)} ms`
+// the head (?head=): bench (default) = fitted to bowen's own bench outlines at 21 poses (bowen 1792503785); sheet =
+// fitted to the reference sheet's level row (bowen 1792498982); old = the first rough head
+const headKind = new URLSearchParams(location.search).get('head') ?? 'bench'
+const HEADS: Record<string, [string, () => ReturnType<typeof shapeOf>]> = { bench: ['按 bench 轮廓拟合的头型', () => shapeOfB(benchFit as BParams)], sheet: ['按画稿拟合的头型', () => shapeOf(fitted as Params)], old: ['旧头型', () => defaultShape] }
+const [headName, headShape] = HEADS[headKind] ?? HEADS.bench!
+const model = makeModel(headShape())
+status.textContent = `模型就绪（${headName}）：${(performance.now() - t0).toFixed(0)} ms`
 
 const PART: Record<DrawnBone['part'], string> = { eye: '#8e24aa', brow: '#8e24aa', nose: '#1565c0', mouth: '#ef6c00', chin: '#c62828', ear: '#2e7d32', neck: '#2e7d32' }
 const SIDE = { pos: '#d32f2f', neg: '#1976d2' }
