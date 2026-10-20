@@ -310,4 +310,27 @@ describe('bones in the bench', () => {
     await t.press(t.boneAt.x, t.boneAt.y)
     expect(snap().attachments.some(a => a.line === t.id('up') || a.line === t.id('f'))).toBe(false)
   })
+
+  it('P0: 语义线跟骨线（试验）, off by default; on, an attached line follows its bone between the views; a collapse is reported for the group', async () => {
+    const t = await setup()
+    await t.select(t.id('B')); await t.click('[data-testid="bone-mark"]')
+    await act(async () => { bench().core.editIn('view:90,0', e => (e as unknown as import('../../src').Editor).move([{ id: t.id('b1'), target: P(30, t.Y + 8) }])); bench().refresh() })
+    await t.select(t.id('up')); await t.click('[data-testid="bone-attach"]'); await t.press(t.boneAt.x, t.boneAt.y)
+    expect(snap().attachments.some(a => a.line === t.id('up'))).toBe(true)
+    const button = (label: string) => [...t.host.querySelectorAll('button')].find(x => x.textContent === label)!
+    await act(async () => { button('Playback').click() })
+    const toggle = t.q('[data-testid="follow-bones"]') as HTMLInputElement
+    expect(toggle.checked).toBe(false)
+    const pose = { yaw: 30, pitch: 0 }
+    const off = JSON.stringify(bench().core.atPose(pose).snapshot().points.find(p => p.id === t.id('u1')))
+    const on = JSON.stringify(bench().core.atPose(pose, { followBones: true }).snapshot().points.find(p => p.id === t.id('u1')))
+    expect(on).not.toBe(off)
+    await act(async () => { toggle.click() })
+    expect((t.q('[data-testid="follow-bones"]') as HTMLInputElement).checked).toBe(true)
+    // a bone reversed at 90,0: at 45° it collapses; the attached line falls back, marked and named
+    await act(async () => { button('Leave playback').click() })
+    await act(async () => { bench().core.editIn('view:90,0', e => { const x = e as unknown as import('../../src').Editor; x.move([{ id: t.id('b0'), target: P(40, t.Y) }, { id: t.id('b1'), target: P(0, t.Y) }]); x.moveHandle(t.id('B'), 'a', P(-10, 10)); x.moveHandle(t.id('B'), 'b', P(10, 10)) }); bench().refresh() })
+    const fb = bench().core.atPose({ yaw: 45, pitch: 0 }, { followBones: true }).boneFallback()
+    expect(fb.map(f => f.lines)).toEqual([[t.id('up')]])
+  })
 })

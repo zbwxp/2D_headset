@@ -5,7 +5,7 @@
 // the state is opaque outside; reads return copies.
 import * as net from '../network'
 import * as views from '../views'
-import { BoneError, boneFrame, boneLine, boneMap, toBone, type Cubic, type Vec } from './coords'
+import { BoneError, boneFrame, boneLine, boneMap, fitLimit, toBone, type Cubic, type Vec } from './coords'
 
 type Id = net.Id
 export type Mode = 'record' | 'make'
@@ -251,12 +251,9 @@ function halves(c: Cubic, t: number): [Cubic, Cubic] {
 }
 
 const lengthOf = (c: Cubic) => { let L = 0; for (let i = 1; i <= 32; i++) { const p = at(c, (i - 1) / 32), q = at(c, i / 32); L += Math.hypot(q.x - p.x, q.y - p.y) } return L }
-/**
- * The largest fit error a derived line may have: 2 % of the larger of its base length and its bone's (scale-free; a
- * short line on a long bone — the crease on the lid — is judged at the bone's scale, at which it is seen). A setting to
- * review with real drawings.
- */
-export const fitLimit = (line: Cubic, bone: Cubic) => 0.02 * Math.max(lengthOf(line), lengthOf(bone))
+export { fitLimit } from './coords'
+// 骨线 at a pose (docs/bone-poses-checklist.md P0): the derivation between the views
+export { followBones, viewOffsets, POSE_SAMPLES, type PoseBones, type PoseShapes, type Fallback } from './pose'
 
 /**
  * The derivation (checklist §2, §3), in place, through the network's own operations so the settle sees it:

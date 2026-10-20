@@ -143,7 +143,8 @@ describe('atPose: read only', () => {
     expect(d.model().views[0]!.points.a!.x).not.toBe(999)
     const r = d.atPose({ yaw: 10, pitch: 10 })
     // linesInRect: a read for playback's box (docs/playback-tools-checklist.md §1)
-    expect(Object.getOwnPropertyNames(Object.getPrototypeOf(r)).sort()).toEqual(['constructor', 'geometry', 'linesInRect', 'snapshot', 'zones'])
+    // boneFallback: a read for the P0 trial (docs/bone-poses-checklist.md)
+    expect(Object.getOwnPropertyNames(Object.getPrototypeOf(r)).sort()).toEqual(['boneFallback', 'constructor', 'geometry', 'linesInRect', 'snapshot', 'zones'])
   })
 })
 

@@ -3,6 +3,7 @@
 // "Interaction", doc 22); one-shot panel commands call core's public operations and then
 // tell interaction (doc 22 §3.5). Uses core's public entry only.
 import { useEffect, useReducer, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { Core, save, open, correctionEdge, Refusal, type Vec, type Snapshot, type Editor, type PoseReader, type ReferenceImage, type ReferenceProps, type ReferenceSlot, type AssetUse } from '../../src'
 import { createInteraction, REACH, type Tool, type Preview } from '../../interaction'
 import { createAutosave, indexedDbStore, type Autosave, type Store } from '../../autosave'
@@ -365,6 +366,9 @@ export function App() {
   // a bone whose attached lines are highlighted (never the selection); bones in playback (hidden by default; debug)
   const [boneHi, setBoneHi] = useState<Id | null>(null)
   const [bonesInPlayback, setBonesInPlayback] = useState(false)
+  // P0 (docs/bone-poses-checklist.md): between the views, attached lines generated from their bones — a trial, off by default
+  const [followBones, setFollowBones] = useState(false)
+  const [frameTimes, setFrameTimes] = useState<string | null>(null)
   // 录制标准 / 捏脸 and standards (docs/bone-lines-checklist.md §6b): a name being typed per layer, a pending 覆盖 (a second
   // press confirms), a file's standards being imported (into the drawing it was read for)
   const [stdName, setStdName] = useState<Record<Id, string>>({})
@@ -517,7 +521,8 @@ export function App() {
   // while posing, the drawing is the pose (Core.atPose: read only, drawn through the same reads as a view)
   // at a view (docs/playback-edit-checklist.md §2) playback edits that view: it is drawn and edited as the view itself
   const poseView = viewAtPose(pose), inBetween = !!pose && !poseView
-  const posed = (() => { try { return inBetween ? core.atPose(pose!) : null } catch (err) { return err as Error } })()
+  const posed = (() => { try { return inBetween ? core.atPose(pose!, { followBones }) : null } catch (err) { return err as Error } })()
+  const boneFallback = posed && !(posed instanceof Error) ? posed.boneFallback() : [], fallbackLines = new Set(boneFallback.flatMap(f => f.lines))
   // the drawing this frame shows, bound with it during playback: a press on a frame drawn before
   // another App changed the shared drawing must not start a correction (dot 1791697642)
   const frame = useRef<{ core: Core; text: string } | null>(null)
@@ -1418,8 +1423,9 @@ export function App() {
     bump()
   }
   const brokenHere = refsHere().filter(r => refBroken.some(x => x.core === core && x.id === r.id && x.src === r.src)).map(r => r.id)
+  const fallbackNote = boneFallback.length ? ` · ✗ 语义线退回普通混合：${boneFallback.map(f => `${f.lines.map(id => s.lines.find(l => l.id === id)?.name ?? id).join('、')}（${f.reason}）`).join('；')}` : ''
   const status = pose ? (corrRefusal ? '✗ ' + withNames(corrRefusal.message)
-    : `playback yaw ${pose.yaw}, pitch ${pose.pitch} · ${atCorrection && where && 'edge' in where ? `修正点：${where.inner} → ${where.outer}，t = ${+where.t.toFixed(3)} · A 拖点或手柄，V 拖整条曲线` : viewAtPose(pose) ? `视角 ${viewAtPose(pose)} · A / V 直接改这个视角` : '这里只能看；修正点在 yaw ±30 / ±60、pitch 0 / ±45'}${posed instanceof Error ? ' · ✗ ' + posed.message : ''}`)
+    : `playback yaw ${pose.yaw}, pitch ${pose.pitch} · ${atCorrection && where && 'edge' in where ? `修正点：${where.inner} → ${where.outer}，t = ${+where.t.toFixed(3)} · A 拖点或手柄，V 拖整条曲线` : viewAtPose(pose) ? `视角 ${viewAtPose(pose)} · A / V 直接改这个视角` : '这里只能看；修正点在 yaw ±30 / ±60、pitch 0 / ±45'}${posed instanceof Error ? ' · ✗ ' + posed.message : ''}${fallbackNote}`)
     : pv.refusal ? '✗ ' + withNames(pv.refusal.message)
     : brokenHere.length ? `✗ reference picture ${brokenHere.join(', ')} could not be drawn (the drawing is unaffected)`
     : `view ${shown}${s.boneMode === 'make' ? ' · 捏脸' : ''} · tool ${ix.tool} · layer ${drawLayer} · selection ${sel.map(u => u.kind[0] + ':' + ('id' in u ? u.id : u.line + '.' + u.end)).join(' ') || '—'}${pv.pick ? ' · first pick ' + pv.pick.id : ''}${pv.cut.length ? ' · cut pending (paste moves, Esc cancels)' : ''}${pv.mirrorSource.length ? ' · mirror source ' + pv.mirrorSource.length : ''}`
@@ -1437,6 +1443,29 @@ export function App() {
             <button data-testid="bones-in-playback" aria-pressed={bonesInPlayback} onClick={() => setBonesInPlayback(v => !v)}
               style={{ fontWeight: 600, background: bonesInPlayback ? '#e8f5e9' : undefined, border: `1px solid ${bonesInPlayback ? '#00c853' : '#aaa'}` }}
               title="回放时骨线默认隐藏；打开后用亮绿 / 亮紫显示，用来检查骨线动得对不对">{bonesInPlayback ? '隐藏骨线' : '显示骨线'}</button>
+            {/* P0 trial (docs/bone-poses-checklist.md): attached lines follow their bones between the views; nothing is written */}
+            <label data-testid="follow-bones-row" title="试验：回放的中间角度，语义线按骨线在该角度的样子重新生成；只影响显示，不写入文件"><input type="checkbox" data-testid="follow-bones" checked={followBones} onChange={e => setFollowBones(e.target.checked)} /> 语义线跟骨线（试验）</label>
+            <button data-testid="measure-frames" title="沿当前 pitch 把 yaw 从 −89° 扫到 89°（只取中间角度），开关关、开各一遍，记录每帧的计算 + 渲染 + 排版耗时（不含像素绘制）" onClick={async () => {
+              if (!pose) return
+              const pitch = pose.pitch, keep = followBones, out: string[] = []
+              for (const on of [false, true]) {
+                flushSync(() => setFollowBones(on))
+                const times: number[] = []
+                for (let yaw = -89; yaw <= 89; yaw += 2) {
+                  const t0 = performance.now()
+                  flushSync(() => setPose({ yaw, pitch }))
+                  void document.body.offsetHeight // layout included
+                  times.push(performance.now() - t0)
+                  await new Promise(r => setTimeout(r, 0))
+                }
+                times.sort((a, b) => a - b)
+                const q = (f: number) => times[Math.min(times.length - 1, Math.floor(f * times.length))]!
+                out.push(`${on ? '开' : '关'}：中位数 ${q(0.5).toFixed(1)} ms，p95 ${q(0.95).toFixed(1)} ms，最慢 ${times[times.length - 1]!.toFixed(1)} ms（${times.length} 帧）`)
+              }
+              flushSync(() => setFollowBones(keep))
+              setFrameTimes(`帧耗时（pitch ${pitch}，${core.snapshot().attachments.length} 条语义线）— ${out.join('；')}`)
+            }}>测帧耗时（试验）</button>
+            {frameTimes && <div data-testid="frame-times" style={{ fontSize: 11, color: '#555' }}>{frameTimes}</div>}
             {(['yaw', 'pitch'] as const).map(axis => {
               // the pose is a view: preview and commit both set it, a cancel keeps the last (as the grid); a thumb session's
               // own updates never cancel it, typing ends any other gesture as a field always did
@@ -1855,6 +1884,10 @@ export function App() {
               {gv.arcs.filter(a => visible.has(a.lines[0]) || visible.has(a.lines[1])).map(a => <path key={a.key} d={path(a.curve)} />)}
             </g>
           })}
+          {/* P0: attached lines drawn from the plain blend at this pose (their bone could not carry them), marked red */}
+          {fallbackLines.size > 0 && <g data-bone-fallback pointerEvents="none" fill="none" stroke="#e53935" strokeWidth={6 * px} strokeOpacity={0.4} strokeLinecap="round">
+            {g.lines.filter(G => fallbackLines.has(G.id)).map(G => <path key={G.id} data-bone-fallback-line={G.id} d={path(G.curve)} />)}
+          </g>}
           {(() => {
             const paintOf = (id: string) => {
               const l = line(id), on = selLines.includes(l.id), picked = pv.pick?.kind === 'line' && pv.pick.id === l.id

@@ -269,18 +269,27 @@ function fitSamples(samples: readonly Vec[], ta: Vec, tb: Vec, dense: readonly V
  * elsewhere (a point owned by another bone, checklist §1): the difference is blended linearly along the line, so the
  * rest of the curve still follows this bone. `maxError` is the largest distance from the carried curve's samples to
  * the fitted cubic (a shape error). `limit`: the error the caller refuses above — a fit over it is searched again.
+ * `samples`: points taken along the carried line (48; fewer for a playback frame, docs/bone-poses-checklist.md §2.3).
  */
-export function boneLine(line: Cubic, baseBone: Cubic, bone: Cubic, ends: { a?: Vec; b?: Vec } = {}, widthFactor = 1, limit = Infinity): { shape: Cubic; maxError: number } {
+export function boneLine(line: Cubic, baseBone: Cubic, bone: Cubic, ends: { a?: Vec; b?: Vec } = {}, widthFactor = 1, limit = Infinity, samples = 48): { shape: Cubic; maxError: number } {
   line.forEach((p, i) => finite(p, `line control point ${i}`))
   const map = boneMap(baseBone, bone, widthFactor)
   const a0 = map(line[0]), b0 = map(line[3])
   const da = ends.a ? sub(finite(ends.a, 'the start target'), a0) : { x: 0, y: 0 }, db = ends.b ? sub(finite(ends.b, 'the end target'), b0) : { x: 0, y: 0 }
   const at = (t: number) => add(map(point(line, t)), add(mul(da, 1 - t), mul(db, t)))
-  const N = 48, samples = Array.from({ length: N + 1 }, (_, i) => at(i / N)), dense = Array.from({ length: 4 * N + 1 }, (_, i) => at(i / (4 * N)))
+  const N = samples, pts = Array.from({ length: N + 1 }, (_, i) => at(i / N)), dense = Array.from({ length: 4 * N + 1 }, (_, i) => at(i / (4 * N)))
   // end directions from the carried curve: one-sided differences, falling back further in when the end does not move
   const dir = (from: number, step: number) => {
     for (let k = 1; k <= 64; k++) { const d = sub(at(from + step * k), at(from)); if (len(d) > 1e-12 * Math.max(1, len(at(from)))) return mul(d, 1 / len(d)) }
     throw new BoneError('bone-too-short', 'the carried line has no direction at an end')
   }
-  return fitSamples(samples, dir(0, 1e-4), dir(1, -1e-4), dense, limit)
+  return fitSamples(pts, dir(0, 1e-4), dir(1, -1e-4), dense, limit)
 }
+
+const lengthOf = (c: Cubic) => { let L = 0; for (let i = 1; i <= 32; i++) { const p = point(c, (i - 1) / 32), q = point(c, i / 32); L += Math.hypot(q.x - p.x, q.y - p.y) } return L }
+/**
+ * The largest fit error a derived line may have: 2 % of the larger of its base length and its bone's (scale-free; a
+ * short line on a long bone — the crease on the lid — is judged at the bone's scale, at which it is seen). A setting to
+ * review with real drawings.
+ */
+export const fitLimit = (line: Cubic, bone: Cubic) => 0.02 * Math.max(lengthOf(line), lengthOf(bone))

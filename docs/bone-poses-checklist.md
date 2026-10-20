@@ -98,9 +98,16 @@
   corrections untouched. Measured in the bench on a real drawing: a full drag through playback, every frame drawn
   (ink, fills, fallbacks included), median and p95, with and without the switch. Shown to bowen with the numbers; P1
   enables it only after that.
+  As built (P0): `atPose(pose, { followBones })`, `PoseReader.boneFallback()`; the 16-sample fit plus each view's offset
+  (its stored shape minus the 16-sample fit there), blended by the pose's view weights — exact at the views, continuous
+  between, down to the fit's own stopping tolerance (a few millionths of a unit); ends shared with ordinary lines pinned
+  (§2.4 B) for the trial. Bench: the switch, red marks and status names for fallbacks, 「测帧耗时（试验）」 (a yaw sweep at
+  the current pitch, off and on: compute + React render + layout, not pixel painting).
 - P1 core + its minimal bench: Model.bones, the derivation at a pose, fallback **with** the bench's mark and status
   line, responses dropped **with** the open report, archive v16 — §6 evidence.
-- P2 core: corrections on bones in 录制标准 (the allowed set); standards carry responses and 捏脸 writes them (§7)
+- P1 also brings §5's allowed set in `correct` (录制标准): once lines follow their bones, a bone correction that works
+  today would otherwise be refused by the final check (dot 1792475840) — they are enabled together.
+- P2 core: standards carry responses and 捏脸 writes them (§7)
   **in the same package** as 捏脸's refusals of correct / uncorrect / clearCorrections on bones — never the lock before
   the standard's responses exist.
 - P3 bench: the 30° / 60° bone editing checked with a real mouse; frame time measured again on the enabled build.

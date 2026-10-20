@@ -879,7 +879,7 @@ export class Core {
    * parameters, which are written into a scratch layer of a private copy, and read there by the
    * same code as any view, so arcs and fills come from `derived`. Nothing is published.
    */
-  atPose(pose: evaluate.Pose): PoseReader { return poseReader(this.state, pose, what => this.idle(what)) }
+  atPose(pose: evaluate.Pose, opts: { followBones?: boolean } = {}): PoseReader { return poseReader(this.state, pose, what => this.idle(what), opts) }
   /**
    * What `edit(fn)` would publish, read at `pose` (docs/playback-tools-checklist.md §3): `preview`'s pipeline on a copy,
    * then that draft read as `atPose` reads the drawing. Nothing is published; throws as the edit would; null for a
@@ -893,7 +893,9 @@ export class Core {
 
 /** The drawing at one pose: its parameters and its drawn geometry only; no editing reads. */
 export class PoseReader {
-  /** @internal */ constructor(private readonly reader: LayerReader) {}
+  /** @internal */ constructor(private readonly reader: LayerReader, private readonly fallback: readonly bones.Fallback[] = []) {}
+  /** With `followBones` (docs/bone-poses-checklist.md P0): the attached lines drawn from the plain blend here, and why. */
+  boneFallback(): bones.Fallback[] { return this.fallback.map(f => ({ lines: [...f.lines], reason: f.reason })) }
   snapshot(): Snapshot { return this.reader.snapshot() }
   geometry(): Geometry { return this.reader.geometry() }
   zones(): Zones { return this.reader.zones() }
@@ -902,7 +904,7 @@ export class PoseReader {
 }
 
 /** `s` read at `pose` (stage 3a): refused out of range or where the drawing has no finite value; never settled. */
-function poseReader(s: State, pose: evaluate.Pose, idle: (what: string) => void): PoseReader {
+function poseReader(s: State, pose: evaluate.Pose, idle: (what: string) => void, opts: { followBones?: boolean } = {}): PoseReader {
   if (!evaluate.inRange(pose)) throw new net.Refusal('pose-out-of-range', `pose-out-of-range: yaw ${pose.yaw}, pitch ${pose.pitch} (yaw within ±${evaluate.YAW_LIMIT}, pitch within ±${evaluate.PITCH_LIMIT})`)
   let posed: evaluate.Posed
   // a drawing with no finite value at this pose is refused; only that error, nothing else (docs/stage3b-pkg4-move.md §7a)
@@ -910,8 +912,41 @@ function poseReader(s: State, pose: evaluate.Pose, idle: (what: string) => void)
     if (err instanceof evaluate.PoseNotFinite) throw new net.Refusal('pose-not-finite', err.message)
     throw err
   }
+  // P0 (docs/bone-poses-checklist.md): between the views, the attached lines generated from their bones at this pose
+  let fallback: bones.Fallback[] = []
+  const atView = [-90, 0, 90].includes(pose.yaw) && [-45, 0, 45].includes(pose.pitch)
+  if (opts.followBones && !atView && bones.attachments(s.bones).length) {
+    // each view's offset (its stored shape minus what the pose fit makes there), blended by the pose's view weights:
+    // exact at the views, continuous between (docs/bone-poses-checklist.md §6); cached per state
+    const data = poseBonesOf(s), model = modelOf(s)
+    let cache = viewOffsetCache.get(s)
+    if (!cache) { cache = new Map(); viewOffsetCache.set(s, cache) }
+    const ws = evaluate.weights(model, pose).map(w => {
+      const k = `${w.view.yaw},${w.view.pitch}`
+      if (!cache!.has(k)) cache!.set(k, bones.viewOffsets(data, { points: { ...w.view.points }, lines: { ...w.view.lines } }))
+      return { weight: w.weight, offsets: cache!.get(k)! }
+    })
+    const offset = (line: Id) => {
+      const sum = [0, 1, 2, 3].map(() => ({ x: 0, y: 0 }))
+      for (const w of ws) { const d = w.offsets.get(line); if (d) d.forEach((v, i) => { sum[i]!.x += w.weight * v.x; sum[i]!.y += w.weight * v.y }) }
+      return sum
+    }
+    const r = bones.followBones(data, posed, offset)
+    posed = { points: r.shapes.points, lines: r.shapes.lines }; fallback = r.fallback
+  }
   const { state, layer } = posedState(s, posed, pose.yaw < 0)
-  return new PoseReader(new LayerReader(() => state, layer, idle))
+  return new PoseReader(new LayerReader(() => state, layer, idle), fallback)
+}
+/** Per state: each view's offsets for `followBones` (a state is never changed once published). */
+const viewOffsetCache = new WeakMap<State, Map<string, Map<Id, [Vec, Vec, Vec, Vec]>>>()
+/** The bones' data for a pose (docs/bone-poses-checklist.md §2.1): plain data, read at 0,0. */
+function poseBonesOf(s: State): bones.PoseBones {
+  const f = net.of(s.network, views.FRONT), attach = bones.attachments(s.bones), boneIds = bones.bones(s.bones)
+  const involved = new Set([...boneIds, ...attach.map(a => a.line)]), points = new Set<Id>()
+  for (const id of involved) if (net.hasLine(f, id)) { const l = net.line(f, id); points.add(l.a); points.add(l.b) }
+  const ends: Record<Id, { a: Id; b: Id }> = {}
+  for (const l of net.lines(f)) if (involved.has(l.id) || points.has(l.a) || points.has(l.b)) ends[l.id] = { a: l.a, b: l.b }
+  return { bones: boneIds, attach, owners: bones.owners(s.bones), ends }
 }
 
 /** The document read in one view. */
