@@ -19,8 +19,8 @@ export interface Run { pts: P2[]; heads: V3[]; hidden: boolean; loop: number }
 const segDist = (p: P2, a: P2, b: P2) => { const ab: P2 = [b[0] - a[0], b[1] - a[1]], t = Math.max(0, Math.min(1, ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1]) / Math.max(1e-30, ab[0] ** 2 + ab[1] ** 2))); return { d: Math.hypot(p[0] - a[0] - ab[0] * t, p[1] - a[1] - ab[1] * t), t } }
 
 /** The outline at a view as visible / hidden runs, boundaries bisected. */
-export function outlineRuns(head: Head, view: View, grid: Grid = GRID): Run[] {
-  const occ = occluder(head, view), P = (p: V3): P2 => { const r = rotate(p, view); return [r[0], r[1]] }
+export function outlineRuns(head: Head, view: View, grid: Grid = GRID, occGrid?: Grid): Run[] {
+  const occ = occluder(head, view, occGrid), P = (p: V3): P2 => { const r = rotate(p, view); return [r[0], r[1]] }
   const runs: Run[] = []
   candidates(head, view, grid).forEach((l, li) => {
     const pts = l.closed ? [...l.pts, l.pts[0]!] : l.pts
@@ -109,4 +109,76 @@ export function evalView(m: Model, view: View, grid: Grid = GRID): { runs: Run[]
     return { side: line.side, fit, semantic: { otherSide, uncovered, sharedWithOther }, visibility: { shownButHidden, shownButHiddenFar, hiddenButShownOnOutline } }
   })
   return { runs, sides }
+}
+
+// ---- drawn edges and depth gating (dot 1792493982) -----------------------------------------------------------------
+// The drawing shows edge i–i+1 of a mixed line with opacity min(vis_i, vis_i+1) (viewer/main.ts); an edge is drawn
+// when that is > 0. Gating: at the current view, the parts of a drawn edge whose surface points are depth-hidden are
+// not drawn; the opacity of what remains is unchanged (vis stays the semantic opacity). An edge is split where the
+// state changes (bisection along it in (u, y)), never dropped whole.
+export interface Piece { a: P2; b: P2; alpha: number; hidden: boolean; side: Side; seg: number }
+const SUB = 16
+export function drawnPieces(m: Model, view: View, occGrid?: Grid): Piece[] {
+  const head = m.head, occ = occluder(head, view, occGrid), P = (p: V3): P2 => { const r = rotate(p, view); return [r[0], r[1]] }
+  const out: Piece[] = []
+  for (const line of mixContour(head, m.table, view)) for (let i = 0; i + 1 < line.pts.length; i++) {
+    const alpha = Math.min(line.vis[i]!, line.vis[i + 1]!)
+    if (!(alpha > 0)) continue
+    const seg = i < 12 ? 0 : i < 22 ? 1 : 2
+    const ua = line.uv[i]!, ub = line.uv[i + 1]!, du = ub.u + 2 * Math.PI * Math.round((ua.u - ub.u) / (2 * Math.PI)) - ua.u
+    const A = line.pts[i]!, B = line.pts[i + 1]!
+    // the drawn chord's point at t, and the surface point the depth test uses at t
+    const chord = (t: number): V3 => [A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t, A[2] + (B[2] - A[2]) * t]
+    const hid = (t: number) => { const u = ua.u + du * t, y = ua.y + (ub.y - ua.y) * t; return hiddenOn(occ, head.at(u, y), u, y) }
+    let t0 = 0, h0 = hid(0)
+    for (let k = 1; k <= SUB; k++) {
+      const t1 = k / SUB, h1 = hid(t1)
+      if (h1 !== h0) {
+        let lo = (k - 1) / SUB, hi = t1
+        for (let n = 0; n < 10; n++) { const mid = (lo + hi) / 2; if (hid(mid) === h0) lo = mid; else hi = mid }
+        const tb = (lo + hi) / 2
+        out.push({ a: P(chord(t0)), b: P(chord(tb)), alpha, hidden: h0, side: line.side, seg })
+        t0 = tb; h0 = h1
+      }
+    }
+    out.push({ a: P(chord(t0)), b: P(chord(1)), alpha, hidden: h0, side: line.side, seg })
+  }
+  return out
+}
+const plen = (p: Piece) => Math.hypot(p.b[0] - p.a[0], p.b[1] - p.a[1])
+/** distance from point q to a set of pieces (segments) */
+const toPieces = (q: P2, ps: Piece[]) => { let m = Infinity; for (const p of ps) m = Math.min(m, segDist(q, p.a, p.b).d); return m }
+
+export interface GateReport {
+  side: Side
+  /** hiddenLen: depth-hidden length; hiddenFarLen: of that, the part more than NEAR from the visible outline */
+  drawn: { len: number; hiddenLen: number; hiddenFarLen: number; maxOffVisible: number }
+  gated: { len: number; hiddenLen: number; hiddenFarLen: number; maxOffVisible: number }
+  /** visible outline the ungated drawing covered (within NEAR), and how much of it the gated drawing still covers */
+  coveredBefore: number; coveredAfter: number; gapFromGating: number
+}
+/** Before / after gating, per side: drawn length, drawn-but-hidden length, fit to the visible outline, coverage.
+ *  rule 'depth': drop every depth-hidden piece; rule 'depth-far' (a variant for comparison): drop a depth-hidden piece
+ *  only when it is also more than NEAR from the visible outline (a piece grazing the outline is kept). */
+export function gateReport(m: Model, view: View, occGrid?: Grid, rule: 'depth' | 'depth-far' = 'depth'): GateReport[] {
+  const runs = outlineRuns(m.head, view, GRID, occGrid), pieces = drawnPieces(m, view, occGrid)
+  const far = (p: Piece) => nearestVisible([(p.a[0] + p.b[0]) / 2, (p.a[1] + p.b[1]) / 2], runs).d > NEAR
+  return (['pos', 'neg'] as const).map(side => {
+    const before = pieces.filter(p => p.side === side), after = before.filter(p => !p.hidden || (rule === 'depth-far' && !far(p)))
+    const stats = (ps: Piece[]) => ({
+      len: ps.reduce((a, p) => a + plen(p), 0),
+      hiddenLen: ps.filter(p => p.hidden).reduce((a, p) => a + plen(p), 0),
+      hiddenFarLen: ps.filter(p => p.hidden && far(p)).reduce((a, p) => a + plen(p), 0),
+      maxOffVisible: ps.length ? Math.max(...ps.flatMap(p => [p.a, p.b, [(p.a[0] + p.b[0]) / 2, (p.a[1] + p.b[1]) / 2] as P2].map(q => nearestVisible(q, runs).d))) : NaN,
+    })
+    let coveredBefore = 0, coveredAfter = 0
+    for (const r of runs) {
+      if (r.hidden) continue
+      for (let k = 0; k + 1 < r.pts.length; k++) {
+        const a = r.pts[k]!, b = r.pts[k + 1]!, q: P2 = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], L = Math.hypot(b[0] - a[0], b[1] - a[1])
+        if (toPieces(q, before) <= NEAR) { coveredBefore += L; if (toPieces(q, after) <= NEAR) coveredAfter += L }
+      }
+    }
+    return { side, drawn: stats(before), gated: stats(after), coveredBefore, coveredAfter, gapFromGating: coveredBefore - coveredAfter }
+  })
 }
