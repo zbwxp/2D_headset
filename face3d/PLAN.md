@@ -48,25 +48,42 @@ Branch `exp/face-bones-3d` (worktree `~/Documents/headset-face3d`). Not wired in
 
 ## 4. Contour bones (per key view, mixed)
 - Key views: yaw {0, 30, 60, 90} × pitch {−45, −30, 0, 30, 45}; negative yaw by mirror (x → −x).
-- At a key view the contour comes from the head's true outline (where the surface normal is perpendicular to the view
-  direction), traced on the (u, v) grid.
-- Each side (x+ and x−) of the face contour has four anchors and three segments:
-  temple → cheek → jaw angle → chin. Anchors: temple, cheek, jaw angle = the outline's crossing of fixed section
-  heights (v); chin = its crossing of the midline (u = 0). Each segment is resampled to a fixed count by arc length.
-  Correspondence is therefore per segment (dot constraint 1).
-- A segment that is not on the outline at a key view (the near side's temple–cheek when the face turns away) is kept
-  as the surface line between its anchors and marked not visible there; mixing mixes positions and visibility, so it
-  fades instead of jumping.
-- Stored per key view: the samples as surface parameters (u, v) + a user offset in that view's picture plane (zero
-  until bowen edits it).
+- Lines are points joined by straight segments (bowen 1792488168); Bézier fitting may come later.
+- At a key view, *candidate* outline = where the surface normal is perpendicular to the view direction, traced on the
+  (u, v) grid (closed loops). Candidates are not all drawn (dot 1792488237): the head is projected to a mask and its
+  outer boundary traced; a candidate point is *visible outline* when it lies on that boundary (within one mask pixel).
+  The switch "straight from the rough head" draws exactly this visible outer boundary.
+- Each side (x+ and x−) of the face contour has four anchors and three segments: chin → jaw angle → cheek → temple.
+  - chin: the candidate-loop point nearest (in 3D) to the chin landmark — not a crossing of u = 0, which pitched and
+    side views need not have;
+  - walk from the chin along the loop toward that side (u > 0 for x+, u < 0 for x−), leaving the face region
+    (|u| > 110°) ends the walk;
+  - jaw angle, cheek, temple: the *first* point of the walk whose section height reaches that anchor's height
+    (later crossings — the loop folding back — are ignored, so each anchor is unique);
+  - an anchor not reached before the walk ends: that segment and every one above it are *absent* at this key.
+  Each present segment is resampled to a fixed count by arc length. Correspondence is per segment (dot constraint 1);
+  equal counts alone are not the correspondence — the anchors are.
+- An absent segment (or a present one not on the visible outline) is kept with positions and marked not visible
+  there. Positions of an absent segment = the same segment of the level key (yaw 0, pitch 0) — the surface line where
+  that part of the face edge sits when it is the outline. Mixing mixes positions and visibility, so a segment fades
+  instead of jumping. Recorded as an approximation: the in-between line of a fading segment is not a true outline.
+- Stored per key view: the samples as surface parameters (u, v) (the *base line*) + a user offset per sample (zero
+  until bowen edits it, F2).
+- The offset's frame (dot 1792488237): a 2D vector in that key view's picture plane (the key camera's right / up
+  axes), in head units R. Applied as base point + right·dx + up·dy, which moves the point parallel to that key's
+  screen, so at that key the drawn line moves exactly as dragged and its depth is the base point's depth.
+- Two separate guarantees, never one: (a) the base line always comes from the current head (it is re-traced after a
+  head edit, so it stays on the head); (b) the offset is kept per sample relative to the base line. An offset point
+  is generally **not** on the head's surface and is not promised to be — that is what bowen's deform means.
 - Between key views: bilinear weights over the four surrounding keys; mix the corresponding samples in 3D, then
   project with the real rotation. At a key view the weights are 1/0/0/0, so the drawn line is the key exactly.
-- **After a head edit** (dot constraint 3): every key contour is traced again from the new head, the stored user
-  offsets are re-applied sample by sample (they are relative to the traced outline, not absolute positions). So the
-  bones stay on the head and bowen's adjustments survive the reshape.
+- **After a head edit** (dot constraint 3): every key contour's base line is traced again from the new head (anchors
+  found again by the rules above), and the stored offsets are re-applied sample by sample. Base lines stay on the head;
+  offsets survive the reshape as relative displacements (guarantee (a) and (b) above, separately).
 
 ## 5. Viewer (the prototype)
-- Rotate by drag and sliders; the 25 presets of the master sheet.
+- A fixed address on this Mac (bowen 1792488104): refresh to see the latest model. Rotate by drag and sliders;
+  nothing else is required of bowen.
 - Switch: contour = key mix (default) / straight from the rough head (dot constraint 2); both together in two colours.
 - 25-cell strip: the master grid (1600 × 1600, cells 320 × 300, ball (160, 148), R 78), drawn live from the model.
 - Edit: the rough head (control heights' half-width / front / roundness), key contour points (drag in a key view →
