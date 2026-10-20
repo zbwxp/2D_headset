@@ -5,6 +5,8 @@
 //      is closest to the drawing (same cost as bench-fit.ts; the front 0, 0 is the anchor and stays);
 //   2. shape — the angles fixed, the symmetric head refitted to all drawings at their found angles;
 //   repeated until neither changes much. Drawings: the nine views and the playback-corrected 30 / 60 (the hand tuning).
+//   Cues: the outline (脸轮廓) and, unless MID=0, the face's middle line (侧脸) against the head's front middle line —
+//   the outline alone could not fix the angles at pitch ±45 (first run, ref/angles-123.json).
 // Run: ANGLES=1 npx vite-node face3d/fit/angles.ts [archive.json]   (writes ref/angles-<out>.json)
 import { writeFileSync } from 'node:fs'
 import { type View } from '../src/view'
@@ -17,7 +19,10 @@ if (process.env.ANGLES) {
   const file = process.argv[2] ?? '/Users/bowen/Desktop/123.json'
   const D = drawn(file, NOMINAL, 1)
   let p: BParams = JSON.parse(JSON.stringify(fitted)), angles: View[] = NOMINAL.map(v => ({ ...v }))
-  const cost = (q: BParams, i: number, v: View) => poseCost(D, shapeOfB(q), i, v).cost
+  // the middle line is only hand-drawn at the nine views (bowen 1792512195: 侧脸 was not tuned at 30 / 60 — there it is
+// the bench's plain blend), so it is a cue only for the drawings at yaw 0 / ±90
+const MID = process.env.MID !== '0', useMid = (i: number) => MID && [0, 90, -90].includes(NOMINAL[i]!.yaw)
+const cost = (q: BParams, i: number, v: View) => poseCost(D, shapeOfB(q), i, v, useMid(i)).cost
   const total = (q: BParams) => NOMINAL.reduce((s, _, i) => s + cost(q, i, angles[i]!), 0) + smoothB(q)
   const log: string[] = []
   for (let round = 0; round < 4; round++) {
@@ -52,5 +57,5 @@ if (process.env.ANGLES) {
     console.log(line); log.push(line)
     if (round > 0 && moved < 1) break
   }
-  writeFileSync(new URL(`./ref/angles-${process.env.OUT ?? '123'}.json`, import.meta.url), JSON.stringify({ nominal: NOMINAL, angles, shape: p, log }, null, 1))
+  writeFileSync(new URL(`./ref/angles-${process.env.OUT ?? (MID ? '123-mid' : '123')}.json`, import.meta.url), JSON.stringify({ nominal: NOMINAL, angles, shape: p, log, cues: MID ? 'outline; + middle line (侧脸) at the nine views only' : 'outline only' }, null, 1))
 }

@@ -10,7 +10,7 @@
 import { writeFileSync } from 'node:fs'
 import { type HeadShape, type Knot, makeHead, pchip } from '../src/head'
 import { boundaryPoints, mask } from '../src/outline'
-import { type View } from '../src/view'
+import { type View, rotate, toCamera } from '../src/view'
 import { type P2, outlineAt, readBench } from './bench'
 import { type BParams, LV, shapeOf, shapeOfB } from './shape'
 export { type BParams, LV, shapeOfB }
@@ -26,10 +26,12 @@ const box = (ps: P2[]) => { let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1
 
 /** the drawn outline at the poses, in head units before placement (x right, y up), with the shared scale */
 export function drawn(file: string, poses: View[], pitchSign = 1) {
-  const bench = readBench(file, '脸轮廓')
+  const bench = readBench(file, '脸轮廓'), side = readBench(file, '侧脸')
   const lines = poses.map(v => outlineAt(bench, { yaw: v.yaw, pitch: pitchSign * v.pitch }).map(l => l.pts)), raw = lines.map(ls => ls.flat())
+  // the face's middle line (layer 侧脸: a vertical line at the front, the nose–lips–chin profile at 90°)
+  const mid = poses.map(v => outlineAt(side, { yaw: v.yaw, pitch: pitchSign * v.pitch }).flatMap(l => l.pts))
   const front = raw[poses.findIndex(v => v.yaw === 0 && v.pitch === 0)]!, fb = box(front)
-  return { poses, raw, lines, scale: (fb.y1 - fb.y0) }
+  return { poses, raw, lines, mid, scale: (fb.y1 - fb.y0) }
 }
 /** `view`: the camera the model is seen from (default: the drawing's nominal pose) — the angle search (angles.ts) moves it */
 export function placed(D: ReturnType<typeof drawn>, shape: HeadShape, i: number, view: View = D.poses[i]!) {
@@ -37,13 +39,27 @@ export function placed(D: ReturnType<typeof drawn>, shape: HeadShape, i: number,
   const model = boundaryPoints(mask(makeHead(shape), view)) as P2[]
   const bd = box(d), bm = box(model), dx = bm.cx - bd.cx, dy = bm.cy - bd.cy
   const to = ([x, y]: P2): P2 => [x / s + dx, -y / s + dy]
-  return { drawn: d.map(([x, y]): P2 => [x + dx, y + dy]), lines: D.lines[i]!.map(l => l.map(to)), model, offset: [dx, dy] as P2 }
+  return { drawn: d.map(([x, y]): P2 => [x + dx, y + dy]), lines: D.lines[i]!.map(l => l.map(to)), mid: D.mid[i]!.map(to), model, offset: [dx, dy] as P2 }
 }
-export function poseCost(D: ReturnType<typeof drawn>, shape: HeadShape, i: number, view?: View) {
-  const { drawn: d, model } = placed(D, shape, i, view)
+/** the head's front middle line (u = 0, crown to chin) at a view, the part facing the camera, screen points */
+export function modelMid(shape: HeadShape, v: View): P2[] {
+  const head = makeHead(shape), d = toCamera(v), out: P2[] = []
+  for (let k = 0; k <= 80; k++) {
+    const y = shape.yMax - (k / 80) * (shape.yMax - shape.yMin), n = head.normal(0, y)
+    if (n[0] * d[0] + n[1] * d[1] + n[2] * d[2] < -0.02) continue
+    const r = rotate(head.at(0, y), v); out.push([r[0], r[1]])
+  }
+  return out
+}
+/** `mid`: also match the drawn middle line to the head's (each point's distance clipped at 0.1, so the nose and lips
+ *  the head does not model only count so far) */
+export function poseCost(D: ReturnType<typeof drawn>, shape: HeadShape, i: number, view?: View, mid = false) {
+  const pl = placed(D, shape, i, view), { drawn: d, model } = pl
   const d1 = d.map(p => near(p, model)), d2 = model.map(p => near(p, d))
   const mean = (a: number[]) => a.reduce((s, x) => s + x, 0) / Math.max(1, a.length)
-  return { d1: mean(d1), d2: mean(d2), max: Math.max(...d1, ...d2), cost: mean(d1) + mean(d2) }
+  let m = 0
+  if (mid) { const mm = modelMid(shape, view ?? D.poses[i]!); if (mm.length > 1 && pl.mid.length > 1) m = mean(pl.mid.map(p => Math.min(0.1, near(p, mm)))) + mean(mm.map(p => Math.min(0.1, near(p, pl.mid)))); else m = 0.2 }
+  return { d1: mean(d1), d2: mean(d2), mid: m, max: Math.max(...d1, ...d2), cost: mean(d1) + mean(d2) + m }
 }
 export const smoothB = (p: BParams) => {
   const d2 = (v: number[]) => v.slice(1, -1).reduce((s, x, i) => s + (v[i]! - 2 * x + v[i + 2]!) ** 2, 0)
