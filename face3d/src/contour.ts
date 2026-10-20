@@ -62,6 +62,30 @@ function walk(loop: Loop, i0: number, dir: 1 | -1): OutlinePoint[] {
   return out
 }
 
+/** Remove out-and-back spurs on screen: where an outline curve has a cusp it runs out past the visible edge and comes
+ *  back (that stretch is behind the surface but grazing, so the depth test can miss it). A later point returning within
+ *  SPUR_EPS of an earlier one, after more than 3 × SPUR_EPS and at most SPUR_MAX_ARC of arc in between (a spur is short; a
+ *  walk that comes round near its start is not one), cuts that stretch out. Depends only on the
+ *  view, so the result is the same however the view was reached. */
+export const SPUR_EPS = 0.02, SPUR_MAX_ARC = 0.7
+export function pruneSpurs(path: OutlinePoint[], view: View): OutlinePoint[] {
+  const P = path.map(q => rotate(q.p, view))
+  const keep: number[] = []
+  let i = 0
+  while (i < path.length) {
+    keep.push(i)
+    // the furthest later point that comes back next to point i after a long enough excursion
+    let jump = -1, arc = 0
+    for (let j = i + 1; j < path.length; j++) {
+      arc += Math.hypot(P[j]![0] - P[j - 1]![0], P[j]![1] - P[j - 1]![1])
+      if (arc > SPUR_MAX_ARC) break
+      if (arc > 3 * SPUR_EPS && Math.hypot(P[j]![0] - P[i]![0], P[j]![1] - P[i]![1]) < SPUR_EPS) jump = j
+    }
+    i = jump > 0 ? jump : i + 1
+  }
+  return keep.map(k => path[k]!)
+}
+
 /** Split a side's walk (starting at the chin) at the first crossing of each anchor height. */
 function segmentsOf(head: Head, path: OutlinePoint[], anchors: readonly number[] = ANCHOR_Y, jawFirst = true): (OutlinePoint[] | undefined)[] {
   const segs: (OutlinePoint[] | undefined)[] = []
@@ -124,7 +148,7 @@ export function traceKey(head: Head, view: View, ref: Partial<Record<Side, V3>> 
     for (const c of near.slice(0, 80)) {
       const loop = loops[c.l]!, A = walk(loop, c.i, 1), B = walk(loop, c.i, -1)
       const w = [A, B].filter(x => toward(x) > TOWARD_MIN && !overlaps(x)).sort((x, y) => toward(y) - toward(x))[0]
-      if (w) { sides[s] = w; if (s === 'pos') chinLoop = c.l; break }
+      if (w) { sides[s] = pruneSpurs(w, view); if (s === 'pos') chinLoop = c.l; break }
     }
   }
   const out = { pos: [] as (Sample[] | undefined)[], neg: [] as (Sample[] | undefined)[], vis: { pos: [] as boolean[][], neg: [] as boolean[][] }, chinLoop }
@@ -162,7 +186,7 @@ export function traceFromJaw(head: Head, view: View, jaw: Record<Side, Sample>):
     let path: OutlinePoint[] = []
     for (const c of near.slice(0, 40)) {
       const loop = loops[c.l]!, w = [walk(loop, c.i, 1), walk(loop, c.i, -1)].filter(x => climb(x) > 0.005).sort((x, y) => climb(y) - climb(x))[0]
-      if (w) { path = w; break }
+      if (w) { path = pruneSpurs(w, view); break }
     }
     // the segments start at the fixed jaw angle itself (shared anchor); the bridge to the outline is part of segment 1
     const start: OutlinePoint = { u: j.u, y: j.y, p: jp }
