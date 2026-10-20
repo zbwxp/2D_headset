@@ -9,7 +9,9 @@ export interface Attach { readonly u: number; readonly y: number; readonly h: nu
 export interface BoneDef { readonly name: string; readonly part: Part; readonly closed: boolean; readonly pts: V3[] }
 export interface Bone { readonly name: string; readonly part: Part; readonly closed: boolean; readonly at: (Attach | V3)[] }
 
-const centre = (head: Head, y: number): V3 => [0, y, head.section(y).z0]
+// the midpoint between front and back: inside every (convex) section, so the section is star-shaped about it — the widest
+// point's depth z0 is not, under the jaw it lies on the section's flat back
+const centre = (head: Head, y: number): V3 => { const s = head.section(y); return [0, y, (s.f + s.b) / 2] }
 const radial = (head: Head, u: number, y: number): V3 => { const s = head.at(u, y), c = centre(head, y); return norm([s[0] - c[0], 0, s[2] - c[2]]) }
 const angleOf = (p: V3, c: V3) => Math.atan2(p[0] - c[0], p[2] - c[2])
 

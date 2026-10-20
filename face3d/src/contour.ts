@@ -186,14 +186,19 @@ export function mixContour(head: Head, table: KeyTable, view: View, offsets: Off
     const pts: V3[] = [], vis: number[] = [], anchors: number[] = []
     for (let seg = 0; seg < 3; seg++) {
       for (let i = seg === 0 ? 0 : 1; i < COUNTS[seg]!; i++) {
-        let p: V3 = [0, 0, 0], v = 0
+        // mixed on the head's surface: the samples' (u, y) are mixed and the point evaluated on the current head, so an
+        // in-between line lies on the head instead of cutting through it; offsets (F2) are added in 3D after
+        let u = 0, y = 0, v = 0, off: V3 = [0, 0, 0], u0: number | undefined
         for (const { yaw: ky, pitch: kp, w } of W) {
           const key = table.at(ky, kp), s = key[side][seg]!, q = s.samples[i]!
-          let base = head.at(q.u, q.y)
-          const off = offsets.get(offsetKey(ky, kp, side, seg, i))
-          if (off) { const ax = screenAxes(key.view); base = add(base, add(scale(ax.right, off[0]), scale(ax.up, off[1]))) }
-          p = add(p, scale(base, w)); v += w * (s.vis[i] ? 1 : 0)
+          // unwrap u against the first key's (under the jaw, samples near the mid line sit at u ≈ ±π)
+          u0 ??= q.u
+          const uq = q.u + 2 * Math.PI * Math.round((u0 - q.u) / (2 * Math.PI))
+          u += w * uq; y += w * q.y; v += w * (s.vis[i] ? 1 : 0)
+          const o = offsets.get(offsetKey(ky, kp, side, seg, i))
+          if (o) { const ax = screenAxes(key.view); off = add(off, scale(add(scale(ax.right, o[0]), scale(ax.up, o[1])), w)) }
         }
+        const p = add(head.at(u, y), off)
         pts.push(flip ? mirror(p) : p); vis.push(v)
       }
       anchors.push(pts.length - 1)

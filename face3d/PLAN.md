@@ -75,8 +75,13 @@ Branch `exp/face-bones-3d` (worktree `~/Documents/headset-face3d`). Not wired in
 - Two separate guarantees, never one: (a) the base line always comes from the current head (it is re-traced after a
   head edit, so it stays on the head); (b) the offset is kept per sample relative to the base line. An offset point
   is generally **not** on the head's surface and is not promised to be — that is what bowen's deform means.
-- Between key views: bilinear weights over the four surrounding keys; mix the corresponding samples in 3D, then
-  project with the real rotation. At a key view the weights are 1/0/0/0, so the drawn line is the key exactly.
+- Between key views: bilinear weights over the four surrounding keys; mix the corresponding samples' surface
+  parameters (u, y) and evaluate them on the current head, then add the mixed offsets in 3D and project with the real
+  rotation. At a key view the weights are 1/0/0/0, so the drawn line is the key exactly. (Changed from mixing 3D
+  positions after measuring, 2026-10-20: two key outlines lie on different parts of the head — the 60° cheek and the
+  90° profile — and their 3D mix cuts a chord through the head, up to 0.27 R inside the outline at yaw 75; mixed on
+  the surface it stays on the head, median 0.01 R. u is unwrapped against the first key's, since under the jaw the
+  samples near the mid line sit at u ≈ ±π.)
 - **After a head edit** (dot constraint 3): every key contour's base line is traced again from the new head (anchors
   found again by the rules above), and the stored offsets are re-applied sample by sample. Base lines stay on the head;
   offsets survive the reshape as relative displacements (guarantee (a) and (b) above, separately).
