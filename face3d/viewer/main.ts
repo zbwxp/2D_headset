@@ -22,11 +22,12 @@ status.textContent = `模型就绪（${headName}）：${(performance.now() - t0)
 const PART: Record<DrawnBone['part'], string> = { eye: '#8e24aa', brow: '#8e24aa', nose: '#1565c0', mouth: '#ef6c00', chin: '#c62828', ear: '#2e7d32', neck: '#2e7d32' }
 const SIDE = { pos: '#d32f2f', neg: '#1976d2' }
 
-interface Opts { wire: boolean; mix: boolean; raw: boolean; outer: boolean; ghost: boolean; bones: boolean; anchors: boolean; w: number }
+interface Opts { solid: boolean; wire: boolean; mix: boolean; raw: boolean; outer: boolean; ghost: boolean; bones: boolean; anchors: boolean; w: number }
 function draw(g: CanvasRenderingContext2D, view: View, cx: number, cy: number, S: number, o: Opts) {
   const P = (p: V3) => { const r = rotate(p, view); return [cx + r[0] * S, cy - r[1] * S] as const }
   const line = (pts: V3[], close = false) => { g.beginPath(); pts.forEach((p, i) => { const q = P(p); i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]) }); if (close) g.closePath(); g.stroke() }
   g.lineJoin = g.lineCap = 'round'
+  if (o.solid) drawSolid(g, view, cx, cy, S)
   // bowen's September wireframe (landmarks-0.9.3, 语义点头部研究.json): its Bézier curves in 3D, put in head space by
   // its head frame's centre; drawn thin, the part facing away dashed by depth sign is not attempted (wire only)
   if (o.wire) {
@@ -57,9 +58,39 @@ function draw(g: CanvasRenderingContext2D, view: View, cx: number, cy: number, S
   }
 }
 
+// ---- the head shell as a shaded solid (bowen 1792505507 "搞个3d头壳"): the loft tessellated once, triangles facing
+// the camera filled far-to-near (painter's order) with Lambert shading -----------------------------------------------------
+const SOLID = (() => {
+  const head = model.head, nu = 96, ny = 72, { yMin, yMax } = head.shape, vs: V3[] = [], tris: [number, number, number][] = []
+  const yOf = (j: number) => yMax - ((1 - Math.cos((Math.PI * j) / ny)) / 2) * (yMax - yMin)
+  for (let j = 0; j <= ny; j++) for (let i = 0; i < nu; i++) vs.push(head.at(-Math.PI + (2 * Math.PI * i) / nu, yOf(j)))
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nu; i++) { const a = j * nu + i, b = j * nu + ((i + 1) % nu), c = a + nu, d = b + nu; tris.push([a, c, b], [b, c, d]) }
+  return { vs, tris }
+})()
+function drawSolid(g: CanvasRenderingContext2D, view: View, cx: number, cy: number, S: number) {
+  const r = SOLID.vs.map(p => rotate(p, view)), L = [-0.35, 0.55, 0.76]
+  const items: { z: number; t: [number, number, number]; shade: number }[] = []
+  for (const t of SOLID.tris) {
+    const [a, b, c] = t.map(k => r[k]!) as [V3, V3, V3]
+    const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]]
+    const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]], m = Math.hypot(n[0]!, n[1]!, n[2]!) || 1
+    // the camera looks down −z (larger z is nearer): keep the triangles whose normal points at it
+    const nz = n[2]! / m
+    if (nz <= 0) continue
+    const lam = Math.max(0, (n[0]! * L[0]! + n[1]! * L[1]! + n[2]! * L[2]!) / m)
+    items.push({ z: (a[2] + b[2] + c[2]) / 3, t, shade: 0.42 + 0.58 * lam })
+  }
+  items.sort((p, q) => p.z - q.z)
+  for (const it of items) {
+    const [a, b, c] = it.t.map(k => r[k]!) as [V3, V3, V3], k = Math.round(150 + 95 * it.shade)
+    g.fillStyle = g.strokeStyle = `rgb(${k},${Math.round(k * 0.97)},${Math.round(k * 0.94)})`; g.lineWidth = 0.6
+    g.beginPath(); g.moveTo(cx + a[0] * S, cy - a[1] * S); g.lineTo(cx + b[0] * S, cy - b[1] * S); g.lineTo(cx + c[0] * S, cy - c[1] * S); g.closePath(); g.fill(); g.stroke()
+  }
+}
+
 // ---- the main view ----------------------------------------------------------------------------------------------------
 const cv = $<HTMLCanvasElement>('c'), g = cv.getContext('2d')!
-const read = (): Opts => ({ wire: $<HTMLInputElement>('wire').checked, mix: $<HTMLInputElement>('mix').checked, raw: $<HTMLInputElement>('raw').checked, outer: $<HTMLInputElement>('outer').checked, ghost: $<HTMLInputElement>('ghost').checked, bones: $<HTMLInputElement>('bones').checked, anchors: $<HTMLInputElement>('anchors').checked, w: 1.5 })
+const read = (): Opts => ({ solid: $<HTMLInputElement>('solid').checked, wire: $<HTMLInputElement>('wire').checked, mix: $<HTMLInputElement>('mix').checked, raw: $<HTMLInputElement>('raw').checked, outer: $<HTMLInputElement>('outer').checked, ghost: $<HTMLInputElement>('ghost').checked, bones: $<HTMLInputElement>('bones').checked, anchors: $<HTMLInputElement>('anchors').checked, w: 1.5 })
 const fromHash = () => { const m = /yaw=(-?\d+).*pitch=(-?\d+)/.exec(location.hash); return m ? { yaw: +m[1]!, pitch: +m[2]! } : { yaw: 30, pitch: 0 } }
 let view: View = fromHash(), pending = false
 const pitchName = (p: number) => p === 0 ? '平视' : p > 0 ? `仰视 ${p}°` : `俯视 ${-p}°`
@@ -76,7 +107,7 @@ function render() {
 const set = (yaw: number, pitch: number) => { view = { yaw: Math.max(-90, Math.min(90, Math.round(yaw))), pitch: Math.max(-45, Math.min(45, Math.round(pitch))) }; if (!pending) { pending = true; requestAnimationFrame(render) } }
 $<HTMLInputElement>('yaw').oninput = e => set(+(e.target as HTMLInputElement).value, view.pitch)
 $<HTMLInputElement>('pitch').oninput = e => set(view.yaw, +(e.target as HTMLInputElement).value)
-for (const id of ['wire', 'mix', 'raw', 'outer', 'ghost', 'bones', 'anchors']) $(id).onchange = () => { set(view.yaw, view.pitch); drawGrid() }
+for (const id of ['solid', 'wire', 'mix', 'raw', 'outer', 'ghost', 'bones', 'anchors']) $(id).onchange = () => { set(view.yaw, view.pitch); drawGrid() }
 let drag: { x: number; y: number; v: View } | undefined
 cv.onpointerdown = e => { drag = { x: e.clientX, y: e.clientY, v: view }; cv.setPointerCapture(e.pointerId); cv.style.cursor = 'grabbing' }
 cv.onpointermove = e => { if (!drag) return; const k = 180 / cv.clientWidth; set(drag.v.yaw + (e.clientX - drag.x) * k, drag.v.pitch - (e.clientY - drag.y) * k) }
