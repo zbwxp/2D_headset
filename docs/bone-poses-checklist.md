@@ -16,8 +16,10 @@
   (a correction's preview), and `correct`'s own before / after (`CorrectionWorld.model / settled`). One model, one
   function, so whatever the slot does, all of them see it.
 - Bones can already be corrected at 30° (correct() only refuses attached lines); the attached lines then stay where the
-  blend of their own nine views puts them — the gap to close. A correction on a control whose two views hold the same
-  value is refused (correction-not-reproduced), for every line; not changed here.
+  blend of their own nine views puts them — the gap to close. Two bone constructions with an attached line whose
+  corrected control holds the same value in both views were refused (correction-not-reproduced; dot 1792474877) — only
+  that is shown; an ordinary line's existing minimal-move path, which writes into the outer view and is tested, is not
+  touched by this package (dot 1792475682).
 
 ## 2. The derivation at a pose (P1, core)
 1. `Model` gains `bones?` — pure data, enough topology to build everything below without the network (dot
@@ -34,7 +36,9 @@
    A. the ordinary line's end takes the derived position (as the views' settle carries it), its handle turned with it
       so a smooth join stays smooth (dot 1792474482), or
    B. the attached line's end is pinned where the blend puts the ordinary line's end.
-5. The derived shapes replace the attached lines' points and handles in `Posed`; nothing else changes.
+5. The derived shapes replace the attached lines' points and handles in `Posed`; with §2.4 A also the ordinary lines'
+   shared ends and, where a smooth join there needs it, those lines' handles at those ends — named per pose; every
+   other control as blended.
 
 ## 3. When a pose cannot be generated (P1)
 - Causes: the blended bone degenerate (too short, no direction), a point ambiguous on it, a fit over its limit.
@@ -55,8 +59,10 @@
 
 ## 5. Corrections on bones (P2)
 - 录制标准: allowed. `correct`'s final check (nothing outside the targets changes at this pose, nothing outside the
-  moves changes in any view; dot 1792474538) gains one allowed dependency: the attached lines of the corrected bones and
-  the points §2.4 moves with them. Every ordinary line stays protected; the check is never skipped. The trial, the
+  moves changes in any view; dot 1792474538) gains one allowed set, named exactly: the attached lines of the corrected
+  bones, their points, and the controls §2.5 changes because of them (with A: those ordinary lines' shared ends and
+  their handles at those ends). Every other control of every ordinary line stays protected; the check is never skipped
+  (dot 1792475682). The trial, the
   commit and the views' derivation are the same `modelOf` / settle (dot 1792474877).
 - 捏脸: a bone's responses come from its standard, so `correct`, `uncorrect` and `clearCorrections` on a bone are
   refused (`bone-standard`, the reasons of `standardLock`), as its side views are (dot 1792474662).
