@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VTuber 式检视</title>
+<style>
+  body { margin: 0; font: 14px/1.5 "PingFang SC", sans-serif; background: #f6f6f4; color: #222; display: flex; flex-wrap: wrap; gap: 16px; padding: 16px; }
+  canvas { background: #fafaf8; border: 1px solid #ddd; border-radius: 8px; width: min(80vh, 92vw); height: min(80vh, 92vw); cursor: grab; touch-action: none; }
+  .side { width: 300px; } input[type=range] { width: 100%; }
+</style>
+</head>
+<body>
+  <canvas id="c" width="1000" height="1000"></canvas>
+  <div class="side">
+    <h3 style="margin:0 0 8px">VTuber 式检视（相机不动）</h3>
+    <div>转头 AngleX：<span id="xv"></span></div><input type="range" id="x" min="-90" max="90" value="30">
+    <div>点头 AngleY（+ = 抬头）：<span id="yv"></span></div><input type="range" id="y" min="-60" max="60" value="0">
+    <div>歪头 AngleZ：<span id="zv"></span></div><input type="range" id="z" min="-30" max="30" value="0">
+    <p style="font-size:12px;color:#555">头先左右转，再绕自己的耳朵连线点头，再歪头；支点在脖子（VRoid 头骨骼位置）。内部换算成建模视角 B（相机绕头的 yaw / pitch）取出轮廓，再在画面里旋转、平移。粉色圆 = 头骨球，跟着支点一起动。轮廓暂用 bench 的对称化轮廓（关键帧以后换成新描的）；变成橙色表示超出关键帧范围。拖动画面：左右 = 转头，上下 = 点头。</p>
+  </div>
+  <script type="module" src="./vtuber.ts"></script>
+</body>
+</html>
