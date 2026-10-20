@@ -17,7 +17,7 @@ const picks: Record<string, { bottom: P2[]; right: P2[]; left: P2[] }> = JSON.pa
 // sheet rows are camera pitch with + = from above (俯视); face3d pitch + = from below (仰视)
 const viewOf = (key: string): View => { const [yaw, pitch] = key.split(',').map(Number); return { yaw: yaw!, pitch: -pitch! } }
 
-export const L = [-0.45, -0.6, -0.75, -0.9, -1.05]
+export const L = [-0.45, -0.6, -0.72, -0.84, -0.96, -1.08]
 export interface Params { yMin: number; a: number[]; f: number[]; b: number[]; n: number[]; fChin: number }
 const keep = (ks: readonly Knot[]) => ks.filter(k => k.y >= -0.3)
 export function shapeOf(p: Params): HeadShape {

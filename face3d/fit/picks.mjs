@@ -2,7 +2,7 @@
 // right / left = right-most / left-most dark pixel per pixel row in [r0, r1] (x beyond rx / lx). Head screen units.
 import { readFileSync, writeFileSync } from 'node:fs'
 const here = new URL('.', import.meta.url).pathname
-const { R, cells } = JSON.parse(readFileSync(here + 'dark.json', 'utf8'))
+const { R, cells } = JSON.parse(readFileSync(process.env.DARK ?? here + 'dark.json', 'utf8'))
 const step = 1 / R
 export const BANDS = {
   '0,0': { b: [-0.85, 0.85], right: [-0.95, -0.62, 0.5], left: [-0.95, -0.62, -0.5] },
@@ -10,6 +10,8 @@ export const BANDS = {
   '45,0': { b: [-0.45, 0.75], right: [-1.2, -0.4, 0.4] },
   '60,0': { b: [-0.35, 0.85], right: [-1.2, -0.55, 0.5] },
   '90,0': { b: [-0.1, 0.85], right: [-1.25, -1.0, 0.5] },
+  // looking-up rows: the chin / jaw underline only, front and 30° (no neck lines below them in the drawing)
+  '0,-30': { b: [-0.75, 0.75] }, '30,-30': { b: [-0.45, 0.6] }, '0,-45': { b: [-0.75, 0.75] }, '30,-45': { b: [-0.45, 0.6] },
 }
 export function picks(key) {
   const pts = cells[key], B = BANDS[key], out = []
@@ -34,4 +36,4 @@ if (process.argv[2] === 'draw') {
   })
   writeFileSync(here + 'picks.svg', svg + '</svg>'); console.log('ok')
 }
-if (process.argv[2] === 'json') { const o = {}; for (const k of Object.keys(BANDS)) o[k] = picks(k); writeFileSync(here + 'picks.json', JSON.stringify(o)); console.log('ok') }
+if (process.argv[2] === 'json') { const o = {}; for (const k of Object.keys(BANDS)) o[k] = picks(k); writeFileSync(process.env.OUT ?? here + 'picks.json', JSON.stringify(o)); console.log('ok') }
