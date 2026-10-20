@@ -155,7 +155,7 @@ const notes = {
   view: { convention: 'B（建模视角）：相机先绕头 yaw，再绕屏幕水平线 pitch，正交投影；只做右转一侧，左侧由镜像得到', yaw, pitch },
   lines: { 左颅: '左侧点 → 头顶', 左下颌: '左侧点 → 下巴', 右下颌: '右侧点 → 下巴', 右颅: '右侧点 → 头顶', note: '「左」= 画面 +x 一侧（转头后是脸的前侧）；四条线都在 0,0 视图里编辑，九个视图起始相同' },
   reference: { drawing, original: `${name}-original.png`, registration: { scale: reg.sc, shiftRenderPx: [reg.dx, reg.dy], lowerFaceMeanRenderPx: +reg.mean.toFixed(2) }, renderFrame: { cellPx: C, headBallRadiusPx: S, ballCentrePx: [CX, CY] }, canvas: { headBallRadiusPx: PX, ballCentre: [0, 0], imageScale: scale, imageCentre: Ic, renderToBench: { K, Q: [0, -0.4, -0.32], from: 'bowen 123.json 脸轮廓 0,0 头顶/下巴 + 90,0 下巴/脸前' } } },
-  firstMatch: { from: basePitch === pitch ? 'bowen 123.json 同视角的脸轮廓（点和手柄）' : `bowen 123.json 的 pitch ${basePitch} 脸轮廓（他的关键帧只到 ±45）`, jawRefitToRed: fixMatch ? '待修：不重拟' : refit, targetsRed: lowerT.length, targetsBlue: craniumT.length },
+  firstMatch: { from: basePitch === pitch ? 'bowen 123.json 同视角的脸轮廓（点和手柄）' : `bowen 123.json 的 pitch ${basePitch} 脸轮廓（他的关键帧只到 ±45，钳到 ${basePitch} 回放）：只是起稿，不是已有的 ${pitch}° 骨线`, jawRefitToRed: fixMatch ? '待修：不重拟' : refit, targetsRed: lowerT.length, targetsBlue: craniumT.length },
   status: '生成线稿是候选，角度未校准（dot 1792513207）；配准只用下半张脸',
   // large pitch: the generated drawings weaken the angle (dot 1792515820) and the jaw registers onto the eyes (checked
   // on the previews 2026-10-21) — not to be traced
