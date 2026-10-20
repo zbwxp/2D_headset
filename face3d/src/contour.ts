@@ -46,7 +46,7 @@ function resample(head: Head, path: OutlinePoint[], n: number): Sample[] {
 }
 
 /** Walk a loop from index i0 in direction dir while inside the face region. */
-function walk(loop: Loop, i0: number, dir: 1 | -1): OutlinePoint[] {
+export function walk(loop: Loop, i0: number, dir: 1 | -1): OutlinePoint[] {
   const n = loop.pts.length, out = [loop.pts[i0]!]
   let i = i0
   for (let step = 0; step < n - 1; step++) {
