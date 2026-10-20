@@ -111,6 +111,21 @@ describe('the view background', () => {
     expect(t.q('[data-testid="add-view-background"]')!.style.fontWeight).toBe('400')
   })
 
+  it('a tool change (A, Z) ends an unfinished 添加视角背景: a lit view clicked afterwards chooses the view, its background stays (dot 1792473998)', async () => {
+    const t = await setup()
+    await t.click('[data-testid="add-view-background"]'); await t.click('[data-view="view:90,0"]')
+    for (const key of ['a', 'z']) {
+      await t.click('[data-testid="add-view-background"]')
+      await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true })) })
+      expect(t.q('[data-testid="add-view-background"]')!.style.fontWeight).toBe('400')
+      await t.click('[data-view="view:90,0"]')
+      expect(bench().view()).toBe('view:90,0')
+      expect(t.q('[data-view-background-chip="view:90,0"]')).not.toBeNull()
+      await act(async () => { bench().chooseView('view:0,0') })
+      if (key === 'z') await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', bubbles: true })) })
+    }
+  })
+
   it('another drawing opened: the backgrounds and an unfinished pick end; the pick does not interfere with 从视角应用 (dot)', async () => {
     const t = await setup()
     await t.click('[data-testid="add-view-background"]'); await t.click('[data-view="view:90,0"]')

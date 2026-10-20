@@ -1231,12 +1231,13 @@ export function App() {
   /** A tool change (key or button, Z included) ends any gesture through its one cancel path (dot 1791554909). */
   const chooseTool = (t: Tool | 'Z') => {
     gesture.current?.cancel('a tool change')
-    setBonePick(null)
+    // an unfinished 绑骨, 视角背景 or 从视角应用 pick ends too (dot 1792473998)
+    setBonePick(null); setBgPick(null); setApplyFrom(false)
     setZoomTool(t === 'Z')
     if (t !== 'Z') ix.setTool(t)
   }
   /** Zoom is a viewport tool (bowen 1791727452): Z or its button turns it on and, pressed again, off — in every mode. */
-  const toggleZoom = () => { gesture.current?.cancel('a tool change'); setZoomTool(z => !z) }
+  const toggleZoom = () => { gesture.current?.cancel('a tool change'); setBonePick(null); setBgPick(null); setApplyFrom(false); setZoomTool(z => !z) }
   /** In playback, Move picture and restoring, a press that belongs to a viewport tool (Zoom on, the middle or right button) goes to the canvas's viewport path; none of these reaches a tool that writes. */
   const viewportPress = (e: React.PointerEvent) => zoomTool || e.button === 1 || e.button === 2
   const onWheel = (e: React.WheelEvent) => {
