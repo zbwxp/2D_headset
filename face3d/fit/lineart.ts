@@ -26,12 +26,17 @@ export function renderContour(view: View) {
   // ear = skin points beside the head at ear height (|x| > 0.86, y −0.92 … −0.28, z −0.4 … 0.1 head-ball radii; the
   // VRoid skull's side reaches |x| ≈ 0.85 there, the ears stick out to 1.06)
   const ear = (i: number) => { const p = data.P[i]!; return Math.abs(p[0]) > 0.86 && p[1] > -0.92 && p[1] < -0.28 && p[2] > -0.4 && p[2] < 0.1 }
-  const segs = contourSegments({ ...data, edges: data.edges.filter(e => !(ear(e.a) && ear(e.b))) }, f, rasterHead(data, view, f, img))
+  const ras = rasterHead(data, view, f, img), noEar = data.edges.filter(e => !(ear(e.a) && ear(e.b)))
+  const segs = contourSegments({ ...data, edges: noEar }, f, ras)
+  // the jaw band, defined on the head (not on the screen, so it holds when the head tilts): contour edges with both ends
+  // between the cheek under the eyes and the chin (head y −1.38 … −0.6), the neck below left out
+  const inBand = (i: number) => { const y = data.P[i]![1]; return y > -1.38 && y < -0.6 }
+  const band = contourSegments({ ...data, edges: noEar.filter(e => inBand(e.a) && inBand(e.b)) }, f, ras)
   // the chin tip: the lowest skin point near the middle line and toward the face (head space), projected
   let tip = data.P[0]!
   for (const p of data.P) if (Math.abs(p[0]) < 0.05 && p[2] > 0.5 && p[1] < tip[1]) tip = p
   const r = rotate(tip, view)
-  return { segs, chin: [CX + r[0] * S, CY - r[1] * S] as [number, number] }
+  return { segs, band, chin: [CX + r[0] * S, CY - r[1] * S] as [number, number] }
 }
 /** distance transform of a drawing's dark pixels (two-pass chamfer, drawing px) */
 export function darkDT(D: Bmp) {
@@ -44,13 +49,15 @@ export function darkDT(D: Bmp) {
 export interface Reg { sc: number; dx: number; dy: number; k0: number; mean: number }
 /** render px → drawing px under a registration */
 export const toDrawing = (r: Reg, x: number, y: number): [number, number] => [((x - CX) * r.sc + CX + r.dx) * r.k0, ((y - CY) * r.sc + CY + r.dy) * r.k0]
-/** register a drawing to the render by its lower face: the render's contour below the eyes and above the chin tip */
-export function register(D: Bmp, dt: ReturnType<typeof darkDT>, segs: [number, number, number, number][], chinY: number): Reg {
+/** register a drawing to the render by its lower face: the render's jaw-band contour (renderContour().band) */
+export function register(D: Bmp, dt: ReturnType<typeof darkDT>, band: [number, number, number, number][]): Reg {
   const k0 = D.W / C, lower: [number, number][] = []
-  for (const [x0, y0, x1, y1] of segs) for (const t of [0, 0.5]) { const x = x0 + (x1 - x0) * t, y = y0 + (y1 - y0) * t; if (y > CY + 0.3 * S && y < chinY + 4) lower.push([x, y]) }
+  for (const [x0, y0, x1, y1] of band) for (const t of [0, 0.5]) lower.push([x0 + (x1 - x0) * t, y0 + (y1 - y0) * t])
   let best = { sc: 1, dx: 0, dy: 0, c: Infinity }
-  for (const [range, step, srange, sstep] of [[40, 4, 0.2, 0.02], [5, 1, 0.025, 0.005]] as const) {
-    const c0 = best.c === Infinity ? { sc: 1, dx: 0, dy: 0 } : { ...best }
+  // the scale stays in 0.9 … 1.4: the drawings are made from the render at about its size (fits 1.0 … 1.25); a wider
+  // range lets a shrunk jaw settle on dense eye / bang strokes with a lower cost (seen at 0.63 … 0.72)
+  for (const [range, step, srange, sstep] of [[50, 4, 0.25, 0.025], [5, 1, 0.03, 0.005]] as const) {
+    const c0 = best.c === Infinity ? { sc: 1.15, dx: 0, dy: 0 } : { ...best }
     for (let sc = c0.sc - srange; sc <= c0.sc + srange + 1e-9; sc += sstep) for (let dx = c0.dx - range; dx <= c0.dx + range; dx += step) for (let dy = c0.dy - range; dy <= c0.dy + range; dy += step) {
       let c = 0; for (const [x, y] of lower) { const [X, Y] = toDrawing({ sc, dx, dy, k0, mean: 0 }, x, y); c += dt.at(X, Y) }
       if (c < best.c) best = { sc, dx, dy, c }

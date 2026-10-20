@@ -21,28 +21,30 @@ const yaw = Number(yawA), pitch = Number(pitchA), name = `B-yaw${yaw}-pitch${pit
 mkdirSync(outDir!, { recursive: true })
 const tmp = `${outDir}/.${name}-drawing.bmp`
 execFileSync('sips', ['-s', 'format', 'bmp', drawing!, '--out', tmp], { stdio: 'ignore' })
-const D = readBmp(tmp), dt = darkDT(D), { segs, chin } = renderContour({ yaw, pitch }), reg = register(D, dt, segs, chin[1])
+const D = readBmp(tmp), dt = darkDT(D), { segs, band, chin } = renderContour({ yaw, pitch }), reg = register(D, dt, band)
 
 // ---- targets (render px): the drawing's dark pixels next to the render's lower contour; the render's cranium contour
-// below the eyes only (the far eye and the hair sit next to the render's contour above that); the back of the head
-// and the cranium are hair in the drawing, so the render's contour is the guide there (blue)
-const EYE = CY + 0.65 * S, near = new Set<number>()
-for (const [x0, y0, x1, y1] of segs) for (let i = 0; i <= 6; i++) { const x = x0 + ((x1 - x0) * i) / 6, y = y0 + ((y1 - y0) * i) / 6; if (y > EYE && y < chin[1] + 4) for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) near.add(Math.round(y + dy) * C + Math.round(x + dx)) }
+// the drawing's strokes are matched only along the render's jaw band (cheek under the eyes → chin, on the head; the far
+// eye, hair and neck are not in it); the cranium and the back of the head are hair in the drawing, so the render's
+// contour outside the band is the guide there (blue)
+const near = new Set<number>(), bandKeys = new Set<string>(band.map(s => s.join(',')))
+for (const [x0, y0, x1, y1] of band) for (let i = 0; i <= 6; i++) { const x = x0 + ((x1 - x0) * i) / 6, y = y0 + ((y1 - y0) * i) / 6; for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) near.add(Math.round(y + dy) * C + Math.round(x + dx)) }
 const darkAt = (x: number, y: number) => { const [X, Y] = toDrawing(reg, x, y); return dt.at(X, Y) < 0.5 }
 const lowerT: P[] = [], craniumT: P[] = []
-for (const k of near) { const x = k % C, y = Math.floor(k / C); if (y > EYE && y < chin[1] + 4 && darkAt(x, y)) lowerT.push([x, y]) }
-for (const [x0, y0, x1, y1] of segs) for (let i = 0; i <= 3; i++) { const x = x0 + ((x1 - x0) * i) / 3, y = y0 + ((y1 - y0) * i) / 3; if (y <= EYE) craniumT.push([x, y]) }
+for (const k of near) { const x = k % C, y = Math.floor(k / C); if (darkAt(x, y)) lowerT.push([x, y]) }
+// the guide: the render's contour outside the band, above the jaw (the neck below the chin left out)
+for (const sg of segs) { if (bandKeys.has(sg.join(','))) continue; const [x0, y0, x1, y1] = sg; for (let i = 0; i <= 3; i++) { const x = x0 + ((x1 - x0) * i) / 3, y = y0 + ((y1 - y0) * i) / 3; if (y < chin[1] - 4 || Math.hypot(x - CX, y - CY) < S * 1.05) craniumT.push([x, y]) } }
 
 // ---- the highlighted reference picture, 3× the render frame
 const UP = 3, W = C * UP
 const segPix = new Set<number>()
-for (const [x0, y0, x1, y1] of segs) { if (Math.max(y0, y1) > EYE) continue; const n = Math.ceil(Math.hypot(x1 - x0, y1 - y0) * UP * 2) + 1; for (let i = 0; i <= n; i++) { const X = Math.round((x0 + ((x1 - x0) * i) / n) * UP), Y = Math.round((y0 + ((y1 - y0) * i) / n) * UP); for (let d = -1; d <= 1; d++) { segPix.add(Y * W + X + d); segPix.add((Y + d) * W + X) } } }
+for (const sg of segs) { if (bandKeys.has(sg.join(','))) continue; const [x0, y0, x1, y1] = sg; if (Math.max(y0, y1) >= chin[1] - 4 && Math.hypot((x0 + x1) / 2 - CX, (y0 + y1) / 2 - CY) >= S * 1.05) continue; const n = Math.ceil(Math.hypot(x1 - x0, y1 - y0) * UP * 2) + 1; for (let i = 0; i <= n; i++) { const X = Math.round((x0 + ((x1 - x0) * i) / n) * UP), Y = Math.round((y0 + ((y1 - y0) * i) / n) * UP); for (let d = -1; d <= 1; d++) { segPix.add(Y * W + X + d); segPix.add((Y + d) * W + X) } } }
 const nearUp = (x: number, y: number) => near.has(Math.floor(y) * C + Math.floor(x))
 const pic = writeBmp(W, W, (X, Y) => {
   const x = (X + 0.5) / UP, y = (Y + 0.5) / UP, r = Math.hypot(x - CX, y - CY)
   if (segPix.has(Y * W + X)) return [30, 110, 230]
   const [dX, dY] = toDrawing(reg, x, y)
-  if (dt.at(dX, dY) < 0.6) return nearUp(x, y) && y > EYE && y < chin[1] + 4 ? [225, 30, 30] : [185, 185, 185]
+  if (dt.at(dX, dY) < 0.6) return nearUp(x, y) ? [225, 30, 30] : [185, 185, 185]
   if (Math.abs(r - S) < 0.35 || (Math.abs(x - CX) < 0.2 && Math.abs(y - CY) < S * 1.3) || (Math.abs(y - CY) < 0.2 && Math.abs(x - CX) < S * 1.3)) return [235, 180, 215]
   return [255, 255, 255]
 })
@@ -53,7 +55,7 @@ execFileSync('sips', ['-s', 'format', 'png', `${outDir}/.${name}-ref.bmp`, '--ou
 const PX = 82, toCanvas = ([x, y]: P): P => [((x - CX) * PX) / S, ((y - CY) * PX) / S]
 const T = [...lowerT, ...craniumT].map(toCanvas)
 const crown = T.reduce((a, p) => (p[1] < a[1] ? p : a)), chinP = toCanvas(lowerT.length ? lowerT.reduce((a, p) => (p[1] > a[1] ? p : a)) : chin)
-const band = T.filter(p => Math.abs(p[1]) < 5), L = band.reduce((a, p) => (p[0] > a[0] ? p : a), band[0] ?? [60, 0]), R = band.reduce((a, p) => (p[0] < a[0] ? p : a), band[0] ?? [-60, 0])
+const level = T.filter(p => Math.abs(p[1]) < 5), L = level.reduce((a, p) => (p[0] > a[0] ? p : a), level[0] ?? [60, 0]), R = level.reduce((a, p) => (p[0] < a[0] ? p : a), level[0] ?? [-60, 0])
 const ang = (p: P) => Math.atan2(p[1], p[0]) // y down: L ≈ 0, crown ≈ −90°, chin ≈ +90°, R ≈ ±180°
 const inArc = (p: P, a0: number, a1: number) => { let t = ang(p); if (a1 < a0) { if (t < a0) t += 2 * Math.PI; return t >= a0 && t <= a1 + 2 * Math.PI } return t >= a0 && t <= a1 }
 function fit(A: P, B: P, pts: P[]): { ha: P; hb: P } {
@@ -124,6 +126,13 @@ const notes = {
   reference: { drawing, registration: { scale: reg.sc, shiftRenderPx: [reg.dx, reg.dy], lowerFaceMeanRenderPx: +reg.mean.toFixed(2) }, renderFrame: { cellPx: C, headBallRadiusPx: S, ballCentrePx: [CX, CY] }, canvas: { headBallRadiusPx: PX, ballCentre: [0, 0], imageScale: scale } },
   firstMatch: { targetsRed: lowerT.length, targetsBlue: craniumT.length },
   status: '生成线稿是候选，角度未校准（dot 1792513207）；配准只用下半张脸',
+  // large pitch: the generated drawings weaken the angle (dot 1792515820) and the jaw registers onto the eyes (checked
+  // on the previews 2026-10-21) — not to be traced
+  candidate: Math.abs(pitch) >= 45 ? '待修：大俯仰角度被生成图弱化，配准把下颌落到了眼睛上；首次匹配不可信，先不要照着描' : '候选：可以细调',
+  limits: [
+    ...(yaw >= 60 ? ['后下颌一根三次曲线绕不过耳下：首次匹配在耳下有 S 形绕道，需要手调（以后可能加圆弧）'] : []),
+    '发际线高亮还没做',
+  ],
   sources: { template: template ?? '/Users/bowen/Desktop/123.json（只读）', renderer: 'face3d/fit/vrm-renders.ts + mesh/vrmhead.ts（VRoid test.vrm）', builder: 'face3d/fit/bench-task.ts' },
 }
 writeFileSync(`${outDir}/${name}.notes.json`, JSON.stringify(notes, null, 1))
