@@ -13,10 +13,10 @@ import { writeFileSync } from 'node:fs'
 import { type ContourLine, PITCH_KEYS, type Side, traceKey, weights, YAW_KEYS } from '../src/contour'
 import { contourAt, makeModel, visibleOutline } from '../src/model'
 import { type V3, len, rotate, sub } from '../src/view'
-import { KNOWN } from './known'
+import { KNOWN, KNOWN_FIXED } from './known'
 
-const model = makeModel()
-const { head, table } = model
+const models = { traced: makeModel(), fixed: makeModel(undefined, 'fixed') }
+let model = models.traced, head = model.head, table = model.table
 const out = process.env.F3D_EVIDENCE_DIR
 const VIEWS = [15, 45, 75].flatMap(yaw => [-38, -15, 15, 38].map(pitch => ({ yaw, pitch })))
 const DENSE = Array.from({ length: 13 }, (_, i) => i * 7.5).flatMap(yaw => Array.from({ length: 13 }, (_, j) => -45 + j * 7.5).map(pitch => ({ yaw, pitch })))
@@ -50,6 +50,8 @@ const pts = (e: [Pt, Pt][]) => e.flatMap(x => [x[0], x[1]])
 const nearest = (p: Pt, q: Pt[]) => Math.min(...q.map(x => dist(p, x)))
 
 // ---- measure everything once ---------------------------------------------------------------------------------------
+function measureAll(m: typeof model) {
+model = m; head = m.head; table = m.table
 const measured = new Map<string, number>() // failing items only: key → value
 const fail = (k: string, v: number) => measured.set(k, Math.max(v, measured.get(k) ?? -Infinity))
 let nonFinite: string[] = []
@@ -99,20 +101,26 @@ for (const s of ['pos', 'neg'] as const) {
   }
 }
 for (const k of table.keys) for (const s of ['pos', 'neg'] as const) if (!k[s][0]!.present) fail(`empty ${k.view.yaw},${k.view.pitch} ${s}`, 1)
+return { measured, nonFinite }
+}
+const results = { traced: measureAll(models.traced), fixed: measureAll(models.fixed) }
+model = models.traced; head = model.head; table = model.table
 
 // ---- the checks ----------------------------------------------------------------------------------------------------
-describe('face3d evidence against the ledger of known failures', () => {
+for (const mode of ['traced', 'fixed'] as const) describe(`face3d evidence (${mode} jaw) against its ledger of known failures`, () => {
+  const { measured, nonFinite } = results[mode], ledger = mode === 'traced' ? KNOWN : KNOWN_FIXED
   it('no NaN or infinite point anywhere (never exempt)', () => expect(nonFinite).toEqual([]))
   it('prints the measured failures (F3D_RECORD=1 prints them as a ledger)', () => {
     const lines = [...measured].sort().map(([k, v]) => `  '${k}': { max: ${+v.toFixed(4)}, tol: ${k.startsWith('error') || k.startsWith('jump') ? 0.01 : 0} },`)
-    console.log(`${measured.size} failing items\n` + (process.env.F3D_RECORD ? `export const KNOWN: Record<string, { max: number; tol: number }> = {\n${lines.join('\n')}\n}` : lines.join('\n')))
+    const kinds = [...measured.keys()].reduce((a, k) => { const w = k.split(' ')[0]!; a[w] = (a[w] ?? 0) + 1; return a }, {} as Record<string, number>)
+    console.log(`[${mode}] ${measured.size} failing items ${JSON.stringify(kinds)}\n` + (process.env.F3D_RECORD ? `LEDGER ${mode}\n${lines.join('\n')}\nEND` : lines.join('\n')))
   })
   it('every measured failure is in the ledger and within its ceiling', () => {
-    const bad = [...measured].filter(([k, v]) => !KNOWN[k] || v > KNOWN[k]!.max + KNOWN[k]!.tol).map(([k, v]) => `${k} = ${v.toFixed(4)}${KNOWN[k] ? ` > ${KNOWN[k]!.max} + ${KNOWN[k]!.tol}` : ' (new)'}`)
+    const bad = [...measured].filter(([k, v]) => !ledger[k] || v > ledger[k]!.max + ledger[k]!.tol).map(([k, v]) => `${k} = ${v.toFixed(4)}${ledger[k] ? ` > ${ledger[k]!.max} + ${ledger[k]!.tol}` : ' (new)'}`)
     expect(bad).toEqual([])
   })
   it('every ledger entry still fails — a fixed one must be removed from the ledger', () => {
-    expect(Object.keys(KNOWN).filter(k => !measured.has(k))).toEqual([])
+    expect(Object.keys(ledger).filter(k => !measured.has(k))).toEqual([])
   })
 })
 

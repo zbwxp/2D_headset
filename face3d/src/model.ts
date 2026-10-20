@@ -1,15 +1,15 @@
 // The prototype model (PLAN §5): the rough head, its surface bones and key contours; what to draw at a view.
 import { type Bone, attachAll, isAttach, place } from './bones'
-import { type ContourLine, type KeyTable, keyTable, mixContour } from './contour'
+import { type ContourLine, type JawMode, type KeyTable, keyTable, mixContour } from './contour'
 import { type Head, type HeadShape, defaultShape, makeHead } from './head'
 import { boundaryPoints, candidates, mask, visible } from './outline'
 import { type V3, type View, dot, toCamera } from './view'
 
 export interface Model { readonly head: Head; readonly bones: Bone[]; readonly table: KeyTable }
 
-export function makeModel(shape: HeadShape = defaultShape): Model {
+export function makeModel(shape: HeadShape = defaultShape, jaw: JawMode = 'traced'): Model {
   const head = makeHead(shape)
-  return { head, bones: attachAll(head), table: keyTable(head) }
+  return { head, bones: attachAll(head), table: keyTable(head, jaw) }
 }
 
 export interface DrawnBone { readonly name: string; readonly part: Bone['part']; readonly closed: boolean; readonly pts: V3[]; readonly facing: boolean[] }

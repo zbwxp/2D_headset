@@ -63,18 +63,19 @@ function walk(loop: Loop, i0: number, dir: 1 | -1): OutlinePoint[] {
 }
 
 /** Split a side's walk (starting at the chin) at the first crossing of each anchor height. */
-function segmentsOf(head: Head, path: OutlinePoint[]): (OutlinePoint[] | undefined)[] {
+function segmentsOf(head: Head, path: OutlinePoint[], anchors: readonly number[] = ANCHOR_Y, jawFirst = true): (OutlinePoint[] | undefined)[] {
   const segs: (OutlinePoint[] | undefined)[] = []
   let from = 0, start: OutlinePoint = path[0]!
-  ANCHOR_Y.forEach((h, n) => {
+  anchors.forEach((h, n) => {
     if (segs.length < n) return
+    const isJaw = jawFirst && n === 0
     // the first point of the walk at this anchor's height (the jaw angle: or spread JAW_X to the side)
-    const reached = (q: OutlinePoint) => q.y >= h || (n === 0 && Math.abs(q.p[0]) >= JAW_X)
+    const reached = (q: OutlinePoint) => q.y >= h || (isJaw && Math.abs(q.p[0]) >= JAW_X)
     let k = from + 1
     while (k < path.length && !reached(path[k]!)) k++
     // the jaw angle only: a walk that leaves the face before reaching it ends the chin–jaw segment where it leaves
     // (the near side's jaw line turning under the ear); still the first event on the walk, so still unique
-    if (k >= path.length && n === 0 && path.length - 1 > from + 3) {
+    if (k >= path.length && isJaw && path.length - 1 > from + 3) {
       const end = path[path.length - 1]!
       segs.push([start, ...path.slice(from + 1)]); from = path.length - 1; start = end
       return
@@ -82,12 +83,12 @@ function segmentsOf(head: Head, path: OutlinePoint[]): (OutlinePoint[] | undefin
     if (k >= path.length) return
     const a = path[k - 1]!, b = path[k]!
     // the crossing between the last point short of it and the first at it
-    const t = b.y >= h && b.y !== a.y ? Math.max(0, Math.min(1, (h - a.y) / (b.y - a.y))) : n === 0 && Math.abs(b.p[0]) !== Math.abs(a.p[0]) ? Math.max(0, Math.min(1, (JAW_X - Math.abs(a.p[0])) / (Math.abs(b.p[0]) - Math.abs(a.p[0])))) : 1
+    const t = b.y >= h && b.y !== a.y ? Math.max(0, Math.min(1, (h - a.y) / (b.y - a.y))) : isJaw && Math.abs(b.p[0]) !== Math.abs(a.p[0]) ? Math.max(0, Math.min(1, (JAW_X - Math.abs(a.p[0])) / (Math.abs(b.p[0]) - Math.abs(a.p[0])))) : 1
     const u = lerp(a.u, b.u, t), y = lerp(a.y, b.y, t), cross: OutlinePoint = { u, y, p: head.at(u, y) }
     segs.push([start, ...path.slice(from + 1, k), cross])
     from = k - 1; start = cross
   })
-  while (segs.length < ANCHOR_Y.length) segs.push(undefined)
+  while (segs.length < anchors.length) segs.push(undefined)
   return segs
 }
 
@@ -141,7 +142,42 @@ export function traceKey(head: Head, view: View, ref: Partial<Record<Side, V3>> 
 export interface KeyTable { readonly keys: KeyContour[]; readonly at: (yaw: number, pitch: number) => KeyContour }
 
 /** All key contours for yaw 0 … 90; absent segments take the level key's positions, not visible (PLAN §4). */
-export function keyTable(head: Head): KeyTable {
+/** How the chin–jaw segment is made: traced on each key's outline, or one fixed line on the head (the level key's
+ *  chin–jaw outline — the jaw's lower edge as seen from the front) with cheek and temple traced up from its jaw angle.
+ *  The fixed one is an alternative under comparison (dot 1792489731), not a decided definition. */
+export type JawMode = 'traced' | 'fixed'
+
+/** Cheek and temple segments at a view, traced upward from a fixed jaw-angle point on each side. */
+export function traceFromJaw(head: Head, view: View, jaw: Record<Side, Sample>): { pos: (Sample[] | undefined)[]; neg: (Sample[] | undefined)[]; vis: { pos: boolean[][]; neg: boolean[][] } } {
+  const extent = (l: Loop) => { const ps = l.pts.map(q => q.p); return Math.max(...[0, 1, 2].map(k => Math.max(...ps.map(p => p[k]!)) - Math.min(...ps.map(p => p[k]!)))) }
+  const loops = candidates(head, view).filter(l => extent(l) >= MIN_LOOP), m = mask(head, view)
+  const out = { pos: [] as (Sample[] | undefined)[], neg: [] as (Sample[] | undefined)[], vis: { pos: [] as boolean[][], neg: [] as boolean[][] } }
+  for (const s of ['pos', 'neg'] as const) {
+    const j = jaw[s], jp = head.at(j.u, j.y)
+    const near: { l: number; i: number; d: number }[] = []
+    loops.forEach((loop, l) => loop.pts.forEach((q, i) => near.push({ l, i, d: len(sub(q.p, jp)) })))
+    near.sort((a, b) => a.d - b.d)
+    // from the outline point nearest the fixed jaw angle, the walk that climbs (gains height within TOWARD_LEN of arc)
+    const climb = (w: OutlinePoint[]) => { let L = 0, k = 1; for (; k < w.length && L < TOWARD_LEN; k++) L += len(sub(w[k]!.p, w[k - 1]!.p)); return L < TOWARD_LEN ? -Infinity : w[k - 1]!.y - w[0]!.y }
+    let path: OutlinePoint[] = []
+    for (const c of near.slice(0, 40)) {
+      const loop = loops[c.l]!, w = [walk(loop, c.i, 1), walk(loop, c.i, -1)].filter(x => climb(x) > 0.005).sort((x, y) => climb(y) - climb(x))[0]
+      if (w) { path = w; break }
+    }
+    // the segments start at the fixed jaw angle itself (shared anchor); the bridge to the outline is part of segment 1
+    const start: OutlinePoint = { u: j.u, y: j.y, p: jp }
+    const segs = path.length ? segmentsOf(head, [start, ...path.map(q => ({ ...q, u: q.u + 2 * Math.PI * Math.round((j.u - q.u) / (2 * Math.PI)) }))], ANCHOR_Y.slice(1), false) : [undefined, undefined]
+    segs.forEach((seg, i) => {
+      const samples = seg && seg.length >= 2 ? resample(head, seg, COUNTS[i + 1]!) : undefined
+      out[s].push(samples)
+      out.vis[s].push(samples ? samples.map(q => visible(m, head.at(q.u, q.y), view, head.normal(q.u, q.y))) : [])
+    })
+  }
+  return out
+}
+
+export function keyTable(head: Head, jawMode: JawMode = 'traced'): KeyTable {
+  if (jawMode === 'fixed') return fixedJawTable(head)
   const raw = new Map<string, ReturnType<typeof traceKey>>()
   // fixed build order: the level key from the chin landmark; then up / down the yaw-0 column, each key starting from
   // the previous key's chin anchors; then along each pitch row in yaw. Each key's anchors continue a neighbour's branch.
@@ -188,6 +224,31 @@ export function keyTable(head: Head): KeyTable {
   for (const yaw of YAW_KEYS) for (const pitch of PITCH_KEYS) {
     const r = raw.get(`${yaw},${pitch}`)!
     keys.push({ view: { yaw, pitch }, pos: fillSide(r, 'pos'), neg: fillSide(r, 'neg'), chinLoop: r.chinLoop })
+  }
+  return { keys, at: (yaw, pitch) => keys.find(k => k.view.yaw === yaw && k.view.pitch === pitch)! }
+}
+
+function fixedJawTable(head: Head): KeyTable {
+  const level = keyTable(head, 'traced').at(0, 0)
+  const keys: KeyContour[] = []
+  for (const yaw of YAW_KEYS) for (const pitch of PITCH_KEYS) {
+    const view = { yaw, pitch }, m = mask(head, view)
+    const jawSeg = (s: Side) => level[s][0]!.samples
+    const jawEnd = (s: Side) => jawSeg(s)[jawSeg(s).length - 1]!
+    const up = traceFromJaw(head, view, { pos: jawEnd('pos'), neg: jawEnd('neg') })
+    const side = (s: Side): Segment[] => {
+      const fixed = jawSeg(s)
+      const segs: Segment[] = [{ present: true, samples: fixed, vis: fixed.map(q => visible(m, head.at(q.u, q.y), view, head.normal(q.u, q.y))) }]
+      for (let i = 0; i < 2; i++) {
+        const own = up[s][i]
+        if (own) { segs.push({ present: true, samples: own, vis: up.vis[s][i]! }); continue }
+        const lv = level[s][i + 1]!.samples, prevEnd = segs[i]!.samples[segs[i]!.samples.length - 1]!
+        const du = prevEnd.u - lv[0]!.u, dy = prevEnd.y - lv[0]!.y, n = lv.length - 1
+        segs.push({ present: false, samples: lv.map((q, k) => ({ u: q.u + du * (1 - k / n), y: q.y + dy * (1 - k / n) })), vis: lv.map(() => false) })
+      }
+      return segs
+    }
+    keys.push({ view, pos: side('pos'), neg: side('neg'), chinLoop: -1 })
   }
   return { keys, at: (yaw, pitch) => keys.find(k => k.view.yaw === yaw && k.view.pitch === pitch)! }
 }
