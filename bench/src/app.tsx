@@ -1457,29 +1457,31 @@ export function App() {
               measureKeep.current = keep
               // left playback, entered it again, another drawing, or Esc: the sweep stops and reports nothing
               const gone = () => measureStop.current || !posing.current || poseGen.current !== gen || core !== mine
+              // still the playback this run belongs to (same drawing, same session): only then is anything written back
+              const ours = () => core === mine && posing.current && poseGen.current === gen
               try {
-                for (const on of [false, true]) {
+                sweep: for (const on of [false, true]) {
+                  if (gone()) break // checked before every write (dot 1792477433)
                   flushSync(() => setFollowBones(on))
                   const times: number[] = []
                   for (let yaw = -89; yaw <= 89; yaw += 2) {
-                    if (gone()) { if (measureStop.current && posing.current && poseGen.current === gen && core === mine) flushSync(() => setPose(start)); return }
+                    if (gone()) break sweep
                     const t0 = performance.now()
                     flushSync(() => setPose({ yaw, pitch: start.pitch }))
                     void document.body.offsetHeight // layout included
                     times.push(performance.now() - t0)
                     await new Promise(r => setTimeout(r, 0))
                   }
+                  if (gone()) break
                   times.sort((a, b) => a - b)
                   const q = (f: number) => times[Math.min(times.length - 1, Math.floor(f * times.length))]!
                   out.push(`${on ? '开' : '关'}：中位数 ${q(0.5).toFixed(1)} ms，p95 ${q(0.95).toFixed(1)} ms，最慢 ${times[times.length - 1]!.toFixed(1)} ms（${times.length} 帧）`)
                 }
-                if (gone()) return
-                flushSync(() => setPose(start))
-                setFrameTimes(`帧耗时（pitch ${start.pitch}，${core.snapshot().attachments.length} 条语义线；计算 + 渲染 + 排版，不含像素绘制）— ${out.join('；')}`)
+                if (!gone() && out.length === 2) setFrameTimes(`帧耗时（pitch ${start.pitch}，${core.snapshot().attachments.length} 条语义线；计算 + 渲染 + 排版，不含像素绘制）— ${out.join('；')}`)
               } finally {
-                // the switch goes back only within the playback this run belongs to (same drawing, same session; dot 1792476895,
-                // 1792477359); a run ended by leaving playback had it put back there, a new session's switch is never touched
-                if (measureKeep.current !== null && core === mine && posing.current && poseGen.current === gen) setFollowBones(keep)
+                // the one way out (dot 1792477433): within this run's own playback the starting pose and the switch come back
+                // (a normal end, Esc); a run ended by leaving playback had the switch put back there; nothing else is touched
+                if (measureKeep.current !== null && ours()) { flushSync(() => setPose(start)); setFollowBones(keep) }
                 measureKeep.current = null
                 measuringOn.current = false; setMeasuring(false)
               }
