@@ -1,13 +1,18 @@
 // face3d viewer (PLAN §5): a fixed address; rotate by drag / sliders; the 25-cell master grid drawn from the model.
 import { type DrawnBone, bonesAt, contourAt, makeModel, outerBoundary, visibleOutline } from '../src/model'
 import { type V3, type View, rotate } from '../src/view'
+import { defaultShape } from '../src/head'
+import { type Params, shapeOf } from '../fit/shape'
+import fitted from '../fit/ref/fit-level.json'
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
 const status = $('status')
 status.textContent = '正在建模型（约 2 秒）…'
 const t0 = performance.now()
-const model = makeModel()
-status.textContent = `模型就绪：${(performance.now() - t0).toFixed(0)} ms`
+// the head: fitted to the reference sheet's level row (bowen 1792498982) unless ?head=old asks for the earlier one
+const oldHead = new URLSearchParams(location.search).get('head') === 'old'
+const model = makeModel(oldHead ? defaultShape : shapeOf(fitted as Params))
+status.textContent = `模型就绪（${oldHead ? '旧头型' : '按画稿拟合的头型'}）：${(performance.now() - t0).toFixed(0)} ms`
 
 const PART: Record<DrawnBone['part'], string> = { eye: '#8e24aa', brow: '#8e24aa', nose: '#1565c0', mouth: '#ef6c00', chin: '#c62828', ear: '#2e7d32', neck: '#2e7d32' }
 const SIDE = { pos: '#d32f2f', neg: '#1976d2' }

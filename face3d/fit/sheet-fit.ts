@@ -9,6 +9,8 @@
 // Run: FIT_RUN=1 npx vite-node face3d/fit/sheet-fit.ts
 import { readFileSync, writeFileSync } from 'node:fs'
 import { type HeadShape, type Knot, defaultShape, makeHead, pchip } from '../src/head'
+import { L, type Params, shapeOf } from './shape'
+export { L, type Params, shapeOf }
 import { boundaryPoints, mask } from '../src/outline'
 import { type View } from '../src/view'
 
@@ -17,20 +19,6 @@ const picks: Record<string, { bottom: P2[]; right: P2[]; left: P2[] }> = JSON.pa
 // sheet rows are camera pitch with + = from above (俯视); face3d pitch + = from below (仰视)
 const viewOf = (key: string): View => { const [yaw, pitch] = key.split(',').map(Number); return { yaw: yaw!, pitch: -pitch! } }
 
-export const L = [-0.45, -0.6, -0.72, -0.84, -0.96, -1.08]
-export interface Params { yMin: number; a: number[]; f: number[]; b: number[]; n: number[]; fChin: number }
-const keep = (ks: readonly Knot[]) => ks.filter(k => k.y >= -0.3)
-export function shapeOf(p: Params): HeadShape {
-  const at = (vs: number[]) => L.map((y, i) => ({ y, v: vs[i]! }))
-  return {
-    ...defaultShape,
-    yMin: p.yMin,
-    a: [...keep(defaultShape.a), ...at(p.a), { y: p.yMin, v: 0.05 }],
-    f: [...keep(defaultShape.f), ...at(p.f), { y: p.yMin, v: p.fChin }],
-    b: [...keep(defaultShape.b), ...at(p.b), { y: p.yMin, v: p.fChin }],
-    n: [...keep(defaultShape.n), ...at(p.n), { y: p.yMin, v: 2 }],
-  }
-}
 const init = (): Params => {
   const A = pchip(defaultShape.a), F = pchip(defaultShape.f), B = pchip(defaultShape.b), N = pchip(defaultShape.n)
   return { yMin: defaultShape.yMin, a: L.map(A), f: L.map(F), b: L.map(B), n: L.map(N), fChin: F(defaultShape.yMin) }
