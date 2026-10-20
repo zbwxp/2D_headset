@@ -275,7 +275,9 @@ export function weights(yaw: number, pitch: number): { yaw: number; pitch: numbe
   return out
 }
 
-export interface ContourLine { readonly side: Side; readonly pts: V3[]; readonly vis: number[]; readonly anchors: number[] }
+/** pts: the drawn points; vis: their mixed visibility (the drawing's opacity, interpolated from the keys — not a depth
+ *  test at this view); uv: each point's surface parameters before offsets and mirroring (for checks at this view). */
+export interface ContourLine { readonly side: Side; readonly pts: V3[]; readonly vis: number[]; readonly anchors: number[]; readonly uv: { u: number; y: number }[] }
 
 /** The face contour at any view: corresponding samples of the surrounding keys mixed on the surface (PLAN §4). */
 export function mixContour(head: Head, table: KeyTable, view: View, offsets: Offsets = new Map()): ContourLine[] {
@@ -283,7 +285,7 @@ export function mixContour(head: Head, table: KeyTable, view: View, offsets: Off
   const W = weights(yaw, view.pitch)
   const lines: ContourLine[] = []
   for (const side of ['pos', 'neg'] as const) {
-    const pts: V3[] = [], vis: number[] = [], anchors: number[] = []
+    const pts: V3[] = [], vis: number[] = [], anchors: number[] = [], uv: { u: number; y: number }[] = []
     for (let seg = 0; seg < 3; seg++) {
       for (let i = seg === 0 ? 0 : 1; i < COUNTS[seg]!; i++) {
         // mixed on the head's surface: the samples' (u, y) are mixed and the point evaluated on the current head, so an
@@ -299,11 +301,11 @@ export function mixContour(head: Head, table: KeyTable, view: View, offsets: Off
           if (o) { const ax = screenAxes(key.view); off = add(off, scale(add(scale(ax.right, o[0]), scale(ax.up, o[1])), w)) }
         }
         const p = add(head.at(u, y), off)
-        pts.push(flip ? mirror(p) : p); vis.push(v)
+        pts.push(flip ? mirror(p) : p); vis.push(v); uv.push(flip ? { u: -u, y } : { u, y })
       }
       anchors.push(pts.length - 1)
     }
-    lines.push({ side: flip ? (side === 'pos' ? 'neg' : 'pos') : side, pts, vis, anchors })
+    lines.push({ side: flip ? (side === 'pos' ? 'neg' : 'pos') : side, pts, vis, anchors, uv })
   }
   return lines
 }
