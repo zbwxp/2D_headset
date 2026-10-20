@@ -371,6 +371,8 @@ export function App() {
   const [frameTimes, setFrameTimes] = useState<string | null>(null)
   // the measurement in progress (one at a time); it stops when playback is left, re-entered or the drawing changes (dot 1792476848)
   const [measuring, setMeasuring] = useState(false), measuringOn = useRef(false), measureStop = useRef(false)
+  // the trial switch as it was when the run started; put back by the run's own end, or at once when playback is left (dot 1792477359)
+  const measureKeep = useRef<boolean | null>(null)
   // 录制标准 / 捏脸 and standards (docs/bone-lines-checklist.md §6b): a name being typed per layer, a pending 覆盖 (a second
   // press confirms), a file's standards being imported (into the drawing it was read for)
   const [stdName, setStdName] = useState<Record<Id, string>>({})
@@ -1129,7 +1131,7 @@ export function App() {
     const [yaw, pitch] = shown.slice('view:'.length).split(',').map(Number)
     setPose({ yaw: yaw!, pitch: pitch! }); setCorrRefusal(null)
   }
-  const stopPose = () => { gesture.current?.cancel('leaving playback'); refGen.current++; posing.current = false; changeBase.current = null; setPose(null); setCorrRefusal(null); setLastChange(null); setPoseHover(null); setPbSel({ core, ids: [] }) }
+  const stopPose = () => { if (measureKeep.current !== null) { setFollowBones(measureKeep.current); measureKeep.current = null } gesture.current?.cancel('leaving playback'); refGen.current++; posing.current = false; changeBase.current = null; setPose(null); setCorrRefusal(null); setLastChange(null); setPoseHover(null); setPbSel({ core, ids: [] }) }
   /** A valid pose change ends a playback drag first: a target belongs to one pose (dot 1791696847). */
   /**
    * The one update of a pose that takes effect (dot 1791727663, 1791727680): the pose and both number fields
@@ -1452,6 +1454,7 @@ export function App() {
               if (!pose || measuringOn.current) return
               measuringOn.current = true; measureStop.current = false; setMeasuring(true)
               const start = { ...pose }, keep = followBones, out: string[] = [], mine = core, gen = poseGen.current
+              measureKeep.current = keep
               // left playback, entered it again, another drawing, or Esc: the sweep stops and reports nothing
               const gone = () => measureStop.current || !posing.current || poseGen.current !== gen || core !== mine
               try {
@@ -1474,8 +1477,10 @@ export function App() {
                 flushSync(() => setPose(start))
                 setFrameTimes(`帧耗时（pitch ${start.pitch}，${core.snapshot().attachments.length} 条语义线；计算 + 渲染 + 排版，不含像素绘制）— ${out.join('；')}`)
               } finally {
-                // the switch goes back only for the drawing this run belongs to (dot 1792476895)
-                if (core === mine) setFollowBones(keep)
+                // the switch goes back only within the playback this run belongs to (same drawing, same session; dot 1792476895,
+                // 1792477359); a run ended by leaving playback had it put back there, a new session's switch is never touched
+                if (measureKeep.current !== null && core === mine && posing.current && poseGen.current === gen) setFollowBones(keep)
+                measureKeep.current = null
                 measuringOn.current = false; setMeasuring(false)
               }
             }}>{measuring ? '测量中…' : '测帧耗时（试验）'}</button>
