@@ -63,7 +63,7 @@ export function walk(loop: Loop, i0: number, dir: 1 | -1): OutlinePoint[] {
 }
 
 /** Split a side's walk (starting at the chin) at the first crossing of each anchor height. */
-function segmentsOf(head: Head, path: OutlinePoint[], anchors: readonly number[] = ANCHOR_Y, jawFirst = true): (OutlinePoint[] | undefined)[] {
+function segmentsOf(head: Head, path: OutlinePoint[], anchors: readonly number[] = ANCHOR_Y, jawFirst = true, why: string[] = []): (OutlinePoint[] | undefined)[] {
   const segs: (OutlinePoint[] | undefined)[] = []
   let from = 0, start: OutlinePoint = path[0]!
   anchors.forEach((h, n) => {
@@ -77,11 +77,12 @@ function segmentsOf(head: Head, path: OutlinePoint[], anchors: readonly number[]
     // (the near side's jaw line turning under the ear); still the first event on the walk, so still unique
     if (k >= path.length && isJaw && path.length - 1 > from + 3) {
       const end = path[path.length - 1]!
-      segs.push([start, ...path.slice(from + 1)]); from = path.length - 1; start = end
+      segs.push([start, ...path.slice(from + 1)]); from = path.length - 1; start = end; why.push('exit')
       return
     }
-    if (k >= path.length) return
+    if (k >= path.length) { why.push('absent'); return }
     const a = path[k - 1]!, b = path[k]!
+    why.push(b.y >= h ? 'height' : 'spread')
     // the crossing between the last point short of it and the first at it
     const t = b.y >= h && b.y !== a.y ? Math.max(0, Math.min(1, (h - a.y) / (b.y - a.y))) : isJaw && Math.abs(b.p[0]) !== Math.abs(a.p[0]) ? Math.max(0, Math.min(1, (JAW_X - Math.abs(a.p[0])) / (Math.abs(b.p[0]) - Math.abs(a.p[0])))) : 1
     const u = lerp(a.u, b.u, t), y = lerp(a.y, b.y, t), cross: OutlinePoint = { u, y, p: head.at(u, y) }
@@ -93,10 +94,13 @@ function segmentsOf(head: Head, path: OutlinePoint[], anchors: readonly number[]
 }
 
 /** The key contour at a view with yaw ≥ 0, before absent segments are filled (PLAN §4). */
-export function traceKey(head: Head, view: View, ref: Partial<Record<Side, V3>> = {}): { pos: (Sample[] | undefined)[]; neg: (Sample[] | undefined)[]; vis: { pos: boolean[][]; neg: boolean[][] }; chinLoop: number } {
+/** What traceKey chose for each side (diagnostics, dot 1792492800): the loop, the start point, the walk, the anchors. */
+export interface TraceInfo { loops: { n: number; closed: boolean }[]; side: Partial<Record<Side, { loop: number; start: number; tried: number; dir: 1 | -1; walk: number; anchors: string[] }>> }
+export function traceKey(head: Head, view: View, ref: Partial<Record<Side, V3>> = {}, info?: TraceInfo): { pos: (Sample[] | undefined)[]; neg: (Sample[] | undefined)[]; vis: { pos: boolean[][]; neg: boolean[][] }; chinLoop: number } {
   // tiny loops (the rounded chin cap makes a small one of its own) are not face outlines
   const extent = (l: Loop) => { const ps = l.pts.map(q => q.p); return Math.max(...[0, 1, 2].map(k => Math.max(...ps.map(p => p[k]!)) - Math.min(...ps.map(p => p[k]!)))) }
   const loops = candidates(head, view).filter(l => extent(l) >= MIN_LOOP), occ = occluder(head, view)
+  if (info) info.loops = loops.map(l => ({ n: l.pts.length, closed: l.closed }))
   const chin: V3 = head.at(0, CHIN_Y)
   const sides: Record<Side, OutlinePoint[]> = { pos: [], neg: [] }
   let chinLoop = -1
@@ -124,12 +128,12 @@ export function traceKey(head: Head, view: View, ref: Partial<Record<Side, V3>> 
     for (const c of near.slice(0, 80)) {
       const loop = loops[c.l]!, A = walk(loop, c.i, 1), B = walk(loop, c.i, -1)
       const w = [A, B].filter(x => toward(x) > TOWARD_MIN && !overlaps(x)).sort((x, y) => toward(y) - toward(x))[0]
-      if (w) { sides[s] = w; if (s === 'pos') chinLoop = c.l; break }
+      if (w) { sides[s] = w; if (s === 'pos') chinLoop = c.l; if (info) info.side[s] = { loop: c.l, start: c.i, tried: near.indexOf(c) + 1, dir: w === A ? 1 : -1, walk: w.length, anchors: [] }; break }
     }
   }
   const out = { pos: [] as (Sample[] | undefined)[], neg: [] as (Sample[] | undefined)[], vis: { pos: [] as boolean[][], neg: [] as boolean[][] }, chinLoop }
   for (const s of ['pos', 'neg'] as const) {
-    const segs = sides[s].length ? segmentsOf(head, sides[s]) : [undefined, undefined, undefined]
+    const segs = sides[s].length ? segmentsOf(head, sides[s], ANCHOR_Y, true, info?.side[s]?.anchors) : [undefined, undefined, undefined]
     segs.forEach((seg, i) => {
       const samples = seg && seg.length >= 2 ? resample(head, seg, COUNTS[i]!) : undefined
       out[s].push(samples)
