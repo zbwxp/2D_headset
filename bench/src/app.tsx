@@ -1533,11 +1533,13 @@ export function App() {
         {/* the nine views (step 7): columns yaw −90 / 0 / +90, rows pitch +45 / 0 / −45 */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2 }} data-testid="views">
           {[45, 0, -45].flatMap(pitch => [-90, 0, 90].map(yaw => {
-            const k = `view:${yaw},${pitch}`, on = k === shown
-            return <button key={k} data-view={k} title={applyFrom ? (on ? '当前视角' : `把 ${k} 里选中图层的曲线搬到当前视角`) : bgPicking ? (on ? '当前视角' : `把 ${k} 用彩色线画在背景上`) : k} disabled={(applyFrom || bgPicking) && on}
-              style={{ fontWeight: on ? 700 : 400, background: on ? '#cde' : applyFrom ? '#fec' : bgPicking ? '#e6f4ea' : undefined }}
+            // a view drawn as a background stays lit in its colour; while adding, a lit one is taken off again (bowen 1792473609)
+            const k = `view:${yaw},${pitch}`, on = k === shown, bg = bgViews.includes(k)
+            return <button key={k} data-view={k} data-view-background-on={bg ? '' : undefined}
+              title={applyFrom ? (on ? '当前视角' : `把 ${k} 里选中图层的曲线搬到当前视角`) : bgPicking ? (on ? '当前视角' : bg ? `关闭 ${k} 的视角背景` : `把 ${k} 用彩色线画在背景上`) : bg ? `${k}（已画在背景上；点「添加视角背景…」后再点它可关闭）` : k} disabled={(applyFrom || bgPicking) && on}
+              style={{ fontWeight: on ? 700 : 400, background: on ? '#cde' : applyFrom ? '#fec' : bgPicking ? '#e6f4ea' : undefined, border: bg ? `2px solid ${VIEW_COLOUR[k] ?? '#888'}` : undefined }}
               onClick={() => {
-                if (bgPicking) { setBgPick(null); setBgViews(v => (v.includes(k) ? v : [...v, k])); return }
+                if (bgPicking) { setBgPick(null); setBgViews(v => (v.includes(k) ? v.filter(x => x !== k) : [...v, k])); return }
                 if (!applyFrom) { chooseView(k); return }
                 setApplyFrom(false); run(e => e.applyFromView([...env.current.layers], k))
               }}>{yaw},{pitch}</button>
@@ -1550,7 +1552,7 @@ export function App() {
           <button data-testid="add-view-background" style={{ fontWeight: bgPicking ? 700 : 400, background: bgPicking ? '#e6f4ea' : undefined, whiteSpace: 'nowrap' }}
             onClick={() => { setApplyFrom(false); setBgPick(bgPicking ? null : core) }}
             title="把另一个视角的线用彩色画在画布背景上，只用来参考：不能选、不能改、不存进文件">添加视角背景…</button>
-          {bgPicking && <span style={{ color: '#2a7' }}>选一个视角，用彩色线画在背景上（Esc 取消）</span>}
+          {bgPicking && <span style={{ color: '#2a7' }}>选一个视角，用彩色线画在背景上；已亮的再点一次关闭（Esc 取消）</span>}
         </div>
         {/* 骨骼 (docs/bone-lines-checklist.md §5): bones, 绑骨 / 解绑, the drag switch; modes and standards come in B3 */}
         {!pose && (() => {

@@ -91,6 +91,26 @@ describe('the view background', () => {
     expect(t.q('[data-view-background-chip="view:90,0"]')).not.toBeNull()
   })
 
+  it('an added view stays lit in the nine-view grid in its colour; while adding, a lit view clicked again is taken off (bowen 1792473609)', async () => {
+    const t = await setup()
+    await t.click('[data-testid="add-view-background"]'); await t.click('[data-view="view:90,0"]')
+    const cell = (k: string) => t.q(`[data-view="${k}"]`)!
+    expect(cell('view:90,0').hasAttribute('data-view-background-on')).toBe(true)
+    expect(cell('view:90,0').style.border).toContain('solid')
+    expect(cell('view:0,45').hasAttribute('data-view-background-on')).toBe(false)
+    // outside adding, a click on a lit view still chooses the view
+    await t.click('[data-view="view:90,0"]')
+    expect(bench().view()).toBe('view:90,0')
+    expect(t.q('[data-view-background-chip="view:90,0"]')).not.toBeNull()
+    await act(async () => { bench().chooseView('view:0,0') })
+    // while adding: the lit view clicked again is taken off, and the pick ends
+    await t.click('[data-testid="add-view-background"]'); await t.click('[data-view="view:90,0"]')
+    expect(t.q('[data-view-background-chip="view:90,0"]')).toBeNull()
+    expect(t.q('[data-view-background="view:90,0"]')).toBeNull()
+    expect(cell('view:90,0').hasAttribute('data-view-background-on')).toBe(false)
+    expect(t.q('[data-testid="add-view-background"]')!.style.fontWeight).toBe('400')
+  })
+
   it('another drawing opened: the backgrounds and an unfinished pick end; the pick does not interfere with 从视角应用 (dot)', async () => {
     const t = await setup()
     await t.click('[data-testid="add-view-background"]'); await t.click('[data-view="view:90,0"]')
