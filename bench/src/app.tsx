@@ -368,7 +368,8 @@ export function App() {
   const [bonesInPlayback, setBonesInPlayback] = useState(false)
   // P0 (docs/bone-poses-checklist.md): between the views, attached lines generated from their bones — a trial, off by default
   const [followBones, setFollowBones] = useState(false)
-  const [frameTimes, setFrameTimes] = useState<string | null>(null)
+  // a result belongs to the drawing it was measured on (dot 1792477691): another drawing shows none
+  const [frameTimes, setFrameTimes] = useState<{ core: Core; text: string } | null>(null)
   // the measurement in progress (one at a time); it stops when playback is left, re-entered or the drawing changes (dot 1792476848)
   const [measuring, setMeasuring] = useState(false), measuringOn = useRef(false), measureStop = useRef(false)
   // the trial switch as it was when the run started; put back by the run's own end, or at once when playback is left (dot 1792477359)
@@ -1477,7 +1478,7 @@ export function App() {
                   const q = (f: number) => times[Math.min(times.length - 1, Math.floor(f * times.length))]!
                   out.push(`${on ? '开' : '关'}：中位数 ${q(0.5).toFixed(1)} ms，p95 ${q(0.95).toFixed(1)} ms，最慢 ${times[times.length - 1]!.toFixed(1)} ms（${times.length} 帧）`)
                 }
-                if (!gone() && out.length === 2) setFrameTimes(`帧耗时（pitch ${start.pitch}，${core.snapshot().attachments.length} 条语义线；计算 + 渲染 + 排版，不含像素绘制）— ${out.join('；')}`)
+                if (!gone() && out.length === 2) setFrameTimes({ core: mine, text: `帧耗时（pitch ${start.pitch}，${core.snapshot().attachments.length} 条语义线；计算 + 渲染 + 排版，不含像素绘制）— ${out.join('；')}` })
               } finally {
                 // the one way out (dot 1792477433): within this run's own playback the starting pose and the switch come back
                 // (a normal end, Esc); a run ended by leaving playback had the switch put back there; nothing else is touched
@@ -1486,7 +1487,7 @@ export function App() {
                 measuringOn.current = false; setMeasuring(false)
               }
             }}>{measuring ? '测量中…' : '测帧耗时（试验）'}</button>
-            {frameTimes && <div data-testid="frame-times" style={{ fontSize: 11, color: '#555' }}>{frameTimes}</div>}
+            {frameTimes && frameTimes.core === core && <div data-testid="frame-times" style={{ fontSize: 11, color: '#555' }}>{frameTimes.text}</div>}
             {(['yaw', 'pitch'] as const).map(axis => {
               // the pose is a view: preview and commit both set it, a cancel keeps the last (as the grid); a thumb session's
               // own updates never cancel it, typing ends any other gesture as a field always did
