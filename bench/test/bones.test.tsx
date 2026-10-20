@@ -333,4 +333,23 @@ describe('bones in the bench', () => {
     const fb = bench().core.atPose({ yaw: 45, pitch: 0 }, { followBones: true }).boneFallback()
     expect(fb.map(f => f.lines)).toEqual([[t.id('up')]])
   })
+
+  it('测帧耗时（试验）: one at a time; leaving playback stops it (no pose set afterwards); a full run ends at the starting pose (dot 1792476848)', async () => {
+    const t = await setup()
+    const button = (label: string) => [...t.host.querySelectorAll('button')].find(x => x.textContent === label)!
+    await act(async () => { button('Playback').click() })
+    const start = JSON.stringify((bench() as unknown as { pose(): unknown }).pose())
+    // a full run
+    await act(async () => { (t.q('[data-testid="measure-frames"]') as HTMLButtonElement).click(); await wait(0) })
+    expect((t.q('[data-testid="measure-frames"]') as HTMLButtonElement).disabled).toBe(true)
+    for (let i = 0; i < 400 && !t.q('[data-testid="frame-times"]'); i++) await act(async () => { await wait(20) })
+    expect(t.q('[data-testid="frame-times"]')!.textContent).toMatch(/中位数.*p95/)
+    expect(JSON.stringify((bench() as unknown as { pose(): unknown }).pose())).toBe(start)
+    expect((t.q('[data-testid="measure-frames"]') as HTMLButtonElement).disabled).toBe(false)
+    // leaving playback during a run: it stops; nothing sets a pose afterwards
+    await act(async () => { (t.q('[data-testid="measure-frames"]') as HTMLButtonElement).click(); await wait(5) })
+    await act(async () => { button('Leave playback').click() })
+    await act(async () => { await wait(300) })
+    expect((bench() as unknown as { pose(): unknown }).pose()).toBeNull()
+  }, 30000)
 })

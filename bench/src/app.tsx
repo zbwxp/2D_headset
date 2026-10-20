@@ -369,6 +369,8 @@ export function App() {
   // P0 (docs/bone-poses-checklist.md): between the views, attached lines generated from their bones — a trial, off by default
   const [followBones, setFollowBones] = useState(false)
   const [frameTimes, setFrameTimes] = useState<string | null>(null)
+  // the measurement in progress (one at a time); it stops when playback is left, re-entered or the drawing changes (dot 1792476848)
+  const [measuring, setMeasuring] = useState(false), measuringOn = useRef(false)
   // 录制标准 / 捏脸 and standards (docs/bone-lines-checklist.md §6b): a name being typed per layer, a pending 覆盖 (a second
   // press confirms), a file's standards being imported (into the drawing it was read for)
   const [stdName, setStdName] = useState<Record<Id, string>>({})
@@ -1445,26 +1447,35 @@ export function App() {
               title="回放时骨线默认隐藏；打开后用亮绿 / 亮紫显示，用来检查骨线动得对不对">{bonesInPlayback ? '隐藏骨线' : '显示骨线'}</button>
             {/* P0 trial (docs/bone-poses-checklist.md): attached lines follow their bones between the views; nothing is written */}
             <label data-testid="follow-bones-row" title="试验：回放的中间角度，语义线按骨线在该角度的样子重新生成；只影响显示，不写入文件"><input type="checkbox" data-testid="follow-bones" checked={followBones} onChange={e => setFollowBones(e.target.checked)} /> 语义线跟骨线（试验）</label>
-            <button data-testid="measure-frames" title="沿当前 pitch 把 yaw 从 −89° 扫到 89°（只取中间角度），开关关、开各一遍，记录每帧的计算 + 渲染 + 排版耗时（不含像素绘制）" onClick={async () => {
-              if (!pose) return
-              const pitch = pose.pitch, keep = followBones, out: string[] = []
-              for (const on of [false, true]) {
-                flushSync(() => setFollowBones(on))
-                const times: number[] = []
-                for (let yaw = -89; yaw <= 89; yaw += 2) {
-                  const t0 = performance.now()
-                  flushSync(() => setPose({ yaw, pitch }))
-                  void document.body.offsetHeight // layout included
-                  times.push(performance.now() - t0)
-                  await new Promise(r => setTimeout(r, 0))
+            <button data-testid="measure-frames" disabled={measuring} title="沿当前 pitch 把 yaw 从 −89° 扫到 89°（只取中间角度），开关关、开各一遍，记录每帧的计算 + 渲染 + 排版耗时（不含像素绘制）；结束后回到原来的角度" onClick={async () => {
+              if (!pose || measuringOn.current) return
+              measuringOn.current = true; setMeasuring(true)
+              const start = { ...pose }, keep = followBones, out: string[] = [], mine = core, gen = poseGen.current
+              // left playback, entered it again, or another drawing: the sweep stops and writes nothing
+              const gone = () => !posing.current || poseGen.current !== gen || core !== mine
+              try {
+                for (const on of [false, true]) {
+                  flushSync(() => setFollowBones(on))
+                  const times: number[] = []
+                  for (let yaw = -89; yaw <= 89; yaw += 2) {
+                    if (gone()) return
+                    const t0 = performance.now()
+                    flushSync(() => setPose({ yaw, pitch: start.pitch }))
+                    void document.body.offsetHeight // layout included
+                    times.push(performance.now() - t0)
+                    await new Promise(r => setTimeout(r, 0))
+                  }
+                  times.sort((a, b) => a - b)
+                  const q = (f: number) => times[Math.min(times.length - 1, Math.floor(f * times.length))]!
+                  out.push(`${on ? '开' : '关'}：中位数 ${q(0.5).toFixed(1)} ms，p95 ${q(0.95).toFixed(1)} ms，最慢 ${times[times.length - 1]!.toFixed(1)} ms（${times.length} 帧）`)
                 }
-                times.sort((a, b) => a - b)
-                const q = (f: number) => times[Math.min(times.length - 1, Math.floor(f * times.length))]!
-                out.push(`${on ? '开' : '关'}：中位数 ${q(0.5).toFixed(1)} ms，p95 ${q(0.95).toFixed(1)} ms，最慢 ${times[times.length - 1]!.toFixed(1)} ms（${times.length} 帧）`)
+                if (gone()) return
+                flushSync(() => setPose(start))
+                setFrameTimes(`帧耗时（pitch ${start.pitch}，${core.snapshot().attachments.length} 条语义线；计算 + 渲染 + 排版，不含像素绘制）— ${out.join('；')}`)
+              } finally {
+                setFollowBones(keep); measuringOn.current = false; setMeasuring(false)
               }
-              flushSync(() => setFollowBones(keep))
-              setFrameTimes(`帧耗时（pitch ${pitch}，${core.snapshot().attachments.length} 条语义线）— ${out.join('；')}`)
-            }}>测帧耗时（试验）</button>
+            }}>{measuring ? '测量中…' : '测帧耗时（试验）'}</button>
             {frameTimes && <div data-testid="frame-times" style={{ fontSize: 11, color: '#555' }}>{frameTimes}</div>}
             {(['yaw', 'pitch'] as const).map(axis => {
               // the pose is a view: preview and commit both set it, a cancel keeps the last (as the grid); a thumb session's
