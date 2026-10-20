@@ -1431,8 +1431,11 @@ export function App() {
         <div data-testid="playback" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           {pose ? <>
             <button onClick={stopPose}>Leave playback</button>
-            {/* bones are hidden in playback (bowen 1792297720); shown here for checking only (docs/bone-lines-checklist.md §5) */}
-            <label data-testid="bones-in-playback-row"><input type="checkbox" data-testid="bones-in-playback" checked={bonesInPlayback} onChange={e => setBonesInPlayback(e.target.checked)} /> 显示骨骼（调试）</label>
+            {/* bones are hidden in playback (bowen 1792297720); a button to show them while checking how they move (bowen
+                1792472201); the choice stays for the next playback */}
+            <button data-testid="bones-in-playback" aria-pressed={bonesInPlayback} onClick={() => setBonesInPlayback(v => !v)}
+              style={{ fontWeight: 600, background: bonesInPlayback ? '#e8f5e9' : undefined, border: `1px solid ${bonesInPlayback ? '#00c853' : '#aaa'}` }}
+              title="回放时骨线默认隐藏；打开后用亮绿 / 亮紫显示，用来检查骨线动得对不对">{bonesInPlayback ? '隐藏骨线' : '显示骨线'}</button>
             {(['yaw', 'pitch'] as const).map(axis => {
               // the pose is a view: preview and commit both set it, a cancel keeps the last (as the grid); a thumb session's
               // own updates never cancel it, typing ends any other gesture as a field always did

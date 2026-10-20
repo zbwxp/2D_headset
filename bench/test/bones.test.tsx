@@ -170,8 +170,16 @@ describe('bones in the bench', () => {
     const button = (label: string) => [...t.host.querySelectorAll('button')].find(x => x.textContent === label)!
     await act(async () => { button('Playback').click() })
     expect(t.q(`[data-bone="${t.id('B')}"]`)).toBeNull()
+    expect(t.q('[data-testid="bones-in-playback"]')!.textContent).toBe('显示骨线')
     await t.click('[data-testid="bones-in-playback"]')
     expect(t.q(`[data-bone="${t.id('B')}"]`)).not.toBeNull()
+    expect(t.q('[data-testid="bones-in-playback"]')!.textContent).toBe('隐藏骨线')
+    // the choice stays for the next playback (bowen 1792472201: checking how bones move)
+    await act(async () => { button('Leave playback').click() })
+    await act(async () => { button('Playback').click() })
+    expect(t.q(`[data-bone="${t.id('B')}"]`)).not.toBeNull()
+    await t.click('[data-testid="bones-in-playback"]')
+    expect(t.q(`[data-bone="${t.id('B')}"]`)).toBeNull()
     await act(async () => { button('Leave playback').click() })
   })
 
