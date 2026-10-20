@@ -12,6 +12,9 @@ export interface HeadShape {
   /** the lowest section (the chin bottom) and the highest (the crown) */
   readonly yMin: number
   readonly yMax: number
+  /** height of a rounded cap closing the lowest sections (half-width scaled by √ of the height above the bottom); for a
+   *  shape whose bottom is not already a rounded point (the default head's chin). Absent: no cap (a sphere stays one). */
+  readonly cap?: number
 }
 
 /** Monotone cubic (Fritsch–Carlson) through knots sorted by y; flat outside. */
@@ -54,7 +57,7 @@ export function makeHead(shape: HeadShape): Head {
   const A = pchip(shape.a), F = pchip(shape.f), B = pchip(shape.b), N = pchip(shape.n)
   // the lowest sections close as a rounded cap (half-width ∝ √ of the height above the bottom), not a cone point whose
   // normals are undefined; the same at the crown
-  const cap = (y: number) => Math.sqrt(Math.min(1, Math.max(0, (y - shape.yMin) / CAP)))
+  const cap = (y: number) => (shape.cap ? Math.sqrt(Math.min(1, Math.max(0, (y - shape.yMin) / shape.cap))) : 1)
   const section = (y: number) => {
     const a = Math.max(0, A(y)) * cap(y), f = F(y), b = Math.min(B(y), f), n = Math.max(1.2, N(y))
     // the widest point's depth; kept between back and front so the section stays convex
@@ -89,6 +92,7 @@ const ball = (ys: number[]) => ys.map(y => ({ y, v: Math.sqrt(Math.max(0, 1 - y 
 export const CHIN_Y = Y(-161)
 
 export const defaultShape: HeadShape = {
+  cap: CAP,
   yMin: CHIN_Y,
   yMax: 1,
   // half-width: the ball above the cheeks; below, the front cell's outline (ear–jaw junction, jaw, chin)

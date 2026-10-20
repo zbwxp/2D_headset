@@ -10,7 +10,7 @@ import { type V3, len, sub } from '../src/view'
 
 const dir = process.env.F3D_DIAG_DIR
 const head = makeHead(defaultShape)
-const Y_MAX = -0.9, DEGEN_X = 0.005, DEGEN_RUN = 5, MOVE = 0.1
+const Y_MAX = -0.9, DEGEN_X = 0.005, DEGEN_LEN = 0.05, MOVE = 0.1
 
 interface Crossing { p: V3; hidden: boolean }
 interface Result { yaw: number; pitch: number; crossings: Crossing[]; degenerate: number; openEnds: number }
@@ -24,13 +24,20 @@ function measure(yaw: number, pitch: number): Result {
     // an open chain ending next to the plane below the mouth: the outline reaches the chin pole region and the trace
     // stops at the grid's last row instead of crossing (a tracing artefact, not an absent crossing)
     if (!l.closed) for (const e of [P[0]!, P[n - 1]!]) if (Math.abs(e.p[0]) < 0.05 && e.y < Y_MAX) openEnds++
-    // degenerate stretches: runs of points lying in the plane
-    let run = 0
-    for (const q of P) { if (Math.abs(q.p[0]) < DEGEN_X && q.y < Y_MAX) { run++; if (run === DEGEN_RUN) degenerate++ } else run = 0 }
+    // degenerate stretches: runs lying in the plane at least DEGEN_LEN long (by length, not by point count: points crowd
+    // near the chin pole, where any outline passes close to the plane); steps inside one are not crossings
+    const inDegen = new Array<boolean>(n).fill(false)
+    for (let i = 0; i < n; ) {
+      if (!(Math.abs(P[i]!.p[0]) < DEGEN_X && P[i]!.y < Y_MAX)) { i++; continue }
+      let j = i, L = 0
+      while (j + 1 < n && Math.abs(P[j + 1]!.p[0]) < DEGEN_X && P[j + 1]!.y < Y_MAX) { L += len(sub(P[j + 1]!.p, P[j]!.p)); j++ }
+      if (L >= DEGEN_LEN) { degenerate++; for (let k = i; k <= j; k++) inDegen[k] = true }
+      i = j + 1
+    }
     for (let i = 0; i < last; i++) {
       const a = P[i]!, b = P[(i + 1) % n]!
       if (a.y >= Y_MAX && b.y >= Y_MAX) continue
-      if (Math.abs(a.p[0]) < DEGEN_X && Math.abs(b.p[0]) < DEGEN_X) continue // inside a degenerate stretch, not a crossing
+      if (inDegen[i] && inDegen[(i + 1) % n]) continue
       if ((a.p[0] < 0) === (b.p[0] < 0)) continue
       const t = a.p[0] / (a.p[0] - b.p[0]), u = a.u + (b.u - a.u) * t, y = a.y + (b.y - a.y) * t, p = head.at(u, y)
       if (y >= Y_MAX) continue

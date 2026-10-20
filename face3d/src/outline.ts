@@ -36,6 +36,28 @@ export function candidates(head: Head, view: View, grid: Grid = GRID): Loop[] {
   }
   const links = new Map<string, string[]>()
   const link = (a: string, b: string) => { links.set(a, [...(links.get(a) ?? []), b]); links.set(b, [...(links.get(b) ?? []), a]) }
+  // the poles (dot 1792490943): the grid stops half a row short of the crown and of the chin, so an outline passing
+  // over a pole used to leave the grid there as two open ends. Each pole closes its ring of cells with a fan of
+  // triangles meeting at the pole point; marching triangles through the fan connects the outline across the pole by
+  // the sign of n · d — never by how close two ends are. The pole's normal is the mean of the normals round it.
+  const fan = (row: number, yPole: number, tag: string) => {
+    let nm: V3 = [0, 0, 0]
+    for (let i = 0; i < nu; i++) { const n = head.normal(uOf(i, nu), yPole); nm = [nm[0] + n[0], nm[1] + n[1], nm[2] + n[2]] }
+    const gp = dot(nm, d), yr = yOf(row, ny, head)
+    const spoke = (i: number): string | undefined => {
+      const ii = ((i % nu) + nu) % nu, a = g[row]![ii]!
+      if ((a < 0) === (gp < 0)) return undefined
+      const key = `s${tag}${ii}`
+      if (!pt.has(key)) { const t = a / (a - gp), u = uOf(ii, nu), y = yr + (yPole - yr) * t; pt.set(key, { u, y, p: head.at(u, y) }) }
+      return key
+    }
+    for (let i = 0; i < nu; i++) {
+      const e = [edge(i, row, i + 1, row), spoke(i + 1), spoke(i)].filter((k): k is string => !!k)
+      if (e.length === 2) link(e[0]!, e[1]!)
+    }
+  }
+  fan(0, head.shape.yMax, 't')
+  fan(ny - 1, head.shape.yMin, 'b')
   for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nu; i++) {
     const e = [edge(i, j, i + 1, j), edge(i + 1, j, i + 1, j + 1), edge(i, j + 1, i + 1, j + 1), edge(i, j, i, j + 1)].filter((k): k is string => !!k)
     if (e.length === 2) link(e[0]!, e[1]!)
