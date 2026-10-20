@@ -51,7 +51,7 @@ export const smoothB = (p: BParams) => {
 }
 export const validB = (p: BParams) => p.a.every(v => v > 0.03) && p.f.every((v, i) => v > p.b[i]! + 0.1) && p.n.every(v => v >= 1.5 && v <= 4) && p.yMin < -0.9 && p.yMin > -1.6 && p.yMin < LV[LV.length - 1]! - 0.03
 
-if (process.env.FIT_RUN) {
+if (process.env.FIT_RUN && !process.env.ANGLES) {
   const file = process.argv[2] ?? '/Users/bowen/Desktop/123.json'
   const poses: View[] = (process.env.POSES ?? '0,0 30,0 -30,0 60,0 -60,0 90,0 -90,0').split(' ').map(s => { const [yaw, pitch] = s.split(',').map(Number); return { yaw: yaw!, pitch: pitch! } })
   const D = drawn(file, poses, Number(process.env.PITCH_SIGN ?? 1))

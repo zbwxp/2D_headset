@@ -5,7 +5,7 @@
 //      is closest to the drawing (same cost as bench-fit.ts; the front 0, 0 is the anchor and stays);
 //   2. shape — the angles fixed, the symmetric head refitted to all drawings at their found angles;
 //   repeated until neither changes much. Drawings: the nine views and the playback-corrected 30 / 60 (the hand tuning).
-// Run: FIT_RUN=1 npx vite-node face3d/fit/angles.ts [archive.json]   (writes ref/angles-<out>.json)
+// Run: ANGLES=1 npx vite-node face3d/fit/angles.ts [archive.json]   (writes ref/angles-<out>.json)
 import { writeFileSync } from 'node:fs'
 import { type View } from '../src/view'
 import { type BParams, LV, drawn, poseCost, shapeOfB, smoothB, validB } from './bench-fit'
@@ -13,7 +13,7 @@ import fitted from './ref/fit-bench-all.json'
 
 const NOMINAL: View[] = [{ yaw: 0, pitch: 0 }, ...[-90, 30, 60, 90].map(yaw => ({ yaw, pitch: 0 })), ...[-45, 45].flatMap(pitch => [-90, 0, 30, 60, 90].map(yaw => ({ yaw, pitch })))]
 
-if (process.env.FIT_RUN) {
+if (process.env.ANGLES) {
   const file = process.argv[2] ?? '/Users/bowen/Desktop/123.json'
   const D = drawn(file, NOMINAL, 1)
   let p: BParams = JSON.parse(JSON.stringify(fitted)), angles: View[] = NOMINAL.map(v => ({ ...v }))
