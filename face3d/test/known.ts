@@ -1,9 +1,12 @@
-// The ledger of known failures (evidence.test.ts), measured 2026-10-20 19:30: fine-mesh occlusion, poles traced
-// through with a normalised pole normal and rows dense at the poles. Each entry has a ceiling (max + tol). A new
-// failure, one above its ceiling, or an entry that no longer fails, fails the evidence test. NOT an acceptance.
-// Against the previous ledger (70): 68 — 7 gone (incl. error 45,15 pos0 and 75,15 pos0, which the unnormalised pole
-// normal had doubled), 5 new (75,38 pos0/pos1 error 0.45 / 0.44, ghost, coverage; crossing 45,37.5 pos), 16 worse
-// (11 chin-anchor jumps by +0.03-0.04 R; ghost 75,38 pos1 1 -> 3, 75,15 pos0 3 -> 4; two errors by < 0.003 R).
+// The ledger of known failures (evidence.test.ts), measured 2026-10-20 19:50: fine-mesh occlusion, poles traced
+// through (normalised pole normal, rows dense at the poles), normals with adaptive steps at the tips. Each entry has a
+// ceiling (max + tol). A new failure, one above its ceiling, or an entry that no longer fails, fails the evidence
+// test. NOT an acceptance; causes are not settled.
+// Correction (dot 1792492222 / 1792492402): the earlier note here said error 45,15 pos0 and 75,15 pos0 had gone with
+// the normalised pole normal — wrong; both remain (~0.36-0.40 R, about twice their value before the pole fix: 0.178,
+// 0.192). The 7 items that did go at ba6d532 were coverage 15,-38 neg0 / 45,15 pos0 / 75,-15 neg0 / 75,-38 neg0,
+// crossing 60,37.5 pos, error 45,38 pos0 / pos1. With the adaptive tip normals (this ledger): same item set; error
+// 75,15 pos0 0.3565 -> 0.3984 and 75,15 neg0 0.3724 -> 0.3984 worse, two items slightly better.
 export const KNOWN: Record<string, { max: number; tol: number }> = {
   'coverage 15,15 pos0': { max: 1, tol: 0 },
   'coverage 15,15 pos1': { max: 1, tol: 0 },
@@ -37,8 +40,8 @@ export const KNOWN: Record<string, { max: number; tol: number }> = {
   'error 45,15 pos0': { max: 0.364, tol: 0.01 },
   'error 45,38 pos2': { max: 0.1645, tol: 0.01 },
   'error 75,-38 neg1': { max: 0.1509, tol: 0.01 },
-  'error 75,15 neg0': { max: 0.3724, tol: 0.01 },
-  'error 75,15 pos0': { max: 0.3565, tol: 0.01 },
+  'error 75,15 neg0': { max: 0.3984, tol: 0.01 },
+  'error 75,15 pos0': { max: 0.3984, tol: 0.01 },
   'error 75,38 pos0': { max: 0.447, tol: 0.01 },
   'error 75,38 pos1': { max: 0.4382, tol: 0.01 },
   'ghost 15,15 neg0': { max: 12, tol: 0 },
@@ -64,7 +67,7 @@ export const KNOWN: Record<string, { max: number; tol: number }> = {
   'jump neg yaw 30: pitch 30→45': { max: 0.6025, tol: 0.01 },
   'jump neg yaw 60: pitch 0→30': { max: 0.7031, tol: 0.01 },
   'jump neg yaw 60: pitch 30→45': { max: 0.7031, tol: 0.01 },
-  'jump neg yaw 90: pitch 0→30': { max: 0.7272, tol: 0.01 },
+  'jump neg yaw 90: pitch 0→30': { max: 0.7271, tol: 0.01 },
   'jump neg yaw 90: pitch 30→45': { max: 0.7271, tol: 0.01 },
   'jump pos pitch 30: yaw 60→90': { max: 0.4302, tol: 0.01 },
   'jump pos pitch 45: yaw 30→60': { max: 0.5748, tol: 0.01 },
@@ -72,7 +75,7 @@ export const KNOWN: Record<string, { max: number; tol: number }> = {
   'jump pos yaw 30: pitch 0→30': { max: 0.6025, tol: 0.01 },
   'jump pos yaw 60: pitch 0→30': { max: 0.7031, tol: 0.01 },
   'jump pos yaw 60: pitch 30→45': { max: 0.5748, tol: 0.01 },
-  'jump pos yaw 90: pitch 0→30': { max: 0.7272, tol: 0.01 },
+  'jump pos yaw 90: pitch 0→30': { max: 0.7271, tol: 0.01 },
 }
 
 // the fixed-jawline alternative (comparison only, dot 1792489731 / 1792489991)

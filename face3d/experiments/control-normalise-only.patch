@@ -1,0 +1,12 @@
+Control (dot 1792492222 / 1792492402): the pole normal normalised, rows NOT made dense at the poles — undo the
+polar-angle row spacing of ba6d532 on top of it. Apply with `git apply face3d/experiments/control-normalise-only.patch`
+at ba6d532, run `F3D_RECORD=1 npx vitest run --root . --dir face3d face3d/test/evidence.test.ts -t prints`, then
+`git apply -R` to undo. Measured 2026-10-20: error 45,15 pos0 0.3684, error 75,15 pos0 0.3540 (ledger 67 items).
+
+--- a/face3d/src/outline.ts
++++ b/face3d/src/outline.ts
+@@ -18,3 +18,3 @@
+ // pole fans are then tiny, so their linear interpolation does not misplace it (dot 1792491357)
+-const yOf = (j: number, ny: number, head: Head) => head.shape.yMax - ((1 - Math.cos((Math.PI * (j + 0.5)) / ny)) / 2) * (head.shape.yMax - head.shape.yMin)
++const yOf = (j: number, ny: number, head: Head) => head.shape.yMax - ((j + 0.5) / ny) * (head.shape.yMax - head.shape.yMin)
+ 

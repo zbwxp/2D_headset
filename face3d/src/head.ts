@@ -71,10 +71,14 @@ export function makeHead(shape: HeadShape): Head {
     const z = front ? s.z0 + (s.f - s.z0) * Math.abs(cu) ** e : s.z0 - (s.z0 - s.b) * Math.abs(cu) ** e
     return [x, y, z]
   }
+  // finite differences whose height step shrinks toward the tips (dot 1792492222): never clamped to a fixed distance
+  // from the crown / chin, so a sample closer to a tip than 2e-4 of the span gets the normal there, not one taken
+  // further away. At the tip itself (no width) the step is taken from 1e-9 of the span inside.
   const normal = (u: number, y: number): V3 => {
-    const h = 1e-4, span = shape.yMax - shape.yMin
-    const yy = Math.min(shape.yMax - 2 * h * span, Math.max(shape.yMin + 2 * h * span, y))
-    const pu = sub(at(u + h, yy), at(u - h, yy)), py = sub(at(u, yy + h * span), at(u, yy - h * span))
+    const hu = 1e-4, span = shape.yMax - shape.yMin, lo = shape.yMin, hi = shape.yMax
+    const yy = Math.min(hi - 1e-9 * span, Math.max(lo + 1e-9 * span, y))
+    const hy = Math.min(1e-4 * span, 0.5 * (yy - lo), 0.5 * (hi - yy))
+    const pu = sub(at(u + hu, yy), at(u - hu, yy)), py = sub(at(u, yy + hy), at(u, yy - hy))
     // pu points along +x at the front, py along +y: (pu × py) points out of the face (+z)
     return norm(cross(pu, py))
   }
