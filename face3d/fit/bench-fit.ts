@@ -31,24 +31,25 @@ export function drawn(file: string, poses: View[], pitchSign = 1) {
   const front = raw[poses.findIndex(v => v.yaw === 0 && v.pitch === 0)]!, fb = box(front)
   return { poses, raw, lines, scale: (fb.y1 - fb.y0) }
 }
-export function placed(D: ReturnType<typeof drawn>, shape: HeadShape, i: number) {
+/** `view`: the camera the model is seen from (default: the drawing's nominal pose) — the angle search (angles.ts) moves it */
+export function placed(D: ReturnType<typeof drawn>, shape: HeadShape, i: number, view: View = D.poses[i]!) {
   const s = D.scale / (shape.yMax - shape.yMin), d = D.raw[i]!.map(([x, y]): P2 => [x / s, -y / s])
-  const model = boundaryPoints(mask(makeHead(shape), D.poses[i]!)) as P2[]
+  const model = boundaryPoints(mask(makeHead(shape), view)) as P2[]
   const bd = box(d), bm = box(model), dx = bm.cx - bd.cx, dy = bm.cy - bd.cy
   const to = ([x, y]: P2): P2 => [x / s + dx, -y / s + dy]
   return { drawn: d.map(([x, y]): P2 => [x + dx, y + dy]), lines: D.lines[i]!.map(l => l.map(to)), model, offset: [dx, dy] as P2 }
 }
-export function poseCost(D: ReturnType<typeof drawn>, shape: HeadShape, i: number) {
-  const { drawn: d, model } = placed(D, shape, i)
+export function poseCost(D: ReturnType<typeof drawn>, shape: HeadShape, i: number, view?: View) {
+  const { drawn: d, model } = placed(D, shape, i, view)
   const d1 = d.map(p => near(p, model)), d2 = model.map(p => near(p, d))
   const mean = (a: number[]) => a.reduce((s, x) => s + x, 0) / Math.max(1, a.length)
   return { d1: mean(d1), d2: mean(d2), max: Math.max(...d1, ...d2), cost: mean(d1) + mean(d2) }
 }
-const smoothB = (p: BParams) => {
+export const smoothB = (p: BParams) => {
   const d2 = (v: number[]) => v.slice(1, -1).reduce((s, x, i) => s + (v[i]! - 2 * x + v[i + 2]!) ** 2, 0)
   return 0.5 * (d2([0, ...p.a, 0.05]) + d2([0, ...p.f, p.fChin]) + d2([0, ...p.b, p.fChin])) + 0.05 * d2([2, ...p.n, 2])
 }
-const validB = (p: BParams) => p.a.every(v => v > 0.03) && p.f.every((v, i) => v > p.b[i]! + 0.1) && p.n.every(v => v >= 1.5 && v <= 4) && p.yMin < -0.9 && p.yMin > -1.6 && p.yMin < LV[LV.length - 1]! - 0.03
+export const validB = (p: BParams) => p.a.every(v => v > 0.03) && p.f.every((v, i) => v > p.b[i]! + 0.1) && p.n.every(v => v >= 1.5 && v <= 4) && p.yMin < -0.9 && p.yMin > -1.6 && p.yMin < LV[LV.length - 1]! - 0.03
 
 if (process.env.FIT_RUN) {
   const file = process.argv[2] ?? '/Users/bowen/Desktop/123.json'
