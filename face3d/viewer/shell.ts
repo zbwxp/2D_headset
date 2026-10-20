@@ -11,7 +11,7 @@ import { type V3, type View, rotate } from '../src/view'
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
 const status = $('status')
 
-interface Part { kind: 'skin' | 'feature'; color: [number, number, number]; tris: number[] }
+interface Part { kind: 'skin' | 'feature'; color: [number, number, number]; tris: number[]; cornerN: number[] }
 async function load() {
   const parts = readGlb(await (await fetch(vrmUrl)).arrayBuffer())
   const NECK = Number(new URLSearchParams(location.search).get('neck') ?? 1.47)
@@ -22,7 +22,7 @@ async function load() {
   for (const p of parts) {
     const skin = /_SKIN/.test(p.material), color = COLORS.find(([r]) => r.test(p.material))?.[1]
     if (!skin && !color) continue
-    const tris: number[] = []
+    const tris: number[] = [], cornerN: number[] = []
     for (let t = 0; t < p.indices.length; t += 3) {
       const vs = [p.indices[t]!, p.indices[t + 1]!, p.indices[t + 2]!]
       if (vs.some(v => p.positions[3 * v + 1]! < NECK)) continue
@@ -31,9 +31,11 @@ async function load() {
         let i = index.get(k)
         if (i === undefined) { i = pos.length / 3; index.set(k, i); pos.push(p.positions[3 * v]!, p.positions[3 * v + 1]!, p.positions[3 * v + 2]!); fileN.push(p.normals?.[3 * v] ?? NaN, p.normals?.[3 * v + 1] ?? NaN, p.normals?.[3 * v + 2] ?? NaN) }
         tris.push(i)
+        // the corner's own normal from the file (a hard edge keeps its two normals; welding is only for adjacency)
+        cornerN.push(p.normals?.[3 * v] ?? NaN, p.normals?.[3 * v + 1] ?? NaN, p.normals?.[3 * v + 2] ?? NaN)
       }
     }
-    out.push({ kind: skin ? 'skin' : 'feature', color: color ?? [232, 222, 214], tris })
+    out.push({ kind: skin ? 'skin' : 'feature', color: color ?? [232, 222, 214], tris, cornerN })
   }
   // head space from the skin only
   const skinTris = out.filter(p => p.kind === 'skin').flatMap(p => p.tris)
@@ -74,7 +76,8 @@ function render() {
   if (!data) return
   const W = cv.width, H = cv.height, S = (W / 3.9) * zoom, cx = W / 2, cy = H * 0.4, img = g.createImageData(W, H), zb = new Float32Array(W * H).fill(-Infinity)
   for (let i = 0; i < img.data.length; i += 4) { img.data[i] = 246; img.data[i + 1] = 246; img.data[i + 2] = 244; img.data[i + 3] = 255 }
-  const r = data.P.map(p => rotate(p, view)), L = [-0.35, 0.55, 0.76], lit = data.N.map(n => { const q = rotate(n, view); return 0.42 + 0.58 * Math.max(0, q[0] * L[0]! + q[1] * L[1]! + q[2] * L[2]!) })
+  const r = data.P.map(p => rotate(p, view)), L = [-0.35, 0.55, 0.76], useFile = new URLSearchParams(location.search).get('normals') !== 'computed'
+  const Nv = data.N.map(n => rotate(n, view))
   const facing = (t: number[], i: number) => { const a = r[t[3 * i]!]!, b = r[t[3 * i + 1]!]!, c = r[t[3 * i + 2]!]!; return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]) }
   for (const part of data.parts) {
     const t = part.tris
@@ -83,7 +86,9 @@ function render() {
       const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2]
       let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; const m = Math.hypot(nx, ny, nz) || 1; nx /= m; ny /= m; nz /= m
       if (part.kind === 'skin' && nz <= 0) continue
-      const ls = [lit[t[3 * i]!]!, lit[t[3 * i + 1]!]!, lit[t[3 * i + 2]!]!]
+      // per-pixel (Phong) shading: the three corner normals interpolated, normalised, then lit — not brightness
+      // interpolated between the corners (dot 1792510724); corner normals from the file unless ?normals=computed
+      const cn = part.cornerN, ns = [0, 1, 2].map(k => useFile && !Number.isNaN(cn[9 * i + 3 * k]!) ? rotate([cn[9 * i + 3 * k]!, cn[9 * i + 3 * k + 1]!, cn[9 * i + 3 * k + 2]!], view) : Nv[t[3 * i + k]!]!)
       const xs = [cx + a[0] * S, cx + b[0] * S, cx + c[0] * S], ys = [cy - a[1] * S, cy - b[1] * S, cy - c[1] * S], zs = [a[2], b[2], c[2]]
       const area = (xs[1]! - xs[0]!) * (ys[2]! - ys[0]!) - (xs[2]! - xs[0]!) * (ys[1]! - ys[0]!)
       if (Math.abs(area) < 1e-9) continue
@@ -95,7 +100,8 @@ function render() {
         const z = w0 * zs[0]! + w1 * zs[1]! + w2 * zs[2]! + (part.kind === 'feature' ? 0.004 : 0), k = y * W + x
         if (z <= zb[k]!) continue
         zb[k] = z; const q = 4 * k
-        const shade = part.kind === 'skin' ? w0 * ls[0]! + w1 * ls[1]! + w2 * ls[2]! : 1
+        let shade = 1
+        if (part.kind === 'skin') { const n0 = ns[0]!, n1 = ns[1]!, n2 = ns[2]!, qx = w0 * n0[0] + w1 * n1[0] + w2 * n2[0], qy = w0 * n0[1] + w1 * n1[1] + w2 * n2[1], qz = w0 * n0[2] + w1 * n1[2] + w2 * n2[2], qm = Math.hypot(qx, qy, qz) || 1; shade = 0.42 + 0.58 * Math.max(0, (qx * L[0]! + qy * L[1]! + qz * L[2]!) / qm) }
         img.data[q] = part.color[0] * shade; img.data[q + 1] = part.color[1] * shade; img.data[q + 2] = part.color[2] * shade
       }
     }
