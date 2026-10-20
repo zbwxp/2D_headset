@@ -11,7 +11,7 @@
 //     the four controls dropped so the outline does not change while scrubbing.
 // Run: npx vite-node face3d/fit/bench-task.ts <drawing.png> <yaw> <pitch> <out-dir> [template.json]
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { open, save } from '../../../headset-core/src/archive/index'
 import { rotate } from '../src/view'
 import { controlsAt, LINES } from './outline-sym'
@@ -137,19 +137,22 @@ const notes = {
   task: `${name}: 在 bench 里打开，正面视图（0,0）里把「脸轮廓」4 根线（左颅 / 右颅 / 左下颌 / 右下颌）贴到参考图的红线上；头顶被头发挡住，照蓝线；改完另存`,
   view: { convention: 'B（建模视角）：相机先绕头 yaw，再绕屏幕水平线 pitch，正交投影；只做右转一侧，左侧由镜像得到', yaw, pitch },
   lines: { 左颅: '左侧点 → 头顶', 左下颌: '左侧点 → 下巴', 右下颌: '右侧点 → 下巴', 右颅: '右侧点 → 头顶', note: '「左」= 画面 +x 一侧（转头后是脸的前侧）；四条线都在 0,0 视图里编辑，九个视图起始相同' },
-  reference: { drawing, registration: { scale: reg.sc, shiftRenderPx: [reg.dx, reg.dy], lowerFaceMeanRenderPx: +reg.mean.toFixed(2) }, renderFrame: { cellPx: C, headBallRadiusPx: S, ballCentrePx: [CX, CY] }, canvas: { headBallRadiusPx: PX, ballCentre: [0, 0], imageScale: scale } },
+  reference: { drawing, original: `${name}-original.png`, registration: { scale: reg.sc, shiftRenderPx: [reg.dx, reg.dy], lowerFaceMeanRenderPx: +reg.mean.toFixed(2) }, renderFrame: { cellPx: C, headBallRadiusPx: S, ballCentrePx: [CX, CY] }, canvas: { headBallRadiusPx: PX, ballCentre: [0, 0], imageScale: scale } },
   firstMatch: { targetsRed: lowerT.length, targetsBlue: craniumT.length },
   status: '生成线稿是候选，角度未校准（dot 1792513207）；配准只用下半张脸',
   // large pitch: the generated drawings weaken the angle (dot 1792515820) and the jaw registers onto the eyes (checked
   // on the previews 2026-10-21) — not to be traced
   // CANDIDATE=ok / fix overrides the rule after looking at the preview; NOTE adds a line (e.g. the drawing's version)
   ...(process.env.NOTE ? { note: process.env.NOTE } : {}),
-  candidate: (process.env.CANDIDATE ? process.env.CANDIDATE === 'fix' : Math.abs(pitch) >= 45) ? '待修：大俯仰角度被生成图弱化，配准把下颌落到了眼睛上；首次匹配不可信，先不要照着描' : '候选：可以细调',
+  // two separate marks (dot 1792518737): the drawing's angle, and whether the first match can be fine-tuned
+  angle: Math.abs(pitch) >= 45 ? '未校准；大俯仰角度被生成图弱化（dot 1792515820）' : '未校准（生成线稿是候选，dot 1792513207）',
+  match: (process.env.CANDIDATE ? process.env.CANDIDATE === 'fix' : Math.abs(pitch) >= 45) ? '粗匹配待修：配准把下颌落到了眼睛上，先不要照着描' : '可细调',
   limits: [
     ...(yaw > 0 ? ['远侧点（右）按 bowen 123.json 的规律放在耳前的固定位置（x ≈ −55.7·cos yaw），后脑勺轮廓不算脸轮廓；这是照现有存档推的，待 bowen 确认；右颅在头发下没有线可贴，手柄取 123.json 同角度的值'] : []),
     '发际线高亮还没做',
   ],
   sources: { template: template ?? '/Users/bowen/Desktop/123.json（只读）', renderer: 'face3d/fit/vrm-renders.ts + mesh/vrmhead.ts（VRoid test.vrm）', builder: 'face3d/fit/bench-task.ts' },
 }
+copyFileSync(drawing!, `${outDir}/${name}-original.png`) // the candidate drawing itself travels with the archive (dot 1792518737)
 writeFileSync(`${outDir}/${name}.notes.json`, JSON.stringify(notes, null, 1))
 console.log('ok', name, JSON.stringify(notes.reference.registration), 'targets', lowerT.length, craniumT.length)
