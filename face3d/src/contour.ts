@@ -1,0 +1,204 @@
+// Contour bones (PLAN §4): per key view, the face contour of each side as three segments chin → jaw angle → cheek →
+// temple, found on the head's candidate outline; between key views the corresponding samples are mixed in 3D.
+import { CHIN_Y, type Head } from './head'
+import { type Loop, type OutlinePoint, candidates, mask, visible } from './outline'
+import { type V3, type View, add, len, mirror, rotate, scale, screenAxes, sub } from './view'
+
+export const YAW_KEYS = [0, 30, 60, 90] as const
+export const PITCH_KEYS = [-45, -30, 0, 30, 45] as const
+/** anchor heights in head space: jaw angle, cheek, temple (the chin is found by nearness) */
+export const ANCHOR_Y = [-0.95, -0.55, 0] as const
+/** points per segment, both ends included: chin–jaw, jaw–cheek, cheek–temple */
+export const COUNTS = [13, 11, 9] as const
+/** the face region: sections below the jaw angle belong to the jaw whole (their back half is the jaw's underside);
+ *  above it, up to this angle round the section from the front (a rule by depth fails: seen from above, the cheeks'
+ *  outline sits behind the ears' depth). */
+export const FACE_U = (135 * Math.PI) / 180, JAW_BASE_Y = -0.91
+/** the jaw-angle anchor is reached by height or, looking up at the jaw, by spreading this far to the side */
+export const JAW_X = 0.55
+/** a side's walk must move this far toward its side on screen within TOWARD_LEN of arc (head units) */
+export const TOWARD_LEN = 0.08, TOWARD_MIN = 0.01
+const inFace = (p: OutlinePoint) => p.y < JAW_BASE_Y || Math.abs(p.u) <= FACE_U
+
+export interface Sample { readonly u: number; readonly y: number }
+export interface Segment { readonly present: boolean; readonly samples: Sample[]; readonly vis: boolean[] }
+export type Side = 'pos' | 'neg'
+export interface KeyContour { readonly view: View; readonly pos: Segment[]; readonly neg: Segment[]; readonly chinLoop: number }
+
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t
+
+/** Resample a polyline of surface points to n points evenly by 3D arc length. */
+function resample(head: Head, path: OutlinePoint[], n: number): Sample[] {
+  const L = [0]
+  for (let i = 1; i < path.length; i++) L.push(L[i - 1]! + len(sub(path[i]!.p, path[i - 1]!.p)))
+  const total = L[L.length - 1]!, out: Sample[] = []
+  for (let k = 0; k < n; k++) {
+    const s = (total * k) / (n - 1)
+    let i = 1
+    while (i < path.length - 1 && L[i]! < s) i++
+    const t = L[i]! - L[i - 1]! > 0 ? (s - L[i - 1]!) / (L[i]! - L[i - 1]!) : 0
+    out.push({ u: lerp(path[i - 1]!.u, path[i]!.u, t), y: lerp(path[i - 1]!.y, path[i]!.y, t) })
+  }
+  void head
+  return out
+}
+
+/** Walk a loop from index i0 in direction dir while inside the face region. */
+function walk(loop: Loop, i0: number, dir: 1 | -1): OutlinePoint[] {
+  const n = loop.pts.length, out = [loop.pts[i0]!]
+  let i = i0
+  for (let step = 0; step < n - 1; step++) {
+    let j = i + dir
+    if (j < 0 || j >= n) { if (!loop.closed) break; j = (j + n) % n }
+    if (j === i0) break
+    const p = loop.pts[j]!
+    if (!inFace(p)) break
+    out.push(p); i = j
+  }
+  return out
+}
+
+/** Split a side's walk (starting at the chin) at the first crossing of each anchor height. */
+function segmentsOf(head: Head, path: OutlinePoint[]): (OutlinePoint[] | undefined)[] {
+  const segs: (OutlinePoint[] | undefined)[] = []
+  let from = 0, start: OutlinePoint = path[0]!
+  ANCHOR_Y.forEach((h, n) => {
+    if (segs.length < n) return
+    // the first point of the walk at this anchor's height (the jaw angle: or spread JAW_X to the side)
+    const reached = (q: OutlinePoint) => q.y >= h || (n === 0 && Math.abs(q.p[0]) >= JAW_X)
+    let k = from + 1
+    while (k < path.length && !reached(path[k]!)) k++
+    // the jaw angle only: a walk that leaves the face before reaching it ends the chin–jaw segment where it leaves
+    // (the near side's jaw line turning under the ear); still the first event on the walk, so still unique
+    if (k >= path.length && n === 0 && path.length - 1 > from + 3) {
+      const end = path[path.length - 1]!
+      segs.push([start, ...path.slice(from + 1)]); from = path.length - 1; start = end
+      return
+    }
+    if (k >= path.length) return
+    const a = path[k - 1]!, b = path[k]!
+    // the crossing between the last point short of it and the first at it
+    const t = b.y >= h && b.y !== a.y ? Math.max(0, Math.min(1, (h - a.y) / (b.y - a.y))) : n === 0 && Math.abs(b.p[0]) !== Math.abs(a.p[0]) ? Math.max(0, Math.min(1, (JAW_X - Math.abs(a.p[0])) / (Math.abs(b.p[0]) - Math.abs(a.p[0])))) : 1
+    const u = lerp(a.u, b.u, t), y = lerp(a.y, b.y, t), cross: OutlinePoint = { u, y, p: head.at(u, y) }
+    segs.push([start, ...path.slice(from + 1, k), cross])
+    from = k - 1; start = cross
+  })
+  while (segs.length < ANCHOR_Y.length) segs.push(undefined)
+  return segs
+}
+
+/** The key contour at a view with yaw ≥ 0, before absent segments are filled (PLAN §4). */
+export function traceKey(head: Head, view: View): { pos: (Sample[] | undefined)[]; neg: (Sample[] | undefined)[]; vis: { pos: boolean[][]; neg: boolean[][] }; chinLoop: number } {
+  const loops = candidates(head, view), m = mask(head, view)
+  const chin: V3 = head.at(0, CHIN_Y)
+  const sides: Record<Side, OutlinePoint[]> = { pos: [], neg: [] }
+  let chinLoop = -1
+  // sides by the screen: the x+ side is the one on the screen's right for yaw ≥ 0 (the far side once the face turns)
+  const sx = (p: V3) => rotate(p, view)[0], chinX = sx(chin)
+  for (const s of ['pos', 'neg'] as const) {
+    const sg = s === 'pos' ? 1 : -1
+    // this side's chin anchor: the candidate point nearest the chin landmark from which a walk moves toward this side
+    // on screen (two open chains can end at the chin; the nearest point alone may belong to the other side's chain)
+    const near: { l: number; i: number; d: number }[] = []
+    loops.forEach((loop, l) => loop.pts.forEach((q, i) => near.push({ l, i, d: len(sub(q.p, chin)) })))
+    near.sort((a, b) => a.d - b.d)
+    // a walk's direction: where it is on screen after a fixed arc length (near the chin the grid is dense, so a fixed
+    // count of points barely moves)
+    const toward = (w: OutlinePoint[]) => {
+      let L = 0, j = 1
+      for (; j < w.length && L < TOWARD_LEN; j++) L += len(sub(w[j]!.p, w[j - 1]!.p))
+      return L < TOWARD_LEN ? -Infinity : sg * (sx(w[j - 1]!.p) - sx(w[0]!.p))
+    }
+    const taken = s === 'neg' ? sides.pos : []
+    const overlaps = (w: OutlinePoint[]) => taken.length > 0 && w.slice(0, 6).filter(p => taken.some(q => len(sub(p.p, q.p)) < 1e-6)).length >= 3
+    for (const c of near.slice(0, 80)) {
+      const loop = loops[c.l]!, A = walk(loop, c.i, 1), B = walk(loop, c.i, -1)
+      const w = [A, B].filter(x => toward(x) > TOWARD_MIN && !overlaps(x)).sort((x, y) => toward(y) - toward(x))[0]
+      if (w) { sides[s] = w; if (s === 'pos') chinLoop = c.l; break }
+    }
+  }
+  const out = { pos: [] as (Sample[] | undefined)[], neg: [] as (Sample[] | undefined)[], vis: { pos: [] as boolean[][], neg: [] as boolean[][] }, chinLoop }
+  for (const s of ['pos', 'neg'] as const) {
+    const segs = sides[s].length ? segmentsOf(head, sides[s]) : [undefined, undefined, undefined]
+    segs.forEach((seg, i) => {
+      const samples = seg && seg.length >= 2 ? resample(head, seg, COUNTS[i]!) : undefined
+      out[s].push(samples)
+      out.vis[s].push(samples ? samples.map(q => visible(m, head.at(q.u, q.y), view, head.normal(q.u, q.y))) : [])
+    })
+  }
+  return out
+}
+
+export interface KeyTable { readonly keys: KeyContour[]; readonly at: (yaw: number, pitch: number) => KeyContour }
+
+/** All key contours for yaw 0 … 90; absent segments take the level key's positions, not visible (PLAN §4). */
+export function keyTable(head: Head): KeyTable {
+  const raw = new Map<string, ReturnType<typeof traceKey>>()
+  for (const yaw of YAW_KEYS) for (const pitch of PITCH_KEYS) raw.set(`${yaw},${pitch}`, traceKey(head, { yaw, pitch }))
+  const level = raw.get('0,0')!
+  const fill = (r: ReturnType<typeof traceKey>, s: Side, i: number): Segment => {
+    const own = r[s][i]
+    if (own) return { present: true, samples: own, vis: r.vis[s][i]! }
+    const lv = level[s][i]
+    if (!lv) throw new Error(`level key has no ${s} segment ${i}: the head's front outline is incomplete`)
+    return { present: false, samples: lv, vis: lv.map(() => false) }
+  }
+  // yaw 0 keys are symmetric views of a symmetric head: the x− side is the x+ side mirrored (u → −u), so tracing noise
+  // cannot make the two sides differ there
+  for (const pitch of PITCH_KEYS) {
+    const r = raw.get(`0,${pitch}`)!
+    raw.set(`0,${pitch}`, { ...r, neg: r.pos.map(sg => sg?.map(q => ({ u: -q.u, y: q.y }))), vis: { pos: r.vis.pos, neg: r.vis.pos.map(v => [...v]) } })
+  }
+  const keys: KeyContour[] = []
+  for (const yaw of YAW_KEYS) for (const pitch of PITCH_KEYS) {
+    const r = raw.get(`${yaw},${pitch}`)!
+    keys.push({ view: { yaw, pitch }, pos: [0, 1, 2].map(i => fill(r, 'pos', i)), neg: [0, 1, 2].map(i => fill(r, 'neg', i)), chinLoop: r.chinLoop })
+  }
+  return { keys, at: (yaw, pitch) => keys.find(k => k.view.yaw === yaw && k.view.pitch === pitch)! }
+}
+
+/** Offsets per key / side / segment / sample, in that key's picture plane (F2; zero now). */
+export type Offsets = Map<string, [number, number]>
+export const offsetKey = (yaw: number, pitch: number, side: Side, seg: number, i: number) => `${yaw},${pitch},${side},${seg},${i}`
+
+/** Bilinear weights over the key grid for yaw in [0, 90], pitch clamped to the key range. */
+export function weights(yaw: number, pitch: number): { yaw: number; pitch: number; w: number }[] {
+  const bracket = (ks: readonly number[], x: number) => {
+    const v = Math.min(ks[ks.length - 1]!, Math.max(ks[0]!, x))
+    let i = 0
+    while (i < ks.length - 2 && v > ks[i + 1]!) i++
+    const t = (v - ks[i]!) / (ks[i + 1]! - ks[i]!)
+    return [[ks[i]!, 1 - t], [ks[i + 1]!, t]] as const
+  }
+  const out: { yaw: number; pitch: number; w: number }[] = []
+  for (const [y, wy] of bracket(YAW_KEYS, yaw)) for (const [p, wp] of bracket(PITCH_KEYS, pitch)) if (wy * wp > 0) out.push({ yaw: y, pitch: p, w: wy * wp })
+  return out
+}
+
+export interface ContourLine { readonly side: Side; readonly pts: V3[]; readonly vis: number[]; readonly anchors: number[] }
+
+/** The face contour at any view: corresponding samples of the surrounding keys mixed in 3D (PLAN §4). */
+export function mixContour(head: Head, table: KeyTable, view: View, offsets: Offsets = new Map()): ContourLine[] {
+  const flip = view.yaw < 0, yaw = Math.abs(view.yaw)
+  const W = weights(yaw, view.pitch)
+  const lines: ContourLine[] = []
+  for (const side of ['pos', 'neg'] as const) {
+    const pts: V3[] = [], vis: number[] = [], anchors: number[] = []
+    for (let seg = 0; seg < 3; seg++) {
+      for (let i = seg === 0 ? 0 : 1; i < COUNTS[seg]!; i++) {
+        let p: V3 = [0, 0, 0], v = 0
+        for (const { yaw: ky, pitch: kp, w } of W) {
+          const key = table.at(ky, kp), s = key[side][seg]!, q = s.samples[i]!
+          let base = head.at(q.u, q.y)
+          const off = offsets.get(offsetKey(ky, kp, side, seg, i))
+          if (off) { const ax = screenAxes(key.view); base = add(base, add(scale(ax.right, off[0]), scale(ax.up, off[1]))) }
+          p = add(p, scale(base, w)); v += w * (s.vis[i] ? 1 : 0)
+        }
+        pts.push(flip ? mirror(p) : p); vis.push(v)
+      }
+      anchors.push(pts.length - 1)
+    }
+    lines.push({ side: flip ? (side === 'pos' ? 'neg' : 'pos') : side, pts, vis, anchors })
+  }
+  return lines
+}

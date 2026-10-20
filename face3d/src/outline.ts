@@ -1,0 +1,125 @@
+// Outlines of the rough head at a view (PLAN §4).
+// Candidates: loops where the surface normal is perpendicular to the view direction, traced on the (u, y) grid.
+// Visible: the head projected to a depth buffer of fixed resolution in head units (dot 1792488325: never tied to the
+// window); a candidate point is visible when nothing of the head lies in front of it there. Not "on the outer
+// boundary": looking up from below, the jaw's outline sits inside the skull's outer edge yet is the line one draws.
+import { type Head } from './head'
+import { type V3, type View, dot, rotate, toCamera } from './view'
+
+export interface OutlinePoint { readonly u: number; readonly y: number; readonly p: V3 }
+export interface Grid { readonly nu: number; readonly ny: number }
+export const GRID: Grid = { nu: 240, ny: 160 }
+/** mask pixel size in head units (R = 1) */
+export const MASK_PX = 0.01
+
+const TAU = Math.PI * 2
+const uOf = (i: number, nu: number) => -Math.PI + (i / nu) * TAU
+const yOf = (j: number, ny: number, head: Head) => head.shape.yMax - ((j + 0.5) / ny) * (head.shape.yMax - head.shape.yMin)
+
+/** Candidate outline loops (open polylines when they reach the grid's top or bottom row). */
+export function candidates(head: Head, view: View, grid: Grid = GRID): Loop[] {
+  const { nu, ny } = grid, d = toCamera(view)
+  const g: number[][] = []
+  for (let j = 0; j < ny; j++) { const row: number[] = []; for (let i = 0; i < nu; i++) row.push(dot(head.normal(uOf(i, nu), yOf(j, ny, head)), d)); g.push(row) }
+  // marching squares: one crossing point per grid edge with a sign change, keyed by the edge
+  const pt = new Map<string, OutlinePoint>()
+  const edge = (i0: number, j0: number, i1: number, j1: number): string | undefined => {
+    const a = g[j0]![((i0 % nu) + nu) % nu]!, b = g[j1]![((i1 % nu) + nu) % nu]!
+    if ((a < 0) === (b < 0)) return undefined
+    const key = i0 === i1 ? `v${((i0 % nu) + nu) % nu},${j0}` : `h${((Math.min(i0, i1) % nu) + nu) % nu},${j0}`
+    if (!pt.has(key)) {
+      const t = a / (a - b), u = uOf(i0, nu) + (uOf(i1, nu) - uOf(i0, nu)) * t, y = yOf(j0, ny, head) + (yOf(j1, ny, head) - yOf(j0, ny, head)) * t
+      const uu = ((u + Math.PI) % TAU + TAU) % TAU - Math.PI
+      pt.set(key, { u: uu, y, p: head.at(uu, y) })
+    }
+    return key
+  }
+  const links = new Map<string, string[]>()
+  const link = (a: string, b: string) => { links.set(a, [...(links.get(a) ?? []), b]); links.set(b, [...(links.get(b) ?? []), a]) }
+  for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nu; i++) {
+    const e = [edge(i, j, i + 1, j), edge(i + 1, j, i + 1, j + 1), edge(i, j + 1, i + 1, j + 1), edge(i, j, i, j + 1)].filter((k): k is string => !!k)
+    if (e.length === 2) link(e[0]!, e[1]!)
+    else if (e.length === 4) { // saddle: decide by the cell centre
+      const c = (g[j]![i]! + g[j]![(i + 1) % nu]! + g[j + 1]![i]! + g[j + 1]![(i + 1) % nu]!) / 4
+      if ((c < 0) === (g[j]![i]! < 0)) { link(e[0]!, e[1]!); link(e[2]!, e[3]!) } else { link(e[0]!, e[3]!); link(e[1]!, e[2]!) }
+    }
+  }
+  // chains: open ones start at a degree-1 node; what is left are closed loops
+  const seen = new Set<string>(), loops: Loop[] = []
+  const collect = (start: string) => {
+    const chain: string[] = []
+    let cur: string | undefined = start, p: string | undefined
+    while (cur && !seen.has(cur)) { seen.add(cur); chain.push(cur); const nx: string | undefined = (links.get(cur) ?? []).find(k => k !== p && !seen.has(k)); p = cur; cur = nx }
+    const closed = chain.length > 2 && (links.get(chain[chain.length - 1]!) ?? []).includes(chain[0]!)
+    if (chain.length > 2) loops.push({ pts: chain.map(k => pt.get(k)!), closed })
+  }
+  for (const [k, n] of links) if (n.length === 1 && !seen.has(k)) collect(k)
+  for (const k of links.keys()) if (!seen.has(k)) collect(k)
+  return loops
+}
+export interface Loop { readonly pts: OutlinePoint[]; readonly closed: boolean }
+
+export interface Mask { readonly x0: number; readonly y0: number; readonly w: number; readonly h: number; readonly px: number; readonly on: Uint8Array; readonly depth: Float32Array }
+
+/** The head projected at this view, rasterised at MASK_PX per pixel (screen coordinates in head units, y up). */
+export function mask(head: Head, view: View, grid: Grid = { nu: 120, ny: 90 }): Mask {
+  const { nu, ny } = grid, px = MASK_PX
+  const P: [number, number, number][][] = []
+  for (let j = 0; j <= ny; j++) {
+    const y = head.shape.yMax - (j / ny) * (head.shape.yMax - head.shape.yMin), row: [number, number, number][] = []
+    for (let i = 0; i < nu; i++) { const r = rotate(head.at(uOf(i, nu), y), view); row.push([r[0], r[1], r[2]]) }
+    P.push(row)
+  }
+  const x0 = -2, y0 = -2.2, w = Math.ceil(4 / px), h = Math.ceil(4 / px), on = new Uint8Array(w * h), depth = new Float32Array(w * h).fill(-Infinity)
+  const tri = (a: [number, number, number], b: [number, number, number], c: [number, number, number]) => {
+    const xs = [a, b, c].map(q => (q[0] - x0) / px), ys = [a, b, c].map(q => (q[1] - y0) / px)
+    const minx = Math.max(0, Math.floor(Math.min(...xs))), maxx = Math.min(w - 1, Math.ceil(Math.max(...xs)))
+    const miny = Math.max(0, Math.floor(Math.min(...ys))), maxy = Math.min(h - 1, Math.ceil(Math.max(...ys)))
+    const area = (xs[1]! - xs[0]!) * (ys[2]! - ys[0]!) - (xs[2]! - xs[0]!) * (ys[1]! - ys[0]!)
+    if (Math.abs(area) < 1e-12) return
+    for (let yy = miny; yy <= maxy; yy++) for (let xx = minx; xx <= maxx; xx++) {
+      const X = xx + 0.5, Y = yy + 0.5
+      const w0 = ((xs[1]! - X) * (ys[2]! - Y) - (xs[2]! - X) * (ys[1]! - Y)) / area
+      const w1 = ((xs[2]! - X) * (ys[0]! - Y) - (xs[0]! - X) * (ys[2]! - Y)) / area
+      if (w0 >= -1e-9 && w1 >= -1e-9 && 1 - w0 - w1 >= -1e-9) {
+        const z = w0 * a[2] + w1 * b[2] + (1 - w0 - w1) * c[2], k = yy * w + xx
+        on[k] = 1; if (z > depth[k]!) depth[k] = z
+      }
+    }
+  }
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nu; i++) {
+    const a = P[j]![i]!, b = P[j]![(i + 1) % nu]!, c = P[j + 1]![i]!, d = P[j + 1]![(i + 1) % nu]!
+    tri(a, b, d); tri(a, d, c)
+  }
+  return { x0, y0, w, h, px, on, depth }
+}
+
+/** depth tolerance in head units: the buffer is built from a coarser grid than the candidates */
+export const DEPTH_EPS = 0.03
+
+/** Is this outline point visible at this view? An outline point sits on the edge of its own surface in the buffer, so
+ *  it is tested a little outward along its surface normal (OUTWARD): visible unless something nearer covers that spot. */
+export const OUTWARD = 0.02
+export function visible(m: Mask, p: V3, view: View, n: V3): boolean {
+  const q: V3 = [p[0] + n[0] * OUTWARD, p[1] + n[1] * OUTWARD, p[2] + n[2] * OUTWARD]
+  const r = rotate(q, view), cx = Math.floor((r[0] - m.x0) / m.px), cy = Math.floor((r[1] - m.y0) / m.px)
+  if (cx < 0 || cy < 0 || cx >= m.w || cy >= m.h || !m.on[cy * m.w + cx]) return true
+  return m.depth[cy * m.w + cx]! <= r[2] + DEPTH_EPS
+}
+
+const filled = (m: Mask, x: number, y: number) => x >= 0 && y >= 0 && x < m.w && y < m.h && m.on[y * m.w + x] === 1
+const boundaryPx = (m: Mask, x: number, y: number) => filled(m, x, y) && (!filled(m, x + 1, y) || !filled(m, x - 1, y) || !filled(m, x, y + 1) || !filled(m, x, y - 1))
+
+/** Is this head point on the visible outer boundary at this view (within one mask pixel)? */
+export function onBoundary(m: Mask, p: V3, view: View): boolean {
+  const r = rotate(p, view), cx = Math.floor((r[0] - m.x0) / m.px), cy = Math.floor((r[1] - m.y0) / m.px)
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (boundaryPx(m, cx + dx, cy + dy)) return true
+  return false
+}
+
+/** The visible outer boundary as screen points (head units): boundary pixel centres, for drawing the comparison. */
+export function boundaryPoints(m: Mask): [number, number][] {
+  const out: [number, number][] = []
+  for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) if (boundaryPx(m, x, y)) out.push([m.x0 + (x + 0.5) * m.px, m.y0 + (y + 0.5) * m.px])
+  return out
+}

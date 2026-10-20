@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>face3d 骨线查看器</title>
+<style>
+  :root { --bg: #f6f6f4; --fg: #222; --muted: #777; --line: #ddd; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 -apple-system, "PingFang SC", sans-serif; }
+  main { max-width: 1240px; margin: 0 auto; padding: 16px; display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) 300px; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+  canvas { width: 100%; display: block; background: #fff; border-radius: 8px; border: 1px solid var(--line); }
+  #c { aspect-ratio: 1; touch-action: none; cursor: grab; }
+  label { display: block; margin: 8px 0 2px; }
+  input[type=range] { width: 100%; }
+  .val { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .checks label { display: flex; gap: 6px; align-items: center; margin: 4px 0; }
+  .legend div { display: flex; gap: 8px; align-items: center; margin: 2px 0; font-size: 13px; }
+  .sw { width: 22px; height: 0; border-top: 3px solid; flex: none; }
+  .note { color: var(--muted); font-size: 12px; }
+  .todo { margin: 6px 0 0; padding-left: 18px; color: #a15c00; font-size: 12px; }
+  #status { color: var(--muted); font-size: 12px; min-height: 1.5em; }
+  section.grid { grid-column: 1 / -1; }
+</style>
+</head>
+<body>
+<main>
+  <section>
+    <h1>face3d 骨线查看器 <span class="note">— exp/face-bones-3d，F1 原型</span></h1>
+    <div class="note">拖动画面：左右 = yaw，上下 = pitch。刷新页面就是最新的模型。</div>
+    <canvas id="c" width="1000" height="1000"></canvas>
+    <div id="status"></div>
+  </section>
+  <aside class="card">
+    <label>yaw（脸转向画面右侧为正）：<span class="val" id="yv"></span></label>
+    <input type="range" id="yaw" min="-90" max="90" step="1" value="0">
+    <label>pitch：<span class="val" id="pv"></span></label>
+    <input type="range" id="pitch" min="-45" max="45" step="1" value="0">
+    <div class="checks">
+      <label><input type="checkbox" id="mix" checked>脸轮廓：关键视角 mix（红 / 蓝）</label>
+      <label><input type="checkbox" id="raw" checked>对照：直接从粗头模取的可见轮廓（灰）</label>
+      <label><input type="checkbox" id="bones" checked>表面骨线（眼、眉、鼻、嘴、下巴尖、耳）</label>
+      <label><input type="checkbox" id="anchors">轮廓锚点（下巴 / 颌角 / 颊 / 额）</label>
+    </div>
+    <div class="legend">
+      <div><span class="sw" style="border-color:#d32f2f"></span>脸轮廓 x+ 侧（yaw &gt; 0 时是远侧）</div>
+      <div><span class="sw" style="border-color:#1976d2"></span>脸轮廓 x− 侧</div>
+      <div><span class="sw" style="border-color:#9e9e9e"></span>粗头模的可见轮廓（对照）</div>
+      <div><span class="sw" style="border-color:#8e24aa"></span>眼、眉</div>
+      <div><span class="sw" style="border-color:#1565c0"></span>鼻</div>
+      <div><span class="sw" style="border-color:#ef6c00"></span>嘴</div>
+      <div><span class="sw" style="border-color:#c62828"></span>下巴尖</div>
+      <div><span class="sw" style="border-color:#2e7d32"></span>耳、颈</div>
+    </div>
+    <p class="note">轮廓线颜色越淡，表示这一段在这个角度不在外沿上（缺席段借平视位置，淡出）。表面骨线转到背面时画成淡虚线。</p>
+    <div class="note"><b>还没做：</b></div>
+    <ul class="todo">
+      <li>90° 侧鼻线（侧面时鼻子的外轮廓）</li>
+      <li>遮挡（被头挡住的线没有去掉，只按朝向变淡）</li>
+      <li>头发、发际线</li>
+      <li>编辑骨线、改头型、存取（F2）</li>
+      <li>头型来自生成稿平视那组正面和侧面，是待检验的假设</li>
+    </ul>
+  </aside>
+  <section class="grid card">
+    <div class="note">25 格对照：列 yaw 0 / 30 / 45 / 60 / 90；行 俯视 45 / 俯视 30 / 平视 / 仰视 30 / 仰视 45（和总图同一套格子）。点任意格跳到那个角度。</div>
+    <canvas id="g" width="1600" height="1500"></canvas>
+  </section>
+</main>
+<script type="module" src="./main.ts"></script>
+</body>
+</html>
