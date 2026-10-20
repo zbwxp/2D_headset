@@ -109,6 +109,40 @@ describe('mixing', () => {
   })
 })
 
+describe('path independence and the u seam (dot 1792489303)', () => {
+  it('a view jumped to directly, reached by a forward sweep and by a backward sweep draws the same, in yaw and in pitch', () => {
+    const same = (a: ReturnType<typeof mixContour>, b: ReturnType<typeof mixContour>) =>
+      a.every(la => { const lb = b.find(l => l.side === la.side)!; return la.pts.every((p, i) => close(p, lb.pts[i]!, 1e-15)) && la.vis.every((v, i) => v === lb.vis[i]) })
+    for (const target of [{ yaw: 47, pitch: 13 }, { yaw: -71, pitch: -38 }, { yaw: 88, pitch: 41 }]) {
+      const direct = mixContour(head, table, target)
+      for (const axis of ['yaw', 'pitch'] as const) for (const from of [-1, 1]) {
+        let last = direct
+        for (let k = 20; k >= 0; k--) { const v = { ...target, [axis]: target[axis] + from * k }; last = mixContour(head, table, v) }
+        expect(same(direct, last)).toBe(true)
+      }
+    }
+  })
+  it('mixing across the ±π seam stays between the two keys (u unwrapped, not averaged through the front)', () => {
+    let checked = 0
+    for (let a = 0; a < YAW_KEYS.length - 1; a++) for (const pitch of PITCH_KEYS) {
+      const k0 = table.at(YAW_KEYS[a]!, pitch), k1 = table.at(YAW_KEYS[a + 1]!, pitch)
+      const mid = mixContour(head, table, { yaw: (YAW_KEYS[a]! + YAW_KEYS[a + 1]!) / 2, pitch })
+      for (const side of ['pos', 'neg'] as const) {
+        const line = mid.find(l => l.side === side)!
+        let n = 0
+        for (let seg = 0; seg < 3; seg++) for (let i = seg === 0 ? 0 : 1; i < COUNTS[seg]!; i++, n++) {
+          const q0 = k0[side][seg]!.samples[i]!, q1 = k1[side][seg]!.samples[i]!
+          if (Math.abs(q0.u) < 2.5 && Math.abs(q1.u) < 2.5) continue
+          const p0 = head.at(q0.u, q0.y), p1 = head.at(q1.u, q1.y), m = line.pts[n]!
+          expect(len(sub(m, p0)) + len(sub(m, p1))).toBeLessThan(1.5 * len(sub(p0, p1)) + 0.05)
+          checked++
+        }
+      }
+    }
+    console.log(`seam samples checked: ${checked}`)
+  })
+})
+
 describe('surface bones', () => {
   it('attaching then placing gives the point back (the round trip is exact up to the search)', () => {
     for (const d of BONE_DEFS) for (const p of d.pts) expect(len(sub(place(head, attach(head, p)), p))).toBeLessThan(1e-6)

@@ -37,13 +37,14 @@ it('mixed contour vs the head outline at in-between angles', () => {
   if (out) writeFileSync(`${out}/f3d-evidence-mix.svg`, svg + '</svg>')
 })
 
-it('dense sweep of the tracing: presence pattern and chin-anchor jumps', () => {
+it('dense sweep of the tracing with the key-table rule (each step continues the previous anchors): jumps and flicker', () => {
   const chinOf = (r: ReturnType<typeof traceKey>, s: 'pos' | 'neg'): V3 | undefined => { const q = r[s][0]?.[0]; return q ? head.at(q.u, q.y) : undefined }
   for (const pitch of [-45, -30, 0, 30, 45]) {
     let prev: ReturnType<typeof traceKey> | undefined, prevYaw = 0
     const notes: string[] = []
     for (let yaw = 0; yaw <= 90; yaw += 5) {
-      const r = traceKey(head, { yaw, pitch })
+      const ref = prev ? Object.fromEntries((['pos', 'neg'] as const).flatMap(s => { const a = chinOf(prev!, s); return a ? [[s, a]] : [] })) : {}
+      const r = traceKey(head, { yaw, pitch }, ref)
       const pat = (s: 'pos' | 'neg') => r[s].map(x => (x ? '■' : '□')).join('')
       if (prev) for (const s of ['pos', 'neg'] as const) {
         const a = chinOf(prev, s), b = chinOf(r, s)

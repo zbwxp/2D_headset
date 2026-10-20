@@ -18,6 +18,8 @@ export const FACE_U = (135 * Math.PI) / 180, JAW_BASE_Y = -0.91
 export const JAW_X = 0.55
 /** a side's walk must move this far toward its side on screen within TOWARD_LEN of arc (head units) */
 export const TOWARD_LEN = 0.08, TOWARD_MIN = 0.01
+/** outline loops smaller than this (largest extent, head units) are ignored */
+export const MIN_LOOP = 0.15
 const inFace = (p: OutlinePoint) => p.y < JAW_BASE_Y || Math.abs(p.u) <= FACE_U
 
 export interface Sample { readonly u: number; readonly y: number }
@@ -88,8 +90,10 @@ function segmentsOf(head: Head, path: OutlinePoint[]): (OutlinePoint[] | undefin
 }
 
 /** The key contour at a view with yaw ≥ 0, before absent segments are filled (PLAN §4). */
-export function traceKey(head: Head, view: View): { pos: (Sample[] | undefined)[]; neg: (Sample[] | undefined)[]; vis: { pos: boolean[][]; neg: boolean[][] }; chinLoop: number } {
-  const loops = candidates(head, view), m = mask(head, view)
+export function traceKey(head: Head, view: View, ref: Partial<Record<Side, V3>> = {}): { pos: (Sample[] | undefined)[]; neg: (Sample[] | undefined)[]; vis: { pos: boolean[][]; neg: boolean[][] }; chinLoop: number } {
+  // tiny loops (the rounded chin cap makes a small one of its own) are not face outlines
+  const extent = (l: Loop) => { const ps = l.pts.map(q => q.p); return Math.max(...[0, 1, 2].map(k => Math.max(...ps.map(p => p[k]!)) - Math.min(...ps.map(p => p[k]!)))) }
+  const loops = candidates(head, view).filter(l => extent(l) >= MIN_LOOP), m = mask(head, view)
   const chin: V3 = head.at(0, CHIN_Y)
   const sides: Record<Side, OutlinePoint[]> = { pos: [], neg: [] }
   let chinLoop = -1
@@ -100,7 +104,10 @@ export function traceKey(head: Head, view: View): { pos: (Sample[] | undefined)[
     // this side's chin anchor: the candidate point nearest the chin landmark from which a walk moves toward this side
     // on screen (two open chains can end at the chin; the nearest point alone may belong to the other side's chain)
     const near: { l: number; i: number; d: number }[] = []
-    loops.forEach((loop, l) => loop.pts.forEach((q, i) => near.push({ l, i, d: len(sub(q.p, chin)) })))
+    // nearest to the neighbouring key's chin anchor when building the key table (branch continuity, a fixed build
+    // order — never the viewer's previous frame, dot 1792489303); otherwise to the chin landmark
+    const target = ref[s] ?? chin
+    loops.forEach((loop, l) => loop.pts.forEach((q, i) => near.push({ l, i, d: len(sub(q.p, target)) })))
     near.sort((a, b) => a.d - b.d)
     // a walk's direction: where it is on screen after a fixed arc length (near the chin the grid is dense, so a fixed
     // count of points barely moves)
@@ -134,7 +141,23 @@ export interface KeyTable { readonly keys: KeyContour[]; readonly at: (yaw: numb
 /** All key contours for yaw 0 … 90; absent segments take the level key's positions, not visible (PLAN §4). */
 export function keyTable(head: Head): KeyTable {
   const raw = new Map<string, ReturnType<typeof traceKey>>()
-  for (const yaw of YAW_KEYS) for (const pitch of PITCH_KEYS) raw.set(`${yaw},${pitch}`, traceKey(head, { yaw, pitch }))
+  // fixed build order: the level key from the chin landmark; then up / down the yaw-0 column, each key starting from
+  // the previous key's chin anchors; then along each pitch row in yaw. Each key's anchors continue a neighbour's branch.
+  const anchorOf = (r: ReturnType<typeof traceKey>): Partial<Record<Side, V3>> => {
+    const o: Partial<Record<Side, V3>> = {}
+    for (const s of ['pos', 'neg'] as const) { const q = r[s][0]?.[0]; if (q) o[s] = head.at(q.u, q.y) }
+    return o
+  }
+  raw.set('0,0', traceKey(head, { yaw: 0, pitch: 0 }))
+  for (const dir of [1, -1]) {
+    const col = PITCH_KEYS.filter(p => p * dir > 0).sort((a, b) => Math.abs(a) - Math.abs(b))
+    let prev = raw.get('0,0')!
+    for (const pitch of col) { prev = traceKey(head, { yaw: 0, pitch }, anchorOf(prev)); raw.set(`0,${pitch}`, prev) }
+  }
+  for (const pitch of PITCH_KEYS) {
+    let prev = raw.get(`0,${pitch}`)!
+    for (const yaw of YAW_KEYS.slice(1)) { prev = traceKey(head, { yaw, pitch }, anchorOf(prev)); raw.set(`${yaw},${pitch}`, prev) }
+  }
   const level = raw.get('0,0')!
   const fill = (r: ReturnType<typeof traceKey>, s: Side, i: number): Segment => {
     const own = r[s][i]
