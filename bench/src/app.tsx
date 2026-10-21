@@ -406,6 +406,14 @@ export function App() {
   // a download then keeps
   type FileHandle = { name: string; getFile(): Promise<File>; createWritable(): Promise<{ write(d: string): Promise<void>; close(): Promise<void> }> }
   const opened = useRef<{ name: string; handle?: FileHandle } | null>(null)
+  // what the canvas shows, for the badge at the top right (bowen 1792551194): set only once a file's content has opened;
+  // a failed Open is shown and the old drawing stays (dot 1792551231). After a reload the drawing is the autosaved one: the
+  // name of the file last opened is remembered, but Save cannot write back until that file is opened again
+  const [fileNote, setFileNote] = useState<{ text: string; bad?: boolean }>(() => {
+    let last: string | null = null
+    try { last = localStorage.getItem('bench.lastOpened') } catch { /* no storage */ }
+    return { text: last ? `自动保存恢复的画（上次打开的是 ${last}；要存回请重新 Open 它）` : '自动保存恢复的画（不是从文件打开的）' }
+  })
   // stage 3b package 5: a playback drag's refusal, shown until the next press, pose change or
   // leaving playback; the drag's ghost (the picked point and where it is dragged); the number
   // fields' own text, kept apart from the pose (dot 1791696847)
@@ -1853,7 +1861,11 @@ export function App() {
           <label style={{ border: '1px solid #aaa', padding: '1px 6px', borderRadius: 3, cursor: 'pointer', background: '#f4f4f4' }} onClick={async e => {
             // Chrome / Edge: the picker keeps a handle so Save can write back; elsewhere the plain file input below
             const pick = (window as unknown as { showOpenFilePicker?: (o: unknown) => Promise<FileHandle[]> }).showOpenFilePicker
-            if (!pick || (e.target as HTMLElement).tagName === 'INPUT') return
+            if ((e.target as HTMLElement).tagName === 'INPUT') return
+            if (pose || restoring) { // Open is off while playback runs or the autosave is restoring: say so instead of doing nothing
+              e.preventDefault(); setFileNote({ text: `✗ 现在不能 Open：${pose ? '在回放（视角播放）里，先退出回放' : '自动保存还在恢复'}；画面没换${opened.current ? `（还是 ${opened.current.name}）` : ''}`, bad: true }); return
+            }
+            if (!pick) return
             e.preventDefault()
             let h: FileHandle | undefined
             try { [h] = await pick({ types: [{ description: 'headset drawing', accept: { 'application/json': ['.json'] } }] }) } catch { return } // cancelled
@@ -1872,6 +1884,7 @@ export function App() {
               try {
                 const text = await f.text()
                 if (mine !== openSeq.current || gen !== poseGen.current) {
+                  setFileNote({ text: `✗ 没打开 ${f.name}：${mine !== openSeq.current ? '又点了一次 Open' : '期间进入了回放'}；画面还是${opened.current ? ` ${opened.current.name}` : '原来的'}`, bad: true })
                   log.unshift({ calls: `open(${f.name})`, result: `✗ dropped: ${mine !== openSeq.current ? 'a later Open was started' : 'playback was entered meanwhile'}` })
                   bump(); return
                 }
@@ -1882,8 +1895,10 @@ export function App() {
                 const ls = core.snapshot().layers, top = ls[ls.length - 1]?.id ?? ''; setLayer(top); setLayers([top])
                 ix.drawingChanged(); setDrawing(k => k + 1)
                 opened.current = { name: f.name, handle }
+                setFileNote({ text: `${f.name}（${handle ? 'Save 存回这个文件' : 'Save 下载同名文件'}）` })
+                try { localStorage.setItem('bench.lastOpened', f.name) } catch { /* no storage */ }
                 log.unshift({ calls: `open(${f.name})`, result: 'ok' })
-              } catch (err) { log.unshift({ calls: `open(${f.name})`, result: '✗ ' + (err as Error).message }) }
+              } catch (err) { setFileNote({ text: `✗ 打开 ${f.name} 失败：${(err as Error).message}；画面还是${opened.current ? ` ${opened.current.name}` : '原来的'}`, bad: true }); log.unshift({ calls: `open(${f.name})`, result: '✗ ' + (err as Error).message }) }
               bump()
             }} />
           </label>
@@ -1893,6 +1908,7 @@ export function App() {
       </div>
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         {/* one line always, and the column never widened by it (minWidth 0): a status that wrapped would resize the canvas between a press and its release and move the press (a click on a curve with long ids nudged it) */}
+        <div data-testid="current-file" title={fileNote.text} style={{ padding: '3px 8px', borderBottom: '1px solid #ccc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textAlign: 'right', fontWeight: 600, background: fileNote.bad ? '#fde8e8' : '#eef4ff', color: fileNote.bad ? '#c00' : '#234' }}>当前文件：{fileNote.text}</div>
         <div data-testid="status" title={status} style={{ padding: '4px 8px', borderBottom: '1px solid #ccc', height: 18, lineHeight: '18px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: (pose ? corrRefusal : pv.refusal) ? '#c00' : '#333' }}>{status}</div>
         <svg ref={svg} style={{ flex: 1, background: '#fafafa', touchAction: 'none', cursor: cursorFor(pressTakenBy, pressed) }} data-testid="canvas" viewBox={`${box.x} ${box.y} ${box.w} ${box.h}`}
           onPointerDown={e => (viewportPress(e) ? onDown(e) : restoring ? undefined : bonePickOn.current && !pose ? onBonePick(e) : moveRef ? onRefDown(e) : inBetween ? onPoseDown(e) : poseView ? (ix.tool === 'A' || ix.tool === 'V' ? onDown(e) : undefined) : onDown(e))}
