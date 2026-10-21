@@ -31,13 +31,27 @@ const D = readBmp(tmp), dt = darkDT(D), { segs, band, redLow, redLowFront, chin 
 // the drawing's strokes are matched only along the render's jaw band (cheek under the eyes → chin, on the head; the far
 // eye, hair and neck are not in it); the cranium and the back of the head are hair in the drawing, so the render's
 // contour outside the band is the guide there (blue)
-const near = new Set<number>(), bandKeys = new Set<string>(band.map(s => s.join(',')))
+// near: render px within 6 of the band contour → the direction of the nearest contour piece (radians, mod π)
+const near = new Map<number, { a: number; d: number }>(), bandKeys = new Set<string>(band.map(s => s.join(',')))
 // turned views (yaw ≥ 30): the far side behind the ear is left blank (hair tips there), marked 待判断 in the notes
 const redBand = yaw >= 30 ? redLowFront : redLow
-for (const [x0, y0, x1, y1] of redBand) for (let i = 0; i <= 6; i++) { const x = x0 + ((x1 - x0) * i) / 6, y = y0 + ((y1 - y0) * i) / 6; for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) near.add(Math.round(y + dy) * C + Math.round(x + dx)) }
-const darkAt = (x: number, y: number) => { const [X, Y] = toDrawing(reg, x, y); return dt.at(X, Y) < 0.5 }
+for (const [x0, y0, x1, y1] of redBand) { const a = Math.atan2(y1 - y0, x1 - x0); for (let i = 0; i <= 6; i++) { const x = x0 + ((x1 - x0) * i) / 6, y = y0 + ((y1 - y0) * i) / 6; for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) { const k = Math.round(y + dy) * C + Math.round(x + dx), d = dx * dx + dy * dy, o = near.get(k); if (!o || d < o.d) near.set(k, { a, d }) } } }
+// a stroke counts only if it runs along the contour next to it (within 30°): bowen's 01 followed the real cheek line,
+// while the red had also taken the ear lobe (across) and the neck lines (down) (bowen 1792552021, dot 1792552296).
+// The drawing's stroke direction = across its darkness gradient, from the structure tensor over 7×7 drawing px
+const lum = (X: number, Y: number) => { const [r, g, b] = D.px(Math.max(0, Math.min(D.W - 1, X)), Math.max(0, Math.min(D.H - 1, Y))); return 0.299 * r + 0.587 * g + 0.114 * b }
+const strokeDir = (X: number, Y: number) => {
+  let xx = 0, yy = 0, xy = 0; const cx = Math.round(X), cy = Math.round(Y)
+  for (let j = -3; j <= 3; j++) for (let i = -3; i <= 3; i++) { const gx = lum(cx + i + 1, cy + j) - lum(cx + i - 1, cy + j), gy = lum(cx + i, cy + j + 1) - lum(cx + i, cy + j - 1); xx += gx * gx; yy += gy * gy; xy += gx * gy }
+  return 0.5 * Math.atan2(2 * xy, xx - yy) + Math.PI / 2 // gradient orientation + 90° = along the stroke
+}
+const along = (a: number, b: number) => { let d = Math.abs(a - b) % Math.PI; if (d > Math.PI / 2) d = Math.PI - d; return d < Math.PI / 6 }
+const redAt = (x: number, y: number) => {
+  const o = near.get(Math.floor(y) * C + Math.floor(x)); if (!o) return false
+  const [X, Y] = toDrawing(reg, x, y); return dt.at(X, Y) < 0.5 && along(strokeDir(X, Y), o.a)
+}
 const lowerT: P[] = [], craniumT: P[] = []
-for (const k of near) { const x = k % C, y = Math.floor(k / C); if (darkAt(x, y)) lowerT.push([x, y]) }
+for (const k of near.keys()) { const x = k % C, y = Math.floor(k / C); if (x >= 0 && x < C && redAt(x + 0.5, y + 0.5)) lowerT.push([x, y]) }
 // the guide: the render's contour outside the band, above the jaw (the neck below the chin left out)
 for (const sg of segs) { if (bandKeys.has(sg.join(','))) continue; const [x0, y0, x1, y1] = sg; for (let i = 0; i <= 3; i++) { const x = x0 + ((x1 - x0) * i) / 3, y = y0 + ((y1 - y0) * i) / 3; if (y < chin[1] - 4 || Math.hypot(x - CX, y - CY) < S * 1.05) craniumT.push([x, y]) } }
 
@@ -46,7 +60,7 @@ for (const sg of segs) { if (bandKeys.has(sg.join(','))) continue; const [x0, y0
 const UP = 3, M = C / 4, W = (C + 2 * M) * UP
 const segPix = new Set<number>()
 for (const sg of segs) { if (bandKeys.has(sg.join(','))) continue; const [x0, y0, x1, y1] = sg; if (Math.max(y0, y1) >= chin[1] - 4 && Math.hypot((x0 + x1) / 2 - CX, (y0 + y1) / 2 - CY) >= S * 1.05) continue; const n = Math.ceil(Math.hypot(x1 - x0, y1 - y0) * UP * 2) + 1; for (let i = 0; i <= n; i++) { const X = Math.round((x0 + ((x1 - x0) * i) / n + M) * UP), Y = Math.round((y0 + ((y1 - y0) * i) / n + M) * UP); for (let d = -1; d <= 1; d++) { segPix.add(Y * W + X + d); segPix.add((Y + d) * W + X) } } }
-const nearUp = (x: number, y: number) => x >= 0 && y >= 0 && x < C && y < C && near.has(Math.floor(y) * C + Math.floor(x))
+const nearUp = (x: number, y: number) => x >= 0 && y >= 0 && x < C && y < C && redAt(x, y)
 const pic = writeBmp(W, W, (X, Y) => {
   const x = (X + 0.5) / UP - M, y = (Y + 0.5) / UP - M, r = Math.hypot(x - CX, y - CY)
   if (segPix.has(Y * W + X)) return [30, 110, 230]
