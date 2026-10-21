@@ -4,7 +4,7 @@
 // face must not jump up and down while turning. Data: bench-tasks/迁移/turncheck.json (made from the archives).
 type V = [number, number]
 type Key = { yaw: number; pts: Record<string, V>; lines: { name: string; a: string; b: string; ha: V; hb: V }[]; ref: { src: string; x: number; y: number; w: number; h: number } }
-const all: { eye: number; chin: number; crown: number; variants: Record<string, Key[]> } = await (await fetch('/@fs/Users/bowen/Documents/headset-face3d/bench-tasks/%E8%BF%81%E7%A7%BB/turncheck.json')).json()
+const all: { eye: number; chin: number; crown: number; variants: Record<string, Key[]>; circ?: Record<string, Record<string, [number, number, number]>> } = await (await fetch('/@fs/Users/bowen/Documents/headset-face3d/bench-tasks/%E8%BF%81%E7%A7%BB/turncheck.json')).json()
 // variants: 原始迁移 (the migrated copies) and 颅顶统一到 01 (level crowns at 01's height, x / cheeks / jaw kept; dot 1792556341)
 const varSel = document.getElementById('var') as HTMLSelectElement
 for (const n of Object.keys(all.variants)) varSel.add(new Option(n, n))
@@ -27,6 +27,10 @@ function draw() {
   for (const [y, c, lab] of [[data.crown, '#7a00ff', '颅顶 −82.2'], [data.eye, '#e07000', '01 眼线'], [data.chin, '#00a651', '下巴 65']] as const) { g.strokeStyle = c; g.setLineDash([6, 4]); g.beginPath(); g.moveTo(0, OY + y * Z); g.lineTo(cv.width, OY + y * Z); g.stroke(); g.fillStyle = c; g.fillText(lab, 6, OY + y * Z - 4) }
   g.setLineDash([]); g.strokeStyle = '#111'; g.lineWidth = 2.5
   const pts: Record<string, V> = {}; for (const k in A.pts) pts[k] = lerp(A.pts[k]!, B.pts[k]!, t)
+  // the circular variant (bowen 1792601957, dot 1792602067): crown and chin turn about the vertical axis through the ball
+  // centre at their own radius — x = R·sin(yaw), height kept — instead of the piecewise blend
+  // a point at front offset x0 and depth R turning about the axis: x = x0·cos + R·sin; height = 01's (dot 1792602159)
+  for (const [id, [x0, R, y]] of Object.entries(all.circ?.[varSel.value] ?? {})) { const r = (yaw * Math.PI) / 180; pts[id] = [x0 * Math.cos(r) + R * Math.sin(r), y] }
   A.lines.forEach((l, n) => { const m = B.lines[n]!, ha = lerp(l.ha, m.ha, t), hb = lerp(l.hb, m.hb, t), a = pts[l.a]!, b = pts[l.b]!
     g.beginPath(); g.moveTo(...P(a)); g.bezierCurveTo(...P([a[0] + ha[0], a[1] + ha[1]]), ...P([b[0] + hb[0], b[1] + hb[1]]), ...P(b)); g.stroke() })
   const cr = pts['cmv3m1am1-6/pmv3m1am1-4']!, ch = pts['cmv3m1am1-6/pmv3m1am1-2']!
