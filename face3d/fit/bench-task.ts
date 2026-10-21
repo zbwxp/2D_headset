@@ -50,8 +50,12 @@ const redAt = (x: number, y: number) => {
   const o = near.get(Math.floor(y) * C + Math.floor(x)); if (!o) return false
   const [X, Y] = toDrawing(reg, x, y); return dt.at(X, Y) < 0.5 && along(strokeDir(X, Y), o.a)
 }
+// looking up (pitch > 0): no red at all — the strokes next to the render's jaw are the neck lines, ear lobes and hair
+// tips there, while the drawing's own chin arc and cheek lines lie apart from it (dot 1792552759); the jaw lines are not
+// refit either
+const noRed = pitch > 0
 const lowerT: P[] = [], craniumT: P[] = []
-for (const k of near.keys()) { const x = k % C, y = Math.floor(k / C); if (x >= 0 && x < C && redAt(x + 0.5, y + 0.5)) lowerT.push([x, y]) }
+if (!noRed) for (const k of near.keys()) { const x = k % C, y = Math.floor(k / C); if (x >= 0 && x < C && redAt(x + 0.5, y + 0.5)) lowerT.push([x, y]) }
 // the guide: the render's contour outside the band, above the jaw (the neck below the chin left out)
 for (const sg of segs) { if (bandKeys.has(sg.join(','))) continue; const [x0, y0, x1, y1] = sg; for (let i = 0; i <= 3; i++) { const x = x0 + ((x1 - x0) * i) / 3, y = y0 + ((y1 - y0) * i) / 3; if (y < chin[1] - 4 || Math.hypot(x - CX, y - CY) < S * 1.05) craniumT.push([x, y]) } }
 
@@ -65,7 +69,11 @@ const pic = writeBmp(W, W, (X, Y) => {
   const x = (X + 0.5) / UP - M, y = (Y + 0.5) / UP - M, r = Math.hypot(x - CX, y - CY)
   if (segPix.has(Y * W + X)) return [30, 110, 230]
   const [dX, dY] = toDrawing(reg, x, y)
-  if (dt.at(dX, dY) < 0.6) return nearUp(x, y) ? [225, 30, 30] : [185, 185, 185]
+  if (dt.at(dX, dY) < 0.6) return !noRed && nearUp(x, y) ? [225, 30, 30] : [140, 140, 140]
+  // light lines (luminance 110 … 200) too, in a lighter grey that still reads: the looking-up drawings draw the chin's
+  // outer edge thin and light, and the dark-only picture had dropped it (dot 1792552701 / 1792552759; checked on the
+  // unfaded originals at pitch +15 / +30)
+  { const v = lum(dX, dY); if (v < 200) return [170, 170, 170] }
   if (Math.abs(r - S) < 0.35 || (Math.abs(x - CX) < 0.2 && Math.abs(y - CY) < S * 1.3) || (Math.abs(y - CY) < 0.2 && Math.abs(x - CX) < S * 1.3)) return [235, 180, 215]
   return [255, 255, 255]
 })
@@ -183,6 +191,7 @@ const notes = {
   limits: [
     ...(yaw > 0 ? ['远侧点（右）沿用 123.json：在耳前，转头时跟着头走（来源：123.json 各视角的点位；它是不是脸轮廓的最终含义，待 bowen 确认）'] : []),
     ...(yaw >= 30 ? ['耳前缘往后那段（头部 z < 0.1：耳下、后颈）不高亮、不拟合：生成图那里是发梢，下颌在哪待判断（dot 1792520014）'] : []),
+    ...(pitch > 0 ? ['仰视：不标红线（贴近渲染下颌的是脖子线、耳垂和发梢）。线稿里中间那条细弧是下巴线，也是脸和脖子的分界，不一定是整张头颈图的最外边；两侧颊线到细弧之间的留白 = 待推定连接，别用耳垂或脖子补（dot 1792552759）'] : []),
     '参考图按 123.json 的 0,0 头顶 / 下巴和 90,0 下巴 / 脸前定比例；VRoid 下巴比 bowen 的头更靠后，90 度附近差约 8 px',
     '发际线高亮还没做',
   ],
