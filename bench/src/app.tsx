@@ -401,6 +401,11 @@ export function App() {
   const poseRef = useRef(pose)
   poseRef.current = pose
   const poseGen = useRef(0), openSeq = useRef(0)
+  // the file the drawing came from (bowen 1792550511 / 1792550522: Save goes back to the opened file, so names do not get
+  // mixed up): with the browser's file picker (Chrome / Edge) a handle that Save writes to; otherwise only the name, which
+  // a download then keeps
+  type FileHandle = { name: string; getFile(): Promise<File>; createWritable(): Promise<{ write(d: string): Promise<void>; close(): Promise<void> }> }
+  const opened = useRef<{ name: string; handle?: FileHandle } | null>(null)
   // stage 3b package 5: a playback drag's refusal, shown until the next press, pose change or
   // leaving playback; the drag's ghost (the picked point and where it is dragged); the number
   // fields' own text, kept apart from the pose (dot 1791696847)
@@ -1831,16 +1836,34 @@ export function App() {
           return st.notice ? `${head} · ${st.notice}` : head
         })()}{saver.current?.status().state === 'failed' && <> <button onClick={() => saver.current?.retry()}>Retry</button></>}</div>
         <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
-          {B('Save', () => {
-            const a = document.createElement('a')
-            a.href = URL.createObjectURL(new Blob([save(core)], { type: 'application/json' }))
-            a.download = 'drawing.headset.json'; a.click(); URL.revokeObjectURL(a.href)
-            log.unshift({ calls: 'save()', result: 'ok' }); bump()
+          {B('Save', async () => {
+            const text = save(core), of = opened.current
+            const download = (why: string) => {
+              const a = document.createElement('a')
+              a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }))
+              a.download = of?.name ?? 'drawing.headset.json'; a.click(); URL.revokeObjectURL(a.href)
+              log.unshift({ calls: `save() → download ${a.download}`, result: why }); bump()
+            }
+            if (!of?.handle) return download('ok')
+            try { const w = await of.handle.createWritable(); await w.write(text); await w.close(); log.unshift({ calls: `save() → ${of.name}`, result: 'ok (written to the opened file)' }); bump() }
+            catch (err) { download(`could not write ${of.name} (${(err as Error).message}); downloaded instead`) }
           })}
+          <span data-testid="opened-file" style={{ color: '#666', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={opened.current?.name}>{opened.current ? `${opened.current.handle ? '存回' : '下载为'} ${opened.current.name}` : ''}</span>
           <fieldset disabled={!!pose || restoring} style={{ border: 0, padding: 0, margin: 0 }}>
-          <label style={{ border: '1px solid #aaa', padding: '1px 6px', borderRadius: 3, cursor: 'pointer', background: '#f4f4f4' }}>Open
+          <label style={{ border: '1px solid #aaa', padding: '1px 6px', borderRadius: 3, cursor: 'pointer', background: '#f4f4f4' }} onClick={async e => {
+            // Chrome / Edge: the picker keeps a handle so Save can write back; elsewhere the plain file input below
+            const pick = (window as unknown as { showOpenFilePicker?: (o: unknown) => Promise<FileHandle[]> }).showOpenFilePicker
+            if (!pick || (e.target as HTMLElement).tagName === 'INPUT') return
+            e.preventDefault()
+            let h: FileHandle | undefined
+            try { [h] = await pick({ types: [{ description: 'headset drawing', accept: { 'application/json': ['.json'] } }] }) } catch { return } // cancelled
+            const inp = (e.currentTarget as HTMLElement).querySelector('input') as HTMLInputElement & { pickedHandle?: FileHandle }
+            const dt = new DataTransfer(); dt.items.add(await h!.getFile()); inp.files = dt.files; inp.pickedHandle = h
+            inp.dispatchEvent(new Event('change', { bubbles: true }))
+          }}>Open
             <input type="file" data-testid="open" accept=".json" style={{ display: 'none' }} onChange={async e => {
-              const f = e.target.files?.[0]; e.target.value = ''
+              const f = e.target.files?.[0], handle = (e.target as HTMLInputElement & { pickedHandle?: FileHandle }).pickedHandle
+              ;(e.target as HTMLInputElement & { pickedHandle?: FileHandle }).pickedHandle = undefined; e.target.value = ''
               if (!f) return
               // a read returns later: it may open only if it is still the latest Open and playback has
               // not been entered since (ledger row 8; dot 1791684079)
@@ -1858,6 +1881,7 @@ export function App() {
                 refGen.current++
                 const ls = core.snapshot().layers, top = ls[ls.length - 1]?.id ?? ''; setLayer(top); setLayers([top])
                 ix.drawingChanged(); setDrawing(k => k + 1)
+                opened.current = { name: f.name, handle }
                 log.unshift({ calls: `open(${f.name})`, result: 'ok' })
               } catch (err) { log.unshift({ calls: `open(${f.name})`, result: '✗ ' + (err as Error).message }) }
               bump()
