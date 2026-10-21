@@ -96,7 +96,12 @@ const T = [...lowerT, ...craniumT].map(toCanvas)
 // (Fitting all four lines from scratch folded back at 60 … 90 and looped at large pitch — dot 1792518360)
 const fixMatch = process.env.CANDIDATE ? process.env.CANDIDATE === 'fix' : Math.abs(pitch) >= 45
 // bowen's keyframes reach pitch ±45 only: beyond, his ±45 outline is the start
-const basePitch = Math.max(-45, Math.min(45, pitch)), base = controlsAt({ yaw, pitch: basePitch }), bp = (id: string): P => [base.points[id]!.x, base.points[id]!.y]
+const basePitch = Math.max(-45, Math.min(45, pitch)), base = controlsAt({ yaw, pitch: basePitch })
+// the crown point (颅顶点): where the screen's vertical centre line meets the top of the blue cranium line (bowen
+// 1792553228: no special definition of his own); his other points stay as the starting outline
+const crownId = LINES.find(l => l.name === '左颅')!.b
+const crownBlue = craniumT.map(toCanvas).filter(p => Math.abs(p[0]) < 1.5).reduce<P | null>((a, p) => (!a || p[1] < a[1] ? p : a), null)
+const bp = (id: string): P => (id === crownId && crownBlue ? [0, crownBlue[1]] : [base.points[id]!.x, base.points[id]!.y])
 const red = lowerT.map(toCanvas)
 const ang = (p: P) => Math.atan2(p[1], p[0]) // y down: L ≈ 0, crown ≈ −90°, chin ≈ +90°, R ≈ ±180°
 const inArc = (p: P, a0: number, a1: number) => { let t = ang(p); if (a1 < a0) { if (t < a0) t += 2 * Math.PI; return t >= a0 && t <= a1 + 2 * Math.PI } return t >= a0 && t <= a1 }
@@ -179,6 +184,7 @@ const notes = {
   view: { convention: 'B（建模视角）：相机先绕头 yaw，再绕屏幕水平线 pitch，正交投影；只做右转一侧，左侧由镜像得到', yaw, pitch },
   lines: { 左颅: '左侧点 → 头顶', 左下颌: '左侧点 → 下巴', 右下颌: '右侧点 → 下巴', 右颅: '右侧点 → 头顶', note: '「左」= 画面 +x 一侧（转头后是脸的前侧）；四条线都在 0,0 视图里编辑，九个视图起始相同' },
   reference: { drawing, original: `${name}-original.png`, registration: { scale: reg.sc, shiftRenderPx: [reg.dx, reg.dy], lowerFaceMeanRenderPx: +reg.mean.toFixed(2) }, renderFrame: { cellPx: C, headBallRadiusPx: S, ballCentrePx: [CX, CY] }, canvas: { headBallRadiusPx: PX, ballCentre: [0, 0], imageScale: scale, imageCentre: Ic, renderToBench: { K, Q: [0, -0.4, -0.32], from: 'bowen 123.json 脸轮廓 0,0 头顶/下巴 + 90,0 下巴/脸前' } } },
+  crown: crownBlue ? `颅顶点 = 画面竖直中线和蓝线顶部的交点 (0, ${crownBlue[1].toFixed(1)})（bowen 1792553228）` : '没找到蓝线和中线的交点，颅顶点沿用 123.json',
   firstMatch: { from: basePitch === pitch ? 'bowen 123.json 同视角的脸轮廓（点和手柄）' : `bowen 123.json 的 pitch ${basePitch} 脸轮廓（他的关键帧只到 ±45，钳到 ${basePitch} 回放）：只是起稿，不是已有的 ${pitch}° 骨线`, jawRefitToRed: fixMatch ? '待修：不重拟' : refit, targetsRed: lowerT.length, targetsBlue: craniumT.length },
   status: '生成线稿是候选，角度未校准（dot 1792513207）；配准只用下半张脸',
   // large pitch: the generated drawings weaken the angle (dot 1792515820) and the jaw registers onto the eyes (checked
