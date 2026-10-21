@@ -15,7 +15,7 @@ const imgsBy: Record<string, HTMLImageElement[]> = {}
 for (const [n, keys] of Object.entries(all.variants)) imgsBy[n] = await load(keys)
 let imgs = imgsBy[varSel.value]!
 const cv = document.getElementById('c') as HTMLCanvasElement, g = cv.getContext('2d')!
-const yawIn = document.getElementById('yaw') as HTMLInputElement, refIn = document.getElementById('ref') as HTMLInputElement
+const yawIn = document.getElementById('yaw') as HTMLInputElement, refIn = document.getElementById('ref') as HTMLInputElement, marksIn = document.getElementById('marks') as HTMLInputElement
 const Z = 3.4, OX = cv.width / 2 - 10 * Z, OY = cv.height * 0.55 // canvas units → screen
 const P = (p: V): V => [OX + p[0] * Z, OY + p[1] * Z]
 const lerp = (a: V, b: V, t: number): V => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]
@@ -33,11 +33,14 @@ function draw() {
   for (const [id, [x0, R, y]] of Object.entries(all.circ?.[varSel.value] ?? {})) { const r = (yaw * Math.PI) / 180; pts[id] = [x0 * Math.cos(r) + R * Math.sin(r), y] }
   A.lines.forEach((l, n) => { const m = B.lines[n]!, ha = lerp(l.ha, m.ha, t), hb = lerp(l.hb, m.hb, t), a = pts[l.a]!, b = pts[l.b]!
     g.beginPath(); g.moveTo(...P(a)); g.bezierCurveTo(...P([a[0] + ha[0], a[1] + ha[1]]), ...P([b[0] + hb[0], b[1] + hb[1]]), ...P(b)); g.stroke() })
+  // the endpoints (bowen 1792602867): crown, chin, the two side joints, the two cuts
+  const marks: [string, string, string][] = [['cmv3m1am1-6/pmv3m1am1-4', '#7a00ff', '颅顶'], ['cmv3m1am1-6/pmv3m1am1-2', '#00a651', '下巴'], ['pmv3m1am1-1', '#333', '前连接点'], ['cmv3m1am1-6/pmv3m1am1-1', '#333', '后连接点'], ['pm03-skf', '#e00', '前切点'], ['pm03-skb', '#e00', '后切点']]
+  if (marksIn.checked) for (const [id, c, lab] of marks) { const p = pts[id]; if (!p) continue; const [x, y] = P(p); g.fillStyle = c; g.beginPath(); g.arc(x, y, 5, 0, 7); g.fill(); g.font = '12px system-ui'; g.fillText(lab, x + 7, y - 6) }
   const cr = pts['cmv3m1am1-6/pmv3m1am1-4']!, ch = pts['cmv3m1am1-6/pmv3m1am1-2']!
   document.getElementById('yv')!.textContent = `${yaw}°`
   document.getElementById('info')!.textContent = `颅顶 y ${cr[1].toFixed(1)} · 下巴 y ${ch[1].toFixed(1)} · 关键帧 ${A.yaw}° / ${B.yaw}°（${(t * 100).toFixed(0)}%）`
 }
-yawIn.oninput = draw; refIn.onchange = draw
+yawIn.oninput = draw; refIn.onchange = draw; marksIn.onchange = draw
 varSel.onchange = () => { data = { ...all, keys: all.variants[varSel.value]! }; imgs = imgsBy[varSel.value]!; draw() }
 for (const b of document.querySelectorAll<HTMLButtonElement>('button[data-k]')) b.onclick = () => { yawIn.value = b.dataset.k!; draw() }
 draw()
