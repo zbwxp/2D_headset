@@ -74,7 +74,8 @@ const pic = writeBmp(W, W, (X, Y) => {
   // outer edge thin and light, and the dark-only picture had dropped it (dot 1792552701 / 1792552759; checked on the
   // unfaded originals at pitch +15 / +30)
   { const v = lum(dX, dY); if (v < 200) return [170, 170, 170] }
-  if (Math.abs(r - S) < 0.35 || (Math.abs(x - CX) < 0.2 && Math.abs(y - CY) < S * 1.3) || (Math.abs(y - CY) < 0.2 && Math.abs(x - CX) < S * 1.3)) return [235, 180, 215]
+  // looking up: no head ball / cross — at +30 the ball sits right on the drawing's thin chin arc (dot 1792552968)
+  if (!noRed && (Math.abs(r - S) < 0.35 || (Math.abs(x - CX) < 0.2 && Math.abs(y - CY) < S * 1.3) || (Math.abs(y - CY) < 0.2 && Math.abs(x - CX) < S * 1.3))) return [235, 180, 215]
   return [255, 255, 255]
 })
 writeFileSync(`${outDir}/.${name}-ref.bmp`, pic)
