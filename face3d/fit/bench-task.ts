@@ -97,11 +97,11 @@ const T = [...lowerT, ...craniumT].map(toCanvas)
 const fixMatch = process.env.CANDIDATE ? process.env.CANDIDATE === 'fix' : Math.abs(pitch) >= 45
 // bowen's keyframes reach pitch ±45 only: beyond, his ±45 outline is the start
 const basePitch = Math.max(-45, Math.min(45, pitch)), base = controlsAt({ yaw, pitch: basePitch })
-// the crown point (颅顶点): one fixed point on the head's turning axis, at bowen's 01 height (0, −82.2) — turning keeps
-// its height, nodding tilts it with the head: (0, −82.2·cos pitch) (bowen 1792553228 / 1792553320; the blue line's top
-// itself dips 1–2 px at 45 … 90 because the VRoid skull is not a ball, which is why 02 sat lower)
+// the crown point (颅顶点): level views take bowen's 01 height (y −82.2) and keep their own x; tilted views keep the
+// starting outline's crown (bowen 1792553320, dot 1792553438 — only the height is unified; x = 0 and a cos(pitch) drop
+// would assume a fixed 3D point the 2D drawings do not ask for)
 const crownId = LINES.find(l => l.name === '左颅')!.b, CROWN = 82.2
-const crownAt: P = [0, -CROWN * Math.cos((pitch * Math.PI) / 180)]
+const crownAt: P = pitch === 0 ? [base.points[crownId]!.x, -CROWN] : [base.points[crownId]!.x, base.points[crownId]!.y]
 const bp = (id: string): P => (id === crownId ? crownAt : [base.points[id]!.x, base.points[id]!.y])
 const red = lowerT.map(toCanvas)
 const ang = (p: P) => Math.atan2(p[1], p[0]) // y down: L ≈ 0, crown ≈ −90°, chin ≈ +90°, R ≈ ±180°
@@ -185,7 +185,7 @@ const notes = {
   view: { convention: 'B（建模视角）：相机先绕头 yaw，再绕屏幕水平线 pitch，正交投影；只做右转一侧，左侧由镜像得到', yaw, pitch },
   lines: { 左颅: '左侧点 → 头顶', 左下颌: '左侧点 → 下巴', 右下颌: '右侧点 → 下巴', 右颅: '右侧点 → 头顶', note: '「左」= 画面 +x 一侧（转头后是脸的前侧）；四条线都在 0,0 视图里编辑，九个视图起始相同' },
   reference: { drawing, original: `${name}-original.png`, registration: { scale: reg.sc, shiftRenderPx: [reg.dx, reg.dy], lowerFaceMeanRenderPx: +reg.mean.toFixed(2) }, renderFrame: { cellPx: C, headBallRadiusPx: S, ballCentrePx: [CX, CY] }, canvas: { headBallRadiusPx: PX, ballCentre: [0, 0], imageScale: scale, imageCentre: Ic, renderToBench: { K, Q: [0, -0.4, -0.32], from: 'bowen 123.json 脸轮廓 0,0 头顶/下巴 + 90,0 下巴/脸前' } } },
-  crown: `颅顶点 = 转头轴上的固定点，高度取 01 的 82.2：(0, ${crownAt[1].toFixed(1)})，平视各角度相同，俯仰时乘 cos(俯仰角)（bowen 1792553228 / 1792553320）`,
+  crown: pitch === 0 ? `颅顶点：平视统一到 01 的高度 y −82.2，x 沿用初稿 (${crownAt[0].toFixed(1)})（bowen 1792553320, dot 1792553438）` : `颅顶点：俯仰视角保留初稿位置 (${crownAt[0].toFixed(1)}, ${crownAt[1].toFixed(1)})（dot 1792553438）`,
   firstMatch: { from: basePitch === pitch ? 'bowen 123.json 同视角的脸轮廓（点和手柄）' : `bowen 123.json 的 pitch ${basePitch} 脸轮廓（他的关键帧只到 ±45，钳到 ${basePitch} 回放）：只是起稿，不是已有的 ${pitch}° 骨线`, jawRefitToRed: fixMatch ? '待修：不重拟' : refit, targetsRed: lowerT.length, targetsBlue: craniumT.length },
   status: '生成线稿是候选，角度未校准（dot 1792513207）；配准只用下半张脸',
   // large pitch: the generated drawings weaken the angle (dot 1792515820) and the jaw registers onto the eyes (checked
