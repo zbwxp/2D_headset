@@ -25,7 +25,7 @@ if (existsSync(`${outDir}/${name}.json`)) { console.error(`refused: ${outDir}/${
 mkdirSync(outDir!, { recursive: true })
 const tmp = `${outDir}/.${name}-drawing.bmp`
 execFileSync('sips', ['-s', 'format', 'bmp', drawing!, '--out', tmp], { stdio: 'ignore' })
-const D = readBmp(tmp), dt = darkDT(D), { segs, band, bandFront, chin } = renderContour({ yaw, pitch }), reg = register(D, dt, band)
+const D = readBmp(tmp), dt = darkDT(D), { segs, band, redLow, redLowFront, chin } = renderContour({ yaw, pitch }), reg = register(D, dt, band)
 
 // ---- targets (render px): the drawing's dark pixels next to the render's lower contour; the render's cranium contour
 // the drawing's strokes are matched only along the render's jaw band (cheek under the eyes → chin, on the head; the far
@@ -33,7 +33,7 @@ const D = readBmp(tmp), dt = darkDT(D), { segs, band, bandFront, chin } = render
 // contour outside the band is the guide there (blue)
 const near = new Set<number>(), bandKeys = new Set<string>(band.map(s => s.join(',')))
 // turned views (yaw ≥ 30): the far side behind the ear is left blank (hair tips there), marked 待判断 in the notes
-const redBand = yaw >= 30 ? bandFront : band
+const redBand = yaw >= 30 ? redLowFront : redLow
 for (const [x0, y0, x1, y1] of redBand) for (let i = 0; i <= 6; i++) { const x = x0 + ((x1 - x0) * i) / 6, y = y0 + ((y1 - y0) * i) / 6; for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) near.add(Math.round(y + dy) * C + Math.round(x + dx)) }
 const darkAt = (x: number, y: number) => { const [X, Y] = toDrawing(reg, x, y); return dt.at(X, Y) < 0.5 }
 const lowerT: P[] = [], craniumT: P[] = []
@@ -41,13 +41,14 @@ for (const k of near) { const x = k % C, y = Math.floor(k / C); if (darkAt(x, y)
 // the guide: the render's contour outside the band, above the jaw (the neck below the chin left out)
 for (const sg of segs) { if (bandKeys.has(sg.join(','))) continue; const [x0, y0, x1, y1] = sg; for (let i = 0; i <= 3; i++) { const x = x0 + ((x1 - x0) * i) / 3, y = y0 + ((y1 - y0) * i) / 3; if (y < chin[1] - 4 || Math.hypot(x - CX, y - CY) < S * 1.05) craniumT.push([x, y]) } }
 
-// ---- the highlighted reference picture, 3× the render frame
-const UP = 3, W = C * UP
+// ---- the highlighted reference picture, 3× the render frame plus a margin of C/4 all round (the frame alone cut the
+// drawing ~25 canvas px under the chin; bowen 1792550374)
+const UP = 3, M = C / 4, W = (C + 2 * M) * UP
 const segPix = new Set<number>()
-for (const sg of segs) { if (bandKeys.has(sg.join(','))) continue; const [x0, y0, x1, y1] = sg; if (Math.max(y0, y1) >= chin[1] - 4 && Math.hypot((x0 + x1) / 2 - CX, (y0 + y1) / 2 - CY) >= S * 1.05) continue; const n = Math.ceil(Math.hypot(x1 - x0, y1 - y0) * UP * 2) + 1; for (let i = 0; i <= n; i++) { const X = Math.round((x0 + ((x1 - x0) * i) / n) * UP), Y = Math.round((y0 + ((y1 - y0) * i) / n) * UP); for (let d = -1; d <= 1; d++) { segPix.add(Y * W + X + d); segPix.add((Y + d) * W + X) } } }
-const nearUp = (x: number, y: number) => near.has(Math.floor(y) * C + Math.floor(x))
+for (const sg of segs) { if (bandKeys.has(sg.join(','))) continue; const [x0, y0, x1, y1] = sg; if (Math.max(y0, y1) >= chin[1] - 4 && Math.hypot((x0 + x1) / 2 - CX, (y0 + y1) / 2 - CY) >= S * 1.05) continue; const n = Math.ceil(Math.hypot(x1 - x0, y1 - y0) * UP * 2) + 1; for (let i = 0; i <= n; i++) { const X = Math.round((x0 + ((x1 - x0) * i) / n + M) * UP), Y = Math.round((y0 + ((y1 - y0) * i) / n + M) * UP); for (let d = -1; d <= 1; d++) { segPix.add(Y * W + X + d); segPix.add((Y + d) * W + X) } } }
+const nearUp = (x: number, y: number) => x >= 0 && y >= 0 && x < C && y < C && near.has(Math.floor(y) * C + Math.floor(x))
 const pic = writeBmp(W, W, (X, Y) => {
-  const x = (X + 0.5) / UP, y = (Y + 0.5) / UP, r = Math.hypot(x - CX, y - CY)
+  const x = (X + 0.5) / UP - M, y = (Y + 0.5) / UP - M, r = Math.hypot(x - CX, y - CY)
   if (segPix.has(Y * W + X)) return [30, 110, 230]
   const [dX, dY] = toDrawing(reg, x, y)
   if (dt.at(dX, dY) < 0.6) return nearUp(x, y) ? [225, 30, 30] : [185, 185, 185]
