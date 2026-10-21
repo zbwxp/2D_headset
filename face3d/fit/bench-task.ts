@@ -25,7 +25,7 @@ if (existsSync(`${outDir}/${name}.json`)) { console.error(`refused: ${outDir}/${
 mkdirSync(outDir!, { recursive: true })
 const tmp = `${outDir}/.${name}-drawing.bmp`
 execFileSync('sips', ['-s', 'format', 'bmp', drawing!, '--out', tmp], { stdio: 'ignore' })
-const D = readBmp(tmp), dt = darkDT(D), { segs, band, redLow, redLowFront, chin } = renderContour({ yaw, pitch }), reg = register(D, dt, band)
+const D = readBmp(tmp), dt = darkDT(D), { segs, band, redLow, redLowFront, chin } = renderContour({ yaw, pitch }), reg = register(D, dt, band, process.env.SCALE ? Number(process.env.SCALE) : undefined, process.env.SHIFT ? (process.env.SHIFT.split(',').map(Number) as [number, number]) : undefined)
 
 // ---- targets (render px): the drawing's dark pixels next to the render's lower contour; the render's cranium contour
 // the drawing's strokes are matched only along the render's jaw band (cheek under the eyes → chin, on the head; the far

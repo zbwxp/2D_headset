@@ -59,15 +59,25 @@ export function darkDT(D: Bmp) {
 export interface Reg { sc: number; dx: number; dy: number; k0: number; mean: number }
 /** render px → drawing px under a registration */
 export const toDrawing = (r: Reg, x: number, y: number): [number, number] => [((x - CX) * r.sc + CX + r.dx) * r.k0, ((y - CY) * r.sc + CY + r.dy) * r.k0]
-/** register a drawing to the render by its lower face: the render's jaw-band contour (renderContour().band) */
-export function register(D: Bmp, dt: ReturnType<typeof darkDT>, band: [number, number, number, number][]): Reg {
+/** register a drawing to the render by its lower face; `fixedScale` keeps the scale and fits only the shift — level views
+ *  share one scale, since the generated drawings keep the head size (eye → chin 414 … 417 px at 0 / 45 / 90) and a free
+ *  per-drawing scale (1.02 … 1.17) made the heads disagree (bowen 1792555037 / 1792555240) */
+export function register(D: Bmp, dt: ReturnType<typeof darkDT>, band: [number, number, number, number][], fixedScale?: number, fixedShift?: [number, number]): Reg {
+  // a fixed scale and shift (set from the eye line and chin of 01, dot 1792555288): no search, only the mean distance
+  if (fixedScale && fixedShift) {
+    const k0 = D.W / C, lower: [number, number][] = []
+    for (const [x0, y0, x1, y1] of band) for (const t of [0, 0.5]) lower.push([x0 + (x1 - x0) * t, y0 + (y1 - y0) * t])
+    let c = 0; for (const [x, y] of lower) { const [X, Y] = toDrawing({ sc: fixedScale, dx: fixedShift[0], dy: fixedShift[1], k0, mean: 0 }, x, y); c += dt.at(X, Y) }
+    return { sc: fixedScale, dx: fixedShift[0], dy: fixedShift[1], k0, mean: c / Math.max(1, lower.length) / k0 }
+  }
   const k0 = D.W / C, lower: [number, number][] = []
   for (const [x0, y0, x1, y1] of band) for (const t of [0, 0.5]) lower.push([x0 + (x1 - x0) * t, y0 + (y1 - y0) * t])
   let best = { sc: 1, dx: 0, dy: 0, c: Infinity }
   // the scale stays in 0.9 … 1.4: the drawings are made from the render at about its size (fits 1.0 … 1.25); a wider
   // range lets a shrunk jaw settle on dense eye / bang strokes with a lower cost (seen at 0.63 … 0.72)
-  for (const [range, step, srange, sstep] of [[50, 4, 0.25, 0.025], [5, 1, 0.03, 0.005]] as const) {
-    const c0 = best.c === Infinity ? { sc: 1.15, dx: 0, dy: 0 } : { ...best }
+  for (const [range, step, srange0, sstep] of [[50, 4, 0.25, 0.025], [5, 1, 0.03, 0.005]] as const) {
+    const srange = fixedScale ? 0 : srange0
+    const c0 = best.c === Infinity ? { sc: fixedScale ?? 1.15, dx: 0, dy: 0 } : { ...best }
     for (let sc = c0.sc - srange; sc <= c0.sc + srange + 1e-9; sc += sstep) for (let dx = c0.dx - range; dx <= c0.dx + range; dx += step) for (let dy = c0.dy - range; dy <= c0.dy + range; dy += step) {
       let c = 0; for (const [x, y] of lower) { const [X, Y] = toDrawing({ sc, dx, dy, k0, mean: 0 }, x, y); c += dt.at(X, Y) }
       if (c < best.c) best = { sc, dx, dy, c }
