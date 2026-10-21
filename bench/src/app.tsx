@@ -1867,10 +1867,16 @@ export function App() {
             }
             if (!pick) return
             e.preventDefault()
-            let h: FileHandle | undefined
-            try { [h] = await pick({ types: [{ description: 'headset drawing', accept: { 'application/json': ['.json'] } }] }) } catch { return } // cancelled
+            // the input is found before the picker is awaited: React clears e.currentTarget once the handler yields (the
+            // first version looked it up afterwards, got null and Open silently did nothing; bowen 1792551706)
             const inp = (e.currentTarget as HTMLElement).querySelector('input') as HTMLInputElement & { pickedHandle?: FileHandle }
-            const dt = new DataTransfer(); dt.items.add(await h!.getFile()); inp.files = dt.files; inp.pickedHandle = h
+            let h: FileHandle | undefined
+            try { [h] = await pick({ types: [{ description: 'headset drawing', accept: { 'application/json': ['.json'] } }] }) } catch (err) {
+              if ((err as Error).name !== 'AbortError') setFileNote({ text: `✗ 文件选择器出错：${(err as Error).message}`, bad: true })
+              return // AbortError = cancelled
+            }
+            try { const dt = new DataTransfer(); dt.items.add(await h!.getFile()); inp.files = dt.files; inp.pickedHandle = h }
+            catch (err) { setFileNote({ text: `✗ 读不了 ${h!.name}：${(err as Error).message}；画面没换`, bad: true }); return }
             inp.dispatchEvent(new Event('change', { bubbles: true }))
           }}>Open
             <input type="file" data-testid="open" accept=".json" style={{ display: 'none' }} onChange={async e => {
