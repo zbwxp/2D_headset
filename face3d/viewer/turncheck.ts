@@ -4,7 +4,11 @@
 // face must not jump up and down while turning. Data: bench-tasks/迁移/turncheck.json (made from the archives).
 type V = [number, number]
 type Key = { yaw: number; pts: Record<string, V>; lines: { name: string; a: string; b: string; ha: V; hb: V }[]; ref: { src: string; x: number; y: number; w: number; h: number } }
-const data: { eye: number; chin: number; crown: number; keys: Key[] } = await (await fetch('/@fs/Users/bowen/Documents/headset-face3d/bench-tasks/%E8%BF%81%E7%A7%BB/turncheck.json')).json()
+const all: { eye: number; chin: number; crown: number; variants: Record<string, Key[]> } = await (await fetch('/@fs/Users/bowen/Documents/headset-face3d/bench-tasks/%E8%BF%81%E7%A7%BB/turncheck.json')).json()
+// variants: 原始迁移 (the migrated copies) and 颅顶统一到 01 (level crowns at 01's height, x / cheeks / jaw kept; dot 1792556341)
+const varSel = document.getElementById('var') as HTMLSelectElement
+for (const n of Object.keys(all.variants)) varSel.add(new Option(n, n))
+let data = { ...all, keys: all.variants[varSel.value]! }
 const imgs = await Promise.all(data.keys.map(k => new Promise<HTMLImageElement>(r => { const i = new Image(); i.onload = () => r(i); i.src = k.ref.src })))
 const cv = document.getElementById('c') as HTMLCanvasElement, g = cv.getContext('2d')!
 const yawIn = document.getElementById('yaw') as HTMLInputElement, refIn = document.getElementById('ref') as HTMLInputElement
@@ -26,5 +30,6 @@ function draw() {
   document.getElementById('info')!.textContent = `颅顶 y ${cr[1].toFixed(1)} · 下巴 y ${ch[1].toFixed(1)} · 关键帧 ${A.yaw}° / ${B.yaw}°（${(t * 100).toFixed(0)}%）`
 }
 yawIn.oninput = draw; refIn.onchange = draw
+varSel.onchange = () => { data = { ...all, keys: all.variants[varSel.value]! }; draw() }
 for (const b of document.querySelectorAll<HTMLButtonElement>('button[data-k]')) b.onclick = () => { yawIn.value = b.dataset.k!; draw() }
 draw()
