@@ -4,7 +4,10 @@
 // face must not jump up and down while turning. Data: bench-tasks/迁移/turncheck.json (made from the archives).
 type V = [number, number]
 type Key = { yaw: number; pts: Record<string, V>; lines: { name: string; a: string; b: string; ha: V; hb: V; side?: boolean }[]; ref: { src: string; x: number; y: number; w: number; h: number } }
-const all: { eye: number; chin: number; crown: number; ear?: number; temple?: number; variants: Record<string, Key[]>; circ?: Record<string, Record<string, [number, number, number]>>; circErr?: Record<string, Record<string, [number, number]>>; sheet?: Record<string, { theta45: number; pts: Record<string, V> }> } = await (await fetch('/@fs/Users/bowen/Documents/headset-face3d/bench-tasks/%E8%BF%81%E7%A7%BB/turncheck.json')).json()
+// 眼睛 (bowen 1792682066): the 0° eye (near, x < 0) moved along its track and shaped by the sphere frame; per eye a table
+// head yaw → [sphere yaw φ, track angle ψ]
+type Eyes = { base: [V, V, V, V][]; anchor: V; z: number; r: number; near: [number, number, number][]; far: [number, number, number][] }
+const all: { eye: number; chin: number; crown: number; ear?: number; temple?: number; variants: Record<string, Key[]>; circ?: Record<string, Record<string, [number, number, number]>>; circErr?: Record<string, Record<string, [number, number]>>; sheet?: Record<string, { theta45: number; pts: Record<string, V> }>; eyes?: Eyes } = await (await fetch('/@fs/Users/bowen/Documents/headset-face3d/bench-tasks/%E8%BF%81%E7%A7%BB/turncheck.json')).json()
 // variants: 原始迁移 (the migrated copies) and 颅顶统一到 01 (level crowns at 01's height, x / cheeks / jaw kept; dot 1792556341)
 const varSel = document.getElementById('var') as HTMLSelectElement
 for (const n of Object.keys(all.variants)) varSel.add(new Option(n, n))
@@ -45,6 +48,7 @@ function draw() {
   // 侧脸平片 (bowen 1792674653): the side face is one flat sheet in the middle plane — a sheet point is its depth d (its x at
   // 90°) and its height; at yaw it sits at x = d·sin θ, θ the sheet's angle (θ45 from bowen's 45°, piecewise linear 0 → θ45 → 90);
   // a handle at a sheet point is 90°'s handle with its x squeezed the same way. Crown and chin follow the outline
+  let eyeText = ''
   const sh = data.sheet?.[varSel.value], th = sh ? ((ay <= 45 ? (ay * sh.theta45) / 45 : sh.theta45 + ((ay - 45) * (90 - sh.theta45)) / 45) * Math.PI) / 180 : 0
   if (sh) for (const [id, [d, y]] of Object.entries(sh.pts)) pts[id] = [d * Math.sin(th), y]
   const K90 = data.keys[data.keys.length - 1]!
@@ -67,6 +71,32 @@ function draw() {
     path.closePath(); return near(end, first.c[0]) ? path : null
   }
   const faceR = region(bz.filter(q => !q.side)), sideR = region(bz.filter(q => q.side)), outer = outerIn.checked && faceR && sideR
+  // 眼睛 (bowen 1792682066): position = the eye centre on its track (x = x0·cos ψ + z·sin ψ, height kept), shape = the bench
+  // sphere frame (deform/index.ts sphereField, yaw only) on the 0° eye; φ, ψ linear in head yaw between the table's rows.
+  // The far eye is hidden where it lies inside the side face's region (bench 隐式遮挡), drawn thin grey there
+  const E = all.eyes
+  if (E) {
+    const at = (tab: [number, number, number][]) => { const k = tab.findIndex(r => r[0] >= ay); if (k <= 0) return tab[0]!.slice(1) as [number, number]
+      const a = tab[k - 1]!, b = tab[k]!, u = (ay - a[0]) / (b[0] - a[0]); return [a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u] as [number, number] }
+    const eyePath = (far: boolean) => {
+      const [phi, psi] = at(far ? E.far : E.near), f = (phi * Math.PI) / 180, w = (psi * Math.PI) / 180, m = far ? -1 : 1
+      const ax = m * E.anchor[0] * Math.cos(w) + E.z * Math.sin(w)
+      const map = (p: V): V => { const qx = m * (p[0] - E.anchor[0]), qy = p[1] - E.anchor[1], z2 = Math.max(0, E.r * E.r - qx * qx - qy * qy)
+        return [ax + Math.cos(f) * qx + Math.sin(f) * (Math.sqrt(z2) - E.r), p[1]] }
+      const path = new Path2D()
+      for (const c of E.base) for (let i = 0; i <= 30; i++) { const t = i / 30, u = 1 - t, p: V = [u * u * u * c[0][0] + 3 * u * u * t * c[1][0] + 3 * u * t * t * c[2][0] + t * t * t * c[3][0], u * u * u * c[0][1] + 3 * u * u * t * c[1][1] + 3 * u * t * t * c[2][1] + t * t * t * c[3][1]]
+        const q = P(F(map(p))); i ? path.lineTo(...q) : path.moveTo(...q) }
+      return { path, phi, psi }
+    }
+    const near = eyePath(false), far = eyePath(true)
+    g.strokeStyle = '#7a3b00'; g.lineWidth = 1.8; g.stroke(near.path)
+    if (outerIn.checked && sideR) {
+      g.strokeStyle = '#b8b8b8'; g.lineWidth = 1; g.stroke(far.path)
+      const clip = new Path2D(); clip.rect(0, 0, cv.width, cv.height); clip.addPath(sideR)
+      g.save(); g.clip(clip, 'evenodd'); g.strokeStyle = '#7a3b00'; g.lineWidth = 1.8; g.stroke(far.path); g.restore()
+    } else { g.strokeStyle = '#7a3b00'; g.lineWidth = 1.8; g.stroke(far.path) }
+    eyeText = ` · 眼睛 近 球${near.phi.toFixed(0)}° 轨${near.psi.toFixed(1)}° / 远 球${far.phi.toFixed(0)}° 轨${far.psi.toFixed(1)}°`
+  }
   for (const q of bz) {
     const other = q.side ? faceR : sideR, colour = q.side && !outer ? '#1565ff' : '#111'
     if (!outer || !other) { g.strokeStyle = colour; g.lineWidth = q.side ? 1.8 : 2.5; stroke(q); continue }
@@ -83,7 +113,7 @@ function draw() {
   const sheetText = sh ? ` · 侧脸平片 θ ${((th * 180) / Math.PI).toFixed(1)}°` : ''
   const err = all.circErr?.[varSel.value], errText = err ? ' · 圆周与关键帧之差（45° / 90°）' + Object.entries(err).map(([n, [a, b]]) => `${n} ${a.toFixed(1)} / ${b.toFixed(1)}`).join('，') : ''
   document.getElementById('yv')!.textContent = `${yaw}°`
-  document.getElementById('info')!.textContent = `颅顶 y ${cr[1].toFixed(1)} · 下巴 y ${ch[1].toFixed(1)} · 关键帧 ${flip ? '−' : ''}${A.yaw}° / ${flip ? '−' : ''}${B.yaw}°（${(t * 100).toFixed(0)}%${flip ? '，镜像' : ''}）${sheetText}${errText}`
+  document.getElementById('info')!.textContent = `颅顶 y ${cr[1].toFixed(1)} · 下巴 y ${ch[1].toFixed(1)} · 关键帧 ${flip ? '−' : ''}${A.yaw}° / ${flip ? '−' : ''}${B.yaw}°（${(t * 100).toFixed(0)}%${flip ? '，镜像' : ''}）${sheetText}${eyeText}${errText}`
 }
 yawIn.oninput = draw; refIn.onchange = draw; marksIn.onchange = draw; outerIn.onchange = draw
 varSel.onchange = () => { data = { ...all, keys: all.variants[varSel.value]! }; imgs = imgsBy[varSel.value]!; draw() }
