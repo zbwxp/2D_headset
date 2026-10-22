@@ -7,7 +7,7 @@ type Key = { yaw: number; pts: Record<string, V>; lines: { name: string; a: stri
 // 眼睛 (bowen 1792682066): the 0° eye (near, x < 0) moved along its track and shaped by the sphere frame; per eye a table
 // head yaw → [sphere yaw φ, track angle ψ]
 type Eyes = { base: [V, V, V, V][]; anchor: V; z: number; r: number; near: [number, number, number][]; far: [number, number, number][] }
-const all: { eye: number; chin: number; crown: number; ear?: number; temple?: number; variants: Record<string, Key[]>; circ?: Record<string, Record<string, [number, number, number]>>; circErr?: Record<string, Record<string, [number, number]>>; sheet?: Record<string, { theta45: number; pts: Record<string, V> }>; eyes?: Eyes } = await (await fetch('/@fs/Users/bowen/Documents/headset-face3d/bench-tasks/%E8%BF%81%E7%A7%BB/turncheck.json')).json()
+const all: { eye: number; chin: number; crown: number; ear?: number; temple?: number; variants: Record<string, Key[]>; circ?: Record<string, Record<string, [number, number, number]>>; circErr?: Record<string, Record<string, [number, number]>>; sheet?: Record<string, { theta45: number; pts: Record<string, V>; table?: [number, number][] }>; eyes?: Eyes; eyesBy?: Record<string, { near: [number, number, number][]; far: [number, number, number][] }> } = await (await fetch('/@fs/Users/bowen/Documents/headset-face3d/bench-tasks/%E8%BF%81%E7%A7%BB/turncheck.json')).json()
 // variants: 原始迁移 (the migrated copies) and 颅顶统一到 01 (level crowns at 01's height, x / cheeks / jaw kept; dot 1792556341)
 const varSel = document.getElementById('var') as HTMLSelectElement
 for (const n of Object.keys(all.variants)) varSel.add(new Option(n, n))
@@ -26,7 +26,8 @@ const lerp = (a: V, b: V, t: number): V => [a[0] + (b[0] - a[0]) * t, a[1] + (b[
 // two lines) and far (three lines) change sides at 0°, where the symmetric 01 makes them meet
 const MX = (p: V): V => [-p[0], p[1]]
 function draw() {
-  const yaw = +yawIn.value, ay = Math.abs(yaw), flip = yaw < 0, i = ay <= 45 ? 0 : 1, A = data.keys[i]!, B = data.keys[i + 1]!, t = (ay - A.yaw) / (B.yaw - A.yaw)
+  // any number of keyframes (粗调: 0 / 25 / 34 / 45 / 50 / 61 / 75 / 90): the pair around the yaw
+  const yaw = +yawIn.value, ay = Math.abs(yaw), flip = yaw < 0, i = Math.max(0, Math.min(data.keys.length - 2, data.keys.findIndex(k => k.yaw >= ay) - 1)), A = data.keys[i]!, B = data.keys[i + 1]!, t = (ay - A.yaw) / (B.yaw - A.yaw)
   const F = (p: V): V => (flip ? MX(p) : p)
   g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height)
   if (refIn.checked) for (const [k, a] of [[i, 1 - t], [i + 1, t]] as const) {
@@ -49,7 +50,11 @@ function draw() {
   // 90°) and its height; at yaw it sits at x = d·sin θ, θ the sheet's angle (θ45 from bowen's 45°, piecewise linear 0 → θ45 → 90);
   // a handle at a sheet point is 90°'s handle with its x squeezed the same way. Crown and chin follow the outline
   let eyeText = ''
-  const sh = data.sheet?.[varSel.value], th = sh ? ((ay <= 45 ? (ay * sh.theta45) / 45 : sh.theta45 + ((ay - 45) * (90 - sh.theta45)) / 45) * Math.PI) / 180 : 0
+  const sh = data.sheet?.[varSel.value]
+  // the sheet's angle: its own table when it has one (粗调), else 0 → θ45 → 90
+  const thDeg = !sh ? 0 : sh.table ? (() => { const tb = sh.table!, k = Math.max(1, tb.findIndex(r => r[0] >= ay)), a = tb[k - 1]!, b = tb[k]!; return a[1] + ((b[1] - a[1]) * (ay - a[0])) / (b[0] - a[0]) })()
+    : ay <= 45 ? (ay * sh.theta45) / 45 : sh.theta45 + ((ay - 45) * (90 - sh.theta45)) / 45
+  const th = (thDeg * Math.PI) / 180
   if (sh) for (const [id, [d, y]] of Object.entries(sh.pts)) pts[id] = [d * Math.sin(th), y]
   const K90 = data.keys[data.keys.length - 1]!
   // lines matched by their end points across the keys (the names follow the files); each as its screen Bézier
@@ -74,7 +79,7 @@ function draw() {
   // 眼睛 (bowen 1792682066): position = the eye centre on its track (x = x0·cos ψ + z·sin ψ, height kept), shape = the bench
   // sphere frame (deform/index.ts sphereField, yaw only) on the 0° eye; φ, ψ linear in head yaw between the table's rows.
   // The far eye is hidden where it lies inside the side face's region (bench 隐式遮挡), drawn thin grey there
-  const E = all.eyes
+  const E = all.eyes && { ...all.eyes, ...(all.eyesBy?.[varSel.value] ?? {}) }
   if (E) {
     const at = (tab: [number, number, number][]) => { const k = tab.findIndex(r => r[0] >= ay); if (k <= 0) return tab[0]!.slice(1) as [number, number]
       const a = tab[k - 1]!, b = tab[k]!, u = (ay - a[0]) / (b[0] - a[0]); return [a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u] as [number, number] }
