@@ -380,10 +380,12 @@ function masksFor(s: Snap, g: Geo) {
  * 隐式遮挡 (bowen 1792670781, 1792671397; bench glue): the lines of the layers named 脸轮廓 and 侧脸 are each joined end to
  * end into a closed region in this view; each layer's lines are hidden where they lie inside the other's region, so only
  * the joint outer edge shows (bowen's "whichever is outside shows"). The side face's region also hides the far eye: of
- * the layers 左眼 / 右眼, the one on the side the side face sticks out to (its region's centre against the face's).
+ * the layers 左眼 / 右眼 (and their 骨线 layers), the one on the side the side face sticks out to (its region's centre
+ * against the face's; 左 = x > 0 at 0°).
  * A layer whose lines do not close is left alone. Returns (target, relation) pairs to add to the drawing's own masks.
  */
-const IMPLICIT = { face: '脸轮廓', side: '侧脸', eyes: ['左眼', '右眼'] }
+// the eyes by side: 左 = the eye at x > 0 at 0° (bowen's layer names), each with its bone-line layer
+const IMPLICIT = { face: '脸轮廓', side: '侧脸', eyes: { left: ['左眼', '左眼骨线'], right: ['右眼', '右眼骨线'] } }
 export function implicitMasks(s: Snap, g: Geo): [string, MaskRelation & { key: string }][] {
   const layerId = (name: string) => s.layers.find(l => l.name === name)?.id
   const layerOfLine = new Map(s.lines.map(l => [l.id, s.points.find(p => p.id === l.a)?.layer]))
@@ -413,12 +415,10 @@ export function implicitMasks(s: Snap, g: Geo): [string, MaskRelation & { key: s
     for (const G of side) out.push([`line:${G.id}`, { key: 'implicit|face', mode: 'inverse', sources: [faceArea] }])
     const centre = (a: Area) => { const ps = a.flat(); return ps.reduce((m, p) => m + p.x, 0) / Math.max(1, ps.length) }
     const towards = Math.sign(centre(sideArea) - centre(faceArea))
-    const eyes = IMPLICIT.eyes.map(n => ({ n, ls: linesIn(n) })).filter(e => e.ls.length)
-      .map(e => ({ ...e, x: e.ls.reduce((m, G) => m + (G.curve[0]!.x + G.curve[3]!.x) / 2, 0) / e.ls.length }))
-    if (towards && eyes.length) {
-      const far = eyes.reduce((a, b) => (towards * b.x > towards * a.x ? b : a))
-      for (const G of far.ls) out.push([`line:${G.id}`, { key: 'implicit|side', mode: 'inverse', sources: [sideArea] }])
-    }
+    // the far eye: the one on the side the side face sticks out to — 左 (x > 0 at 0°) when it sticks out to the right.
+    // By side, not by position: at 90° both eyes project to the same place
+    if (towards) for (const n of towards > 0 ? IMPLICIT.eyes.left : IMPLICIT.eyes.right)
+      for (const G of linesIn(n)) out.push([`line:${G.id}`, { key: 'implicit|side', mode: 'inverse', sources: [sideArea] }])
   }
   return out
 }
