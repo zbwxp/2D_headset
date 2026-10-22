@@ -219,6 +219,7 @@ function changesBetween(before: Model, after: Model, s: Snapshot): string[] {
 // Open and autosave restore, written by Save and autosave.
 type AxisLock = 'h' | 'v' | 'fixed'
 const AXIS_LABEL: Record<AxisLock, string> = { h: '仅横移', v: '仅竖移', fixed: '固定' }
+// no buttons (bowen 1792632851): the files handed to him carry the limits; the canvas marks them
 let axisLocks: Record<Id, AxisLock> = {}
 function setAxisLocks(next: Record<Id, AxisLock>) { axisLocks = next }
 /** A file's 移动方向 (none if it has no bench entry or is not JSON). */
@@ -1390,7 +1391,6 @@ export function App() {
     if (u.kind === 'handle') selPoints.add(line(u.line)[u.end])
   }
   const ps = [...selPoints].map(pos)
-  const selPointIds = sel.flatMap(u => (u.kind === 'point' ? [u.id] : []))
   const centre = ps.length ? P((Math.min(...ps.map(p => p.x)) + Math.max(...ps.map(p => p.x))) / 2, (Math.min(...ps.map(p => p.y)) + Math.max(...ps.map(p => p.y))) / 2) : P(0, 0)
   const key = (u: Unit) => (u.kind === 'handle' ? `h:${u.line}:${u.end}` : `${u.kind}:${u.id}`)
   const isSel = (u: Unit) => sel.some(v => key(v) === key(u))
@@ -1785,16 +1785,6 @@ export function App() {
           <Slider label="width" value={width} identity="stroke-width" accept={v => v > 0} track={null} steps={{ step: 1, long: 10, short: 0.1 }}
             fieldAttrs={{ 'data-testid': 'width' }} {...sliderHooks} onPreview={() => {}} onCommit={v => setWidth(v)} onCancel={() => {}} />
           {B('Set width', () => (selLines.length ? run(x => selLines.forEach(l => x.lineStroke(l, { profile: line(l).stroke.profile, width }))) : (note('Set width: no line is selected — select lines first, or set a line\'s width in its properties'), bump())))}
-        </div>
-        {/* 移动方向 (bowen 1792630554, 1792630709): how the selected points may move; handles stay free */}
-        <b>Selected points: 移动方向 ({selPointIds.length})</b>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }} data-testid="axis-locks">
-          {([['自由', null], ['仅横移', 'h'], ['仅竖移', 'v'], ['固定', 'fixed']] as const).map(([label, k]) => B(label, () => {
-            if (!selPointIds.length) { note(`${label}: no point is selected — select points first (A)`); bump(); return }
-            const next = { ...axisLocks }
-            for (const id of selPointIds) { if (k) next[id] = k; else delete next[id] }
-            setAxisLocks(next); note(`${label}: ${selPointIds.join(', ')}`); bump()
-          }, k ? `the selected points ${label}; handles stay free` : 'the selected points move freely'))}
         </div>
         {/* stage 2: shapes between views (front → others), separate from the stroke broadcast above */}
         <b>Angle (shapes) · pending {pending.length}</b>
