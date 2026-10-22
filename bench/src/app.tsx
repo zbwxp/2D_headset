@@ -212,6 +212,33 @@ function changesBetween(before: Model, after: Model, s: Snapshot): string[] {
   if (rest) out.push('（还有别的数据变了：结构）')
   return out.length ? out : ['（没有数据变化）']
 }
+// 移动方向 (bowen 1792630554, 1792630709; names dot 1792630765): bench glue, how a point may move — 仅横移 'h' keeps its
+// height (crown, chin, ear root across the turn keyframes), 仅竖移 'v' keeps its sideways place (pitch later), 固定 'fixed'
+// keeps both; no entry = 自由. Handles stay free. Kept per point id in this browser (the same ids across the keyframe
+// files), not in the drawing.
+type AxisLock = 'h' | 'v' | 'fixed'
+const AXIS_LABEL: Record<AxisLock, string> = { h: '仅横移', v: '仅竖移', fixed: '固定' }
+const AXIS_LOCKS = 'bench.axisLocks'
+let axisLocks: Record<Id, AxisLock> = (() => { try { return JSON.parse(localStorage.getItem(AXIS_LOCKS) ?? '{}') as Record<Id, AxisLock> } catch { return {} } })()
+function setAxisLocks(next: Record<Id, AxisLock>) { axisLocks = next; try { localStorage.setItem(AXIS_LOCKS, JSON.stringify(next)) } catch { /* the lock still holds this session */ } }
+/**
+ * `fn` with the axis-locked points put back on their locked coordinate: the edit is tried first (core's own preview,
+ * so every way of moving counts — drag, arrows, scale, rotate, 四角), and each locked point it moved off its line gets one
+ * more move back onto it, its free coordinate kept; handles are relative and follow. Null when nothing needs fixing (or
+ * the try fails: the edit then fails as it would).
+ */
+function lockedFix(t: Core, view: string, fn: (e: Editor) => void): ((e: Editor) => void) | null {
+  if (!Object.keys(axisLocks).length) return null
+  let before: Map<Id, Vec>, after: readonly { id: Id; position: Vec }[]
+  try { before = new Map(t.in(view).snapshot().points.map(p => [p.id, p.position])); const r = t.preview(view, fn); if (!r) return null; after = r.snapshot().points } catch { return null }
+  const fixes = after.flatMap(p => {
+    const k = axisLocks[p.id], o = before.get(p.id)
+    if (!k || !o) return []
+    const target = k === 'h' ? P(p.position.x, o.y) : k === 'v' ? P(o.x, p.position.y) : o
+    return target.x === p.position.x && target.y === p.position.y ? [] : [{ id: p.id, target }]
+  })
+  return fixes.length ? e => { fn(e); e.move(fixes) } : null
+}
 function loggedFor(mode: () => WriteMode, afterWrite: () => void = () => {}, poseView: () => string | null = () => null, placing: () => boolean = () => false): (c: Core) => Core {
   const wrappers = new WeakMap<Core, Core>()
   return c => {
@@ -222,11 +249,11 @@ function loggedFor(mode: () => WriteMode, afterWrite: () => void = () => {}, pos
         // 「摆放骨骼」 (docs/bone-lines-checklist.md §5): at 0,0, while editing, every edit and its preview carry placeBones()
         // in the same transaction (dot 1792300555)
         const placed = (view: string, fn: (e: Editor) => void) => (mode() === 'edit' && view === 'view:0,0' && placing() ? (e: Editor) => { e.placeBones(); fn(e) } : fn)
-        if (k === 'preview') return (view: string, fn: (e: Editor) => void) => t.preview(view, placed(view, fn))
+        if (k === 'preview') return (view: string, fn: (e: Editor) => void) => { const f = placed(view, fn); return t.preview(view, (mode() === 'edit' ? lockedFix(t, view, f) : null) ?? f) }
         if (k === 'edit' || k === 'editIn') return (...args: unknown[]) => {
           const [view, fn0] = (k === 'edit' ? ['view:0,0', args[0]] : args) as [string, (e: Editor) => void]
-          const fn = placed(view, fn0)
-          const m = mode()
+          const m = mode(), placedFn = placed(view, fn0)
+          const fn = (m === 'edit' ? lockedFix(t, view, placedFn) : null) ?? placedFn
           if (m === 'locked') { log.unshift({ calls: `${k}(…)`, result: '✗ restoring the autosaved drawing' }); throw new Error('restoring: nothing is written until the autosaved drawing is restored') }
           // playback at a view, writing that view: A's and V's editing of it (docs/playback-edit-checklist.md §2)
           const playback = m === 'playback', atView = playback && view === poseView()
@@ -769,6 +796,15 @@ export function App() {
   }
   useEffect(() => { rehover.current() })
   const pressTakenBy = zoomTool ? 'Z' : restoring ? 'restoring' : inBetween || (pose && ix.tool !== 'A' && ix.tool !== 'V') ? 'playback' : moveRef ? 'movePicture' : boxHot ? `box:${boxHot}` : ix.tool
+  /** The 移动方向 a move of the selection keeps (bench glue): one kind among its points, else 固定 when they disagree; null if none is limited. */
+  const lockOfSelection = (): AxisLock | null => {
+    const kinds = new Set<AxisLock>(), snap = core.snapshot()
+    for (const u of ix.selection()) {
+      const l = u.kind === 'line' ? snap.lines.find(x => x.id === u.id) : undefined
+      for (const id of u.kind === 'point' ? [u.id] : l ? [l.a, l.b] : []) { const k = axisLocks[id]; if (k) kinds.add(k) }
+    }
+    return kinds.size === 0 ? null : kinds.size === 1 ? [...kinds][0]! : 'fixed'
+  }
   const note = (what: string) => { log.unshift({ calls: what, result: 'ok (diagnostic)' }); log.length = Math.min(log.length, 50) }
   const BUTTON_BIT = [1, 4, 2] // button 0 → buttons bit 1 (left), 1 → 4 (middle), 2 → 2 (right)
   const CLICK = 2 // screen px a press may move and still be a click (v1: 7205381 DrawingRoom zoom)
@@ -790,12 +826,16 @@ export function App() {
     // every canvas pick of a line or a point counts, even of the object already picked: the properties panel shows the last pick (dot)
     if (kind === 'tool' && (ix.tool === 'A' || ix.tool === 'V') && (ix.lastPress() === 'line' || ix.lastPress() === 'point')) setCanvasPicks(n => n + 1)
     if (!kind) return
+    // 移动方向: a drag of selected points (not a handle) moves only along what their limit allows, the pointer itself held
+    // on that line, so 手柄跟随 and the ghost see the same move the release writes
+    const lock = kind === 'tool' && (ix.tool === 'A' || ix.tool === 'V') && ix.moving() === 'drag' && ix.lastPress() !== 'handle' ? lockOfSelection() : null
+    const along = (q: Vec): Vec => (lock ? P(lock === 'h' ? q.x : at.x, lock === 'v' ? q.y : at.y) : q)
     let moved = false
     const zoomBy = (k: number) => setBox({ x: at.x - (at.x - from.x) * k, y: at.y - (at.y - from.y) * k, w: from.w * k, h: from.h * k })
     const move = (ev: PointerEvent) => {
       if (ev.pointerId !== id) return
       if ((ev.buttons & bit) === 0) { if (kind === 'tool') note('release found by a move without the starting button held (pointerup missed)'); release(ev); return }
-      if (kind === 'tool') { ix.pointerMove(toDoc(ev), mods(ev)); return }
+      if (kind === 'tool') { ix.pointerMove(along(toDoc(ev)), mods(ev)); return }
       follow(ev)
     }
     /** Pan or zoom to where the pointer is; also run on release, so a release far away with no move between is a drag, not a click (dot 1791554963). */
@@ -808,7 +848,7 @@ export function App() {
     const release = (ev: PointerEvent) => {
       if (ev.pointerId !== id) return
       stop()
-      if (kind === 'tool') { ix.pointerUp(toDoc(ev), mods(ev)); return }
+      if (kind === 'tool') { ix.pointerUp(along(toDoc(ev)), mods(ev)); return }
       follow(ev)
       if (!moved && kind === 'zoom') zoomBy(ev.altKey || ev.ctrlKey ? 1.3 : 1 / 1.3) // a click zooms in ×1.3, Alt / Ctrl-click out (v1)
       else if (!moved && e.button === 2) ix.cancel() // the right click
@@ -1312,6 +1352,9 @@ export function App() {
       // one Esc cancels one thing: a gesture in progress (above) if there is one, else interaction's innermost (dot 1791553129)
       // a plain letter interaction takes is a tool key: it ends any gesture and leaves Z
       if (/^[a-y]$/i.test(e.key) && !e.metaKey && !e.ctrlKey && ix.key(e.key, mods(e))) { e.preventDefault(); chooseTool(ix.tool); return }
+      // 移动方向: an arrow across the selection's limit does nothing
+      const lk = isArrow(e.key) && (ix.tool === 'A' || ix.tool === 'V') ? lockOfSelection() : null
+      if (lk && (lk === 'fixed' || (lk === 'h') === (e.key === 'ArrowUp' || e.key === 'ArrowDown'))) { e.preventDefault(); if (!e.repeat) { note(`${e.key}: the selection is ${AXIS_LABEL[lk]}`); bump() } return }
       if (ix.key(e.key, { ...mods(e), ctrl: e.ctrlKey, repeat: e.repeat })) { e.preventDefault(); if (isArrow(e.key)) keyHooks.current.afterArrow?.() }
     }
     // a key release ends a key run wherever focus is: no typing check here (dot 1791733489)
@@ -1337,6 +1380,7 @@ export function App() {
     if (u.kind === 'handle') selPoints.add(line(u.line)[u.end])
   }
   const ps = [...selPoints].map(pos)
+  const selPointIds = sel.flatMap(u => (u.kind === 'point' ? [u.id] : []))
   const centre = ps.length ? P((Math.min(...ps.map(p => p.x)) + Math.max(...ps.map(p => p.x))) / 2, (Math.min(...ps.map(p => p.y)) + Math.max(...ps.map(p => p.y))) / 2) : P(0, 0)
   const key = (u: Unit) => (u.kind === 'handle' ? `h:${u.line}:${u.end}` : `${u.kind}:${u.id}`)
   const isSel = (u: Unit) => sel.some(v => key(v) === key(u))
@@ -1731,6 +1775,16 @@ export function App() {
           <Slider label="width" value={width} identity="stroke-width" accept={v => v > 0} track={null} steps={{ step: 1, long: 10, short: 0.1 }}
             fieldAttrs={{ 'data-testid': 'width' }} {...sliderHooks} onPreview={() => {}} onCommit={v => setWidth(v)} onCancel={() => {}} />
           {B('Set width', () => (selLines.length ? run(x => selLines.forEach(l => x.lineStroke(l, { profile: line(l).stroke.profile, width }))) : (note('Set width: no line is selected — select lines first, or set a line\'s width in its properties'), bump())))}
+        </div>
+        {/* 移动方向 (bowen 1792630554, 1792630709): how the selected points may move; handles stay free */}
+        <b>Selected points: 移动方向 ({selPointIds.length})</b>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }} data-testid="axis-locks">
+          {([['自由', null], ['仅横移', 'h'], ['仅竖移', 'v'], ['固定', 'fixed']] as const).map(([label, k]) => B(label, () => {
+            if (!selPointIds.length) { note(`${label}: no point is selected — select points first (A)`); bump(); return }
+            const next = { ...axisLocks }
+            for (const id of selPointIds) { if (k) next[id] = k; else delete next[id] }
+            setAxisLocks(next); note(`${label}: ${selPointIds.join(', ')}`); bump()
+          }, k ? `the selected points ${label}; handles stay free` : 'the selected points move freely'))}
         </div>
         {/* stage 2: shapes between views (front → others), separate from the stroke broadcast above */}
         <b>Angle (shapes) · pending {pending.length}</b>
@@ -2145,6 +2199,12 @@ export function App() {
             return <circle key={p.id} cx={p.position.x} cy={p.position.y} r={(p.links.length ? 5 : 3.5) * px}
               fill={picked ? '#f80' : on ? '#06f' : p.links.length ? '#fc0' : '#fff'} stroke="#333" strokeWidth={px} />
           })}
+          {/* 移动方向 marks: ↔ 仅横移, ↕ 仅竖移, a square 固定 */}
+          {!inBetween && s.points.filter(p => axisLocks[p.id]).map(p => { const k = axisLocks[p.id]!, { x, y } = p.position, r = 9 * px
+            return <g key={'ax' + p.id} data-axis-lock={`${p.id}:${k}`} stroke="#c0f" strokeWidth={1.5 * px} fill="none" pointerEvents="none"><title>{AXIS_LABEL[k]}</title>
+              {k === 'fixed' ? <rect x={x - r / 1.6} y={y - r / 1.6} width={r * 1.25} height={r * 1.25} />
+                : k === 'h' ? <path d={`M${x - r} ${y}H${x + r}M${x - r + 3 * px} ${y - 3 * px}L${x - r} ${y}L${x - r + 3 * px} ${y + 3 * px}M${x + r - 3 * px} ${y - 3 * px}L${x + r} ${y}L${x + r - 3 * px} ${y + 3 * px}`} />
+                : <path d={`M${x} ${y - r}V${y + r}M${x - 3 * px} ${y - r + 3 * px}L${x} ${y - r}L${x + 3 * px} ${y - r + 3 * px}M${x - 3 * px} ${y + r - 3 * px}L${x} ${y + r}L${x + 3 * px} ${y + r - 3 * px}`} />}</g> })}
           {!inBetween && pv.pen && 'at' in pv.pen && <circle cx={pv.pen.at.x} cy={pv.pen.at.y} r={3 * px} fill="#f80" />}
           {/* the selected lines' or curves' names (name-labels/): the scoped selection, never taking a press, not in playback */}
           {!inBetween && labelsFor(g.lines.filter(G => !boneHidden(G.id)).map(G => ({ id: G.id, name: line(G.id).name, mid: middleOf(G.curve) })), s.groups.map(gr => ({ id: gr.id, name: gr.name, lines: gr.lines.filter(id => !boneHidden(id)) })).filter(gr => gr.lines.length), selLines.filter(id => !boneHidden(id)), labelKind).map(lb =>
