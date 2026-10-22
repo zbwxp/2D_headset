@@ -366,12 +366,61 @@ function masksFor(s: Snap, g: Geo) {
     const key = `${m.mode}|${[...new Set(m.sources)].sort().join(',')}`
     masksOf.set(target, [...(masksOf.get(target) ?? []), { key, mode: m.mode, sources: m.sources.map(source) }])
   }
+  // 隐式遮挡 (bowen 1792670781 / 1792671397): the face outline and the side face hide each other — only their joint outer
+  // edge is drawn — and the side face hides the far eye; nothing to set, nothing stored
+  for (const [target, r] of implicitMasks(s, g)) masksOf.set(target, [...(masksOf.get(target) ?? []), r])
   const maskCut = !masksOf.size ? undefined : (src: { kind: string; id: string; lines?: readonly [string, string] }, loops: readonly (readonly Vec[])[]) => {
     const own = (id: string) => masksOf.get(`line:${id}`) ?? []
     const rs = src.lines ? own(src.lines[0]).filter(r => own(src.lines![1]).some(q => q.key === r.key)) : own(src.id)
     return rs.length ? maskApply(loops, rs) : undefined
   }
   return { masksOf, maskCut }
+}
+/**
+ * 隐式遮挡 (bowen 1792670781, 1792671397; bench glue): the lines of the layers named 脸轮廓 and 侧脸 are each joined end to
+ * end into a closed region in this view; each layer's lines are hidden where they lie inside the other's region, so only
+ * the joint outer edge shows (bowen's "whichever is outside shows"). The side face's region also hides the far eye: of
+ * the layers 左眼 / 右眼, the one on the side the side face sticks out to (its region's centre against the face's).
+ * A layer whose lines do not close is left alone. Returns (target, relation) pairs to add to the drawing's own masks.
+ */
+const IMPLICIT = { face: '脸轮廓', side: '侧脸', eyes: ['左眼', '右眼'] }
+export function implicitMasks(s: Snap, g: Geo): [string, MaskRelation & { key: string }][] {
+  const layerId = (name: string) => s.layers.find(l => l.name === name)?.id
+  const layerOfLine = new Map(s.lines.map(l => [l.id, s.points.find(p => p.id === l.a)?.layer]))
+  // only shown lines count: a hidden side face hides nothing (its eye in the layers panel)
+  const shownLine = new Set(s.lines.filter(l => l.state.visible).map(l => l.id))
+  const linesIn = (name: string) => { const L = layerId(name); return L ? g.lines.filter(G => layerOfLine.get(G.id) === L && shownLine.has(G.id)) : [] }
+  /** a layer's curves joined end to end into one closed region (null if they do not close) */
+  const regionOf = (curves: readonly (readonly Vec[])[]): Area | null => {
+    if (curves.length < 2) return null
+    const near = (a: Vec, b: Vec) => Math.hypot(a.x - b.x, a.y - b.y) < 1e-2
+    const left = curves.map(c => [...c]), chain = [left.shift()!]
+    while (left.length) {
+      const end = chain[chain.length - 1]![3]!, i = left.findIndex(c => near(c[0]!, end) || near(c[3]!, end))
+      if (i < 0) return null
+      const c = left.splice(i, 1)[0]!; chain.push(near(c[0]!, end) ? c : [...c].reverse())
+    }
+    if (!near(chain[chain.length - 1]![3]!, chain[0]![0]!)) return null
+    return maskArea(chain as unknown as [Vec, Vec, Vec, Vec][])
+  }
+  const face = linesIn(IMPLICIT.face), side = linesIn(IMPLICIT.side)
+  // a layer's outline: its lines and the arcs of the rounded joins between them (the lines stop where an arc starts)
+  const outline = (ls: typeof face) => { const ids = new Set(ls.map(G => G.id)); return [...ls.map(G => G.curve), ...g.arcs.filter(a => ids.has(a.lines[0]) && ids.has(a.lines[1])).map(a => a.curve)] }
+  const faceArea = regionOf(outline(face)), sideArea = regionOf(outline(side))
+  const out: [string, MaskRelation & { key: string }][] = []
+  if (faceArea && sideArea) {
+    for (const G of face) out.push([`line:${G.id}`, { key: 'implicit|side', mode: 'inverse', sources: [sideArea] }])
+    for (const G of side) out.push([`line:${G.id}`, { key: 'implicit|face', mode: 'inverse', sources: [faceArea] }])
+    const centre = (a: Area) => { const ps = a.flat(); return ps.reduce((m, p) => m + p.x, 0) / Math.max(1, ps.length) }
+    const towards = Math.sign(centre(sideArea) - centre(faceArea))
+    const eyes = IMPLICIT.eyes.map(n => ({ n, ls: linesIn(n) })).filter(e => e.ls.length)
+      .map(e => ({ ...e, x: e.ls.reduce((m, G) => m + (G.curve[0]!.x + G.curve[3]!.x) / 2, 0) / e.ls.length }))
+    if (towards && eyes.length) {
+      const far = eyes.reduce((a, b) => (towards * b.x > towards * a.x ? b : a))
+      for (const G of far.ls) out.push([`line:${G.id}`, { key: 'implicit|side', mode: 'inverse', sources: [sideArea] }])
+    }
+  }
+  return out
 }
 /** What is drawn of each masked line (its masked ink) and fill (its masked area): picking follows it (docs/mask-p3-checklist.md). */
 function cutsFor(s: Snap, g: Geo, masksOf: MaskRules, inkOf: ReadonlyMap<string, { loops: readonly (readonly Vec[])[] }>) {
@@ -2052,9 +2101,24 @@ export function App() {
               // a bone: a bright line, never ink or fill; hidden in playback unless asked (docs/bone-lines-checklist.md §5)
               const bi = boneIndex.get(G.id)
               // a bone hidden by its eye (the layers panel) is hidden as any line is (bowen 1792479442)
-              if (bi !== undefined) return (pose && !bonesInPlayback) || !l.state.visible ? null
-                : <path key={G.id} data-bone={G.id} d={path(G.curve)} fill="none" stroke={BONE_COLOURS[bi % BONE_COLOURS.length]} strokeWidth={2 * px} strokeLinecap="round">{!pose && shown !== 'view:0,0' && s.boneMode === 'make' && <title>{boneSource(G.id)}</title>}</path>
-              const drawn = lineElOf(G, l, stroke)
+              if (bi !== undefined) {
+                if ((pose && !bonesInPlayback) || !l.state.visible) return null
+                const bone = <path key={G.id} data-bone={G.id} d={path(G.curve)} fill="none" stroke={BONE_COLOURS[bi % BONE_COLOURS.length]} strokeWidth={2 * px} strokeLinecap="round">{!pose && shown !== 'view:0,0' && s.boneMode === 'make' && <title>{boneSource(G.id)}</title>}</path>
+                // 隐式遮挡 on a bone drawn face outline (it has no ink to cut): the bright line kept outside the other region
+                // (an SVG mask), the whole line under it thin and grey
+                const hid = masksOf.get(`line:${G.id}`)?.filter(r => r.key.startsWith('implicit|') && r.mode === 'inverse') ?? []
+                if (!hid.length) return bone
+                const mid = `implicit-mask-${G.id.replace(/[^\w-]/g, '_')}`
+                return <g key={G.id} data-implicit-hidden={G.id}>
+                  <mask id={mid} maskUnits="userSpaceOnUse" x={-1e4} y={-1e4} width={2e4} height={2e4}><rect x={-1e4} y={-1e4} width={2e4} height={2e4} fill="#fff" />
+                    {hid.flatMap(r => r.sources).map((a, i) => a && <path key={i} d={loopsD(a)} fill="#000" fillRule="nonzero" />)}</mask>
+                  <path d={path(G.curve)} fill="none" stroke="#bbb" strokeWidth={px} pointerEvents="none" />
+                  <g mask={`url(#${mid})`}>{bone}</g></g>
+              }
+              const drawn0 = lineElOf(G, l, stroke)
+              // 隐式遮挡 (bowen 1792671397): a line the implicit rule hides in part is shown whole as a thin grey line under its ink
+              const drawn = drawn0 && l.state.visible && masksOf.get(`line:${G.id}`)?.some(r => r.key.startsWith('implicit|'))
+                ? <g key={G.id} data-implicit-hidden={G.id}><path d={path(G.curve)} fill="none" stroke="#bbb" strokeWidth={px} pointerEvents="none" />{drawn0}</g> : drawn0
               // an attached line: highlighted with its bone; off the front, generated (hover)
               // highlighted: the bone picked in the list, or a bone selected on the canvas (dot 1792301388); never in playback
               const hi = !pose && attachedTo.has(G.id) && (boneHi === attachedTo.get(G.id) || selLines.includes(attachedTo.get(G.id)!))
