@@ -15,7 +15,7 @@ const imgsBy: Record<string, HTMLImageElement[]> = {}
 for (const [n, keys] of Object.entries(all.variants)) imgsBy[n] = await load(keys)
 let imgs = imgsBy[varSel.value]!
 const cv = document.getElementById('c') as HTMLCanvasElement, g = cv.getContext('2d')!
-const yawIn = document.getElementById('yaw') as HTMLInputElement, refIn = document.getElementById('ref') as HTMLInputElement, marksIn = document.getElementById('marks') as HTMLInputElement
+const outerIn = document.getElementById('outer') as HTMLInputElement, yawIn = document.getElementById('yaw') as HTMLInputElement, refIn = document.getElementById('ref') as HTMLInputElement, marksIn = document.getElementById('marks') as HTMLInputElement
 const Z = 3.4, OX = cv.width / 2, OY = cv.height * 0.55 // canvas units → screen
 const P = (p: V): V => [OX + p[0] * Z, OY + p[1] * Z]
 const lerp = (a: V, b: V, t: number): V => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]
@@ -48,12 +48,33 @@ function draw() {
   const sh = data.sheet?.[varSel.value], th = sh ? ((ay <= 45 ? (ay * sh.theta45) / 45 : sh.theta45 + ((ay - 45) * (90 - sh.theta45)) / 45) * Math.PI) / 180 : 0
   if (sh) for (const [id, [d, y]] of Object.entries(sh.pts)) pts[id] = [d * Math.sin(th), y]
   const K90 = data.keys[data.keys.length - 1]!
-  // lines matched by their end points across the keys (the names follow the files)
-  A.lines.forEach(l => { const m = B.lines.find(x => x.a === l.a && x.b === l.b)!, n = K90.lines.find(x => x.a === l.a && x.b === l.b)!, a = pts[l.a]!, b = pts[l.b]!
+  // lines matched by their end points across the keys (the names follow the files); each as its screen Bézier
+  type Bz = { side: boolean; a: string; b: string; c: [V, V, V, V] }
+  const bz: Bz[] = A.lines.map(l => { const m = B.lines.find(x => x.a === l.a && x.b === l.b)!, n = K90.lines.find(x => x.a === l.a && x.b === l.b)!, a = pts[l.a]!, b = pts[l.b]!
     const onSheet = (id: string) => !!sh && id in sh.pts, sq = (h: V): V => [h[0] * Math.sin(th), h[1]]
     const ha = onSheet(l.a) ? sq(n.ha) : lerp(l.ha, m.ha, t), hb = onSheet(l.b) ? sq(n.hb) : lerp(l.hb, m.hb, t)
-    g.strokeStyle = l.side ? '#1565ff' : '#111'; g.lineWidth = l.side ? 1.8 : 2.5
-    g.beginPath(); g.moveTo(...P(F(a))); g.bezierCurveTo(...P(F([a[0] + ha[0], a[1] + ha[1]])), ...P(F([b[0] + hb[0], b[1] + hb[1]])), ...P(F(b))); g.stroke() })
+    return { side: !!l.side, a: l.a, b: l.b, c: [P(F(a)), P(F([a[0] + ha[0], a[1] + ha[1]])), P(F([b[0] + hb[0], b[1] + hb[1]])), P(F(b))] } })
+  const stroke = (q: Bz) => { g.beginPath(); g.moveTo(...q.c[0]); g.bezierCurveTo(...q.c[1], ...q.c[2], ...q.c[3]); g.stroke() }
+  // 真·外轮廓 (bowen 1792671397, 1792675303): the same implicit rule as bench — the outline's lines and the side face's lines
+  // each closed into a region; each is drawn only outside the other's region, the hidden part thin grey
+  const near = (p: V, q: V) => Math.hypot(p[0] - q[0], p[1] - q[1]) < 0.5
+  const region = (ls: Bz[]): Path2D | null => {
+    if (ls.length < 2) return null
+    const left = [...ls], first = left.shift()!, path = new Path2D(); path.moveTo(...first.c[0]); path.bezierCurveTo(...first.c[1], ...first.c[2], ...first.c[3])
+    let end = first.c[3]
+    while (left.length) { const i = left.findIndex(q => near(q.c[0], end) || near(q.c[3], end)); if (i < 0) return null
+      const q = left.splice(i, 1)[0]!, c = near(q.c[0], end) ? q.c : ([...q.c].reverse() as Bz['c']); path.bezierCurveTo(...c[1], ...c[2], ...c[3]); end = c[3] }
+    path.closePath(); return near(end, first.c[0]) ? path : null
+  }
+  const faceR = region(bz.filter(q => !q.side)), sideR = region(bz.filter(q => q.side)), outer = outerIn.checked && faceR && sideR
+  for (const q of bz) {
+    const other = q.side ? faceR : sideR, colour = q.side && !outer ? '#1565ff' : '#111'
+    if (!outer || !other) { g.strokeStyle = colour; g.lineWidth = q.side ? 1.8 : 2.5; stroke(q); continue }
+    g.strokeStyle = '#b8b8b8'; g.lineWidth = 1; stroke(q)
+    // outside the other region: a clip of the whole canvas minus that region (even-odd)
+    const clip = new Path2D(); clip.rect(0, 0, cv.width, cv.height); clip.addPath(other)
+    g.save(); g.clip(clip, 'evenodd'); g.strokeStyle = colour; g.lineWidth = 2.5; stroke(q); g.restore()
+  }
   g.strokeStyle = '#111'; g.lineWidth = 2.5
   // the endpoints (bowen 1792602867; names bowen 1792634536): crown, chin, near ear root; far 颧骨点, 太阳穴点
   const marks: [string, string, string][] = [['cmv3m1am1-6/pmv3m1am1-4', '#7a00ff', '颅顶'], ['cmv3m1am1-6/pmv3m1am1-2', '#00a651', '下巴'], ['cmv3m1am1-6/pmv3m1am1-1', '#e00078', '耳根'], ['pmv3m1am1-1', '#333', '颧骨点'], ['pm03-skf', '#3a7bd5', '太阳穴点'], ['pm03-skb', '#e00', '后切点']]
@@ -64,7 +85,7 @@ function draw() {
   document.getElementById('yv')!.textContent = `${yaw}°`
   document.getElementById('info')!.textContent = `颅顶 y ${cr[1].toFixed(1)} · 下巴 y ${ch[1].toFixed(1)} · 关键帧 ${flip ? '−' : ''}${A.yaw}° / ${flip ? '−' : ''}${B.yaw}°（${(t * 100).toFixed(0)}%${flip ? '，镜像' : ''}）${sheetText}${errText}`
 }
-yawIn.oninput = draw; refIn.onchange = draw; marksIn.onchange = draw
+yawIn.oninput = draw; refIn.onchange = draw; marksIn.onchange = draw; outerIn.onchange = draw
 varSel.onchange = () => { data = { ...all, keys: all.variants[varSel.value]! }; imgs = imgsBy[varSel.value]!; draw() }
 for (const b of document.querySelectorAll<HTMLButtonElement>('button[data-k]')) b.onclick = () => { yawIn.value = b.dataset.k!; draw() }
 draw()
