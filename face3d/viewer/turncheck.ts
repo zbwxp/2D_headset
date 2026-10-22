@@ -97,8 +97,9 @@ function draw() {
     g.strokeStyle = '#7a3b00'; g.lineWidth = 1.8; g.stroke(near.path)
     if (outerIn.checked && sideR) {
       g.strokeStyle = '#b8b8b8'; g.lineWidth = 1; g.stroke(far.path)
+      // shown only inside the face outline (bowen 1792686822: the part poking out is not drawn) and outside the side face
       const clip = new Path2D(); clip.rect(0, 0, cv.width, cv.height); clip.addPath(sideR)
-      g.save(); g.clip(clip, 'evenodd'); g.strokeStyle = '#7a3b00'; g.lineWidth = 1.8; g.stroke(far.path); g.restore()
+      g.save(); if (faceR) g.clip(faceR); g.clip(clip, 'evenodd'); g.strokeStyle = '#7a3b00'; g.lineWidth = 1.8; g.stroke(far.path); g.restore()
     } else { g.strokeStyle = '#7a3b00'; g.lineWidth = 1.8; g.stroke(far.path) }
     eyeText = ` · 眼睛 近 球${near.phi.toFixed(0)}° 轨${near.psi.toFixed(1)}° / 远 球${far.phi.toFixed(0)}° 轨${far.psi.toFixed(1)}°`
   }
