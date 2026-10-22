@@ -214,13 +214,22 @@ function changesBetween(before: Model, after: Model, s: Snapshot): string[] {
 }
 // 移动方向 (bowen 1792630554, 1792630709; names dot 1792630765): bench glue, how a point may move — 仅横移 'h' keeps its
 // height (crown, chin, ear root across the turn keyframes), 仅竖移 'v' keeps its sideways place (pitch later), 固定 'fixed'
-// keeps both; no entry = 自由. Handles stay free. Kept per point id in this browser (the same ids across the keyframe
-// files), not in the drawing.
+// keeps both; no entry = 自由. Handles stay free. The current drawing's own setting (dot 1792631168: never by id across
+// files): kept in its file beside the drawing as `bench.axisLocks` (core's open ignores keys it does not know), read on
+// Open and autosave restore, written by Save and autosave.
 type AxisLock = 'h' | 'v' | 'fixed'
 const AXIS_LABEL: Record<AxisLock, string> = { h: '仅横移', v: '仅竖移', fixed: '固定' }
-const AXIS_LOCKS = 'bench.axisLocks'
-let axisLocks: Record<Id, AxisLock> = (() => { try { return JSON.parse(localStorage.getItem(AXIS_LOCKS) ?? '{}') as Record<Id, AxisLock> } catch { return {} } })()
-function setAxisLocks(next: Record<Id, AxisLock>) { axisLocks = next; try { localStorage.setItem(AXIS_LOCKS, JSON.stringify(next)) } catch { /* the lock still holds this session */ } }
+let axisLocks: Record<Id, AxisLock> = {}
+function setAxisLocks(next: Record<Id, AxisLock>) { axisLocks = next }
+/** A file's 移动方向 (none if it has no bench entry or is not JSON). */
+function locksOf(text: string): Record<Id, AxisLock> {
+  try { const l = (JSON.parse(text) as { bench?: { axisLocks?: unknown } }).bench?.axisLocks; return l && typeof l === 'object' ? { ...(l as Record<Id, AxisLock>) } : {} } catch { return {} }
+}
+/** The file text for the current drawing: core's archive, with the 移动方向 beside it when there are any. */
+function fileText(): string {
+  const text = save(core)
+  return Object.keys(axisLocks).length ? `${text.slice(0, text.lastIndexOf('}'))},"bench":${JSON.stringify({ axisLocks })}}` : text
+}
 /**
  * `fn` with the axis-locked points put back on their locked coordinate: the edit is tried first (core's own preview,
  * so every way of moving counts — drag, arrows, scale, rotate, 四角), and each locked point it moved off its line gets one
@@ -642,12 +651,13 @@ export function App() {
       apply: text => {
         const next = open(text)
         core = next
+        setAxisLocks(locksOf(text))
         const ls = core.snapshot().layers, top = ls[ls.length - 1]?.id ?? ''
         setLayer(top); setLayers([top]); refGen.current++
         ix.drawingChanged(); setDrawing(k => k + 1)
         log.unshift({ calls: 'autosave: restored the saved drawing', result: 'ok' })
       },
-      current: () => save(core),
+      current: () => fileText(),
       changed: () => bump(),
     })
     saver.current = a
@@ -1899,7 +1909,7 @@ export function App() {
         })()}{saver.current?.status().state === 'failed' && <> <button onClick={() => saver.current?.retry()}>Retry</button></>}</div>
         <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
           {B('Save', async () => {
-            const text = save(core), of = opened.current
+            const text = fileText(), of = opened.current
             const download = (why: string) => {
               const a = document.createElement('a')
               a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }))
@@ -1951,6 +1961,7 @@ export function App() {
                 const next = open(text)
                 gesture.current?.cancel('opening another drawing') // only once the file opened (dot 1791554909)
                 core = next
+                setAxisLocks(locksOf(text))
                 refGen.current++
                 const ls = core.snapshot().layers, top = ls[ls.length - 1]?.id ?? ''; setLayer(top); setLayers([top])
                 ix.drawingChanged(); setDrawing(k => k + 1)
