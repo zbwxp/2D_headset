@@ -98,7 +98,9 @@ function draw() {
     const eyePath = (far: boolean) => {
       // the far eye of 侧脸平片 by its hand-tuned table: [φ, centre x]; the others by their track [φ, ψ]
       const freeX = far && varSel.value.startsWith('侧脸平片')
-      const [phi, psi] = freeX && farPreview ? farPreview : at(far ? E.far : E.near), f = (phi * Math.PI) / 180, w = (psi * Math.PI) / 180, m = far ? -1 : 1
+      // 拟合公式（对照, bowen 01:09 keys, 2026-10-23）: |φ| = 9.69·√yaw (0–75°, ±2.5), x = 28.56 + 47.8·sin yaw (0–90°, ±2.4)
+      const fitted: [number, number] = [-9.69 * Math.sqrt(ay), 28.56 + 47.8 * Math.sin((ay * Math.PI) / 180)]
+      const [phi, psi] = freeX && farPreview ? farPreview : freeX && (document.getElementById('ffit') as HTMLInputElement | null)?.checked ? fitted : at(far ? E.far : E.near), f = (phi * Math.PI) / 180, w = (psi * Math.PI) / 180, m = far ? -1 : 1
       const ax = freeX ? psi : m * E.anchor[0] * Math.cos(w) + E.z * Math.sin(w)
       const map = (p: V): V => { const qx = m * (p[0] - E.anchor[0]), qy = p[1] - E.anchor[1], z2 = Math.max(0, E.r * E.r - qx * qx - qy * qy)
         return [ax + Math.cos(f) * qx + Math.sin(f) * (Math.sqrt(z2) - E.r), p[1]] }
@@ -146,6 +148,7 @@ panel.innerHTML = `<b>远侧眼手调</b>（只对「侧脸平片」版本；只
   横向位置 x <input id="fpsi" type="range" min="0" max="110" step="0.1" style="width:260px"> <input id="fpsiN" type="number" step="0.1" style="width:70px">
   球面 yaw <input id="fphi" type="range" min="-180" max="0" step="0.5" style="width:260px"> <input id="fphiN" type="number" step="0.5" style="width:70px"><br>
   <button id="frec">记为这个角度的关键帧</button> <button id="fdel">删掉这个角度的关键帧</button> <button id="fundo">撤销</button> <button id="fsave">保存到文件</button>
+  <label title="不改你的关键帧，只是显示用拟合公式算的远侧眼：|球面 yaw| = 9.69·√头yaw，x = 28.56 + 47.8·sin 头yaw"><input id="ffit" type="checkbox"> 显示拟合公式（对照）</label>
   <span id="fmsg" style="color:#555"></span><div id="ftab" style="color:#333;margin-top:4px"></div>`
 const $ = (id: string) => document.getElementById(id) as HTMLInputElement
 const curYaw = () => Math.round(Math.abs(+yawIn.value) * 2) / 2
@@ -165,3 +168,5 @@ $('fsave').onclick = async () => { const r = await fetch('http://127.0.0.1:5199/
 yawIn.addEventListener('input', () => { farPreview = null; syncSliders(); draw() })
 for (const b of document.querySelectorAll<HTMLButtonElement>('button[data-k]')) b.addEventListener('click', () => { farPreview = null; syncSliders(); draw() })
 showTab(); syncSliders()
+
+$('ffit').onchange = () => { farPreview = null; draw() }
