@@ -8,6 +8,13 @@ type Key = { yaw: number; pts: Record<string, V>; lines: { name: string; a: stri
 // head yaw → [sphere yaw φ, track angle ψ]
 type Eyes = { base: [V, V, V, V][]; anchor: V; z: number; r: number; near: [number, number, number][]; far: [number, number, number][] }
 const all: { eye: number; chin: number; crown: number; ear?: number; temple?: number; variants: Record<string, Key[]>; circ?: Record<string, Record<string, [number, number, number]>>; circErr?: Record<string, Record<string, [number, number]>>; sheet?: Record<string, { theta45: number; pts: Record<string, V>; table?: [number, number][] }>; eyes?: Eyes; eyesBy?: Record<string, { near: [number, number, number][]; far: [number, number, number][] }> } = await (await fetch('/@fs/Users/bowen/Documents/headset-face3d/bench-tasks/%E8%BF%81%E7%A7%BB/turncheck.json')).json()
+// 远侧眼手调 (bowen 1792687412, dot 1792687438): the far eye's table can be hand-tuned here — only its track yaw ψ and
+// sphere-frame yaw φ, per head yaw; saved as bench-tasks/迁移/far-eye-keys.json (rows [head yaw, φ, ψ]) through the local
+// receiver, which backs the previous file up. Everything else stays locked.
+const FARKEYS = '/@fs/Users/bowen/Documents/headset-face3d/bench-tasks/%E8%BF%81%E7%A7%BB/far-eye-keys.json'
+let farRows: [number, number, number][] = await fetch(FARKEYS + '?t=' + Date.now()).then(r => (r.ok ? r.json() : null)).then(j => j?.rows ?? null).catch(() => null) ?? (all.eyes ? all.eyes.far.map(r => [...r] as [number, number, number]) : [])
+const farUndo: [number, number, number][][] = []
+let farPreview: [number, number] | null = null   // slider values at the current head yaw, not yet recorded
 // variants: 原始迁移 (the migrated copies) and 颅顶统一到 01 (level crowns at 01's height, x / cheeks / jaw kept; dot 1792556341)
 const varSel = document.getElementById('var') as HTMLSelectElement
 for (const n of Object.keys(all.variants)) varSel.add(new Option(n, n))
@@ -79,12 +86,12 @@ function draw() {
   // 眼睛 (bowen 1792682066): position = the eye centre on its track (x = x0·cos ψ + z·sin ψ, height kept), shape = the bench
   // sphere frame (deform/index.ts sphereField, yaw only) on the 0° eye; φ, ψ linear in head yaw between the table's rows.
   // The far eye is hidden where it lies inside the side face's region (bench 隐式遮挡), drawn thin grey there
-  const E = all.eyes && { ...all.eyes, ...(all.eyesBy?.[varSel.value] ?? {}) }
+  const E = all.eyes && { ...all.eyes, ...(all.eyesBy?.[varSel.value] ?? {}), ...(varSel.value.startsWith('侧脸平片') ? { far: farRows } : {}) }
   if (E) {
     const at = (tab: [number, number, number][]) => { const k = tab.findIndex(r => r[0] >= ay); if (k <= 0) return tab[0]!.slice(1) as [number, number]
       const a = tab[k - 1]!, b = tab[k]!, u = (ay - a[0]) / (b[0] - a[0]); return [a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u] as [number, number] }
     const eyePath = (far: boolean) => {
-      const [phi, psi] = at(far ? E.far : E.near), f = (phi * Math.PI) / 180, w = (psi * Math.PI) / 180, m = far ? -1 : 1
+      const [phi, psi] = far && farPreview && varSel.value.startsWith('侧脸平片') ? farPreview : at(far ? E.far : E.near), f = (phi * Math.PI) / 180, w = (psi * Math.PI) / 180, m = far ? -1 : 1
       const ax = m * E.anchor[0] * Math.cos(w) + E.z * Math.sin(w)
       const map = (p: V): V => { const qx = m * (p[0] - E.anchor[0]), qy = p[1] - E.anchor[1], z2 = Math.max(0, E.r * E.r - qx * qx - qy * qy)
         return [ax + Math.cos(f) * qx + Math.sin(f) * (Math.sqrt(z2) - E.r), p[1]] }
@@ -125,3 +132,29 @@ yawIn.oninput = draw; refIn.onchange = draw; marksIn.onchange = draw; outerIn.on
 varSel.onchange = () => { data = { ...all, keys: all.variants[varSel.value]! }; imgs = imgsBy[varSel.value]!; draw() }
 for (const b of document.querySelectorAll<HTMLButtonElement>('button[data-k]')) b.onclick = () => { yawIn.value = b.dataset.k!; draw() }
 draw()
+
+// ---- 远侧眼手调 panel ---------------------------------------------------------------------------------------------
+const panel = document.getElementById('fareye')!
+panel.innerHTML = `<b>远侧眼手调</b>（只对「侧脸平片」版本；只改远侧眼的两个量）<br>
+  轨道 yaw <input id="fpsi" type="range" min="0" max="120" step="0.25" style="width:260px"> <input id="fpsiN" type="number" step="0.25" style="width:70px">
+  球面 yaw <input id="fphi" type="range" min="-180" max="0" step="0.5" style="width:260px"> <input id="fphiN" type="number" step="0.5" style="width:70px"><br>
+  <button id="frec">记为这个角度的关键帧</button> <button id="fdel">删掉这个角度的关键帧</button> <button id="fundo">撤销</button> <button id="fsave">保存到文件</button>
+  <span id="fmsg" style="color:#555"></span><div id="ftab" style="color:#333;margin-top:4px"></div>`
+const $ = (id: string) => document.getElementById(id) as HTMLInputElement
+const curYaw = () => Math.round(Math.abs(+yawIn.value) * 2) / 2
+const interp = (ay: number): [number, number] => { const t = farRows, k = t.findIndex(r => r[0] >= ay); if (k <= 0) return [t[0]![1], t[0]![2]]
+  const a = t[k - 1]!, b = t[k]!, u = (ay - a[0]) / (b[0] - a[0]); return [a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u] }
+const showTab = () => { $('ftab').textContent = '关键帧（头 yaw：球面 yaw / 轨道 yaw）　' + farRows.map(r => `${r[0]}°：${r[1]} / ${r[2]}`).join('　') }
+const syncSliders = () => { const [phi, psi] = farPreview ?? interp(curYaw()); $('fphi').value = $('fphiN').value = String(+phi.toFixed(2)); $('fpsi').value = $('fpsiN').value = String(+psi.toFixed(2)) }
+const preview = (phi: number, psi: number) => { farPreview = [phi, psi]; $('fphi').value = $('fphiN').value = String(phi); $('fpsi').value = $('fpsiN').value = String(psi); $('fmsg').textContent = `预览 ${curYaw()}°（还没记录）`; draw() }
+for (const id of ['fphi', 'fphiN']) $(id).oninput = () => preview(+$(id).value, +$('fpsi').value)
+for (const id of ['fpsi', 'fpsiN']) $(id).oninput = () => preview(+$('fphi').value, +$(id).value)
+const push = () => { farUndo.push(farRows.map(r => [...r] as [number, number, number])) }
+$('frec').onclick = () => { const ay = curYaw(), [phi, psi] = farPreview ?? interp(ay); push(); farRows = [...farRows.filter(r => r[0] !== ay), [ay, +phi.toFixed(2), +psi.toFixed(2)] as [number, number, number]].sort((x, y) => x[0] - y[0]); farPreview = null; $('fmsg').textContent = `已记录 ${ay}°（没保存）`; showTab(); draw() }
+$('fdel').onclick = () => { const ay = curYaw(); if (ay === 0 || ay === 90 || !farRows.some(r => r[0] === ay)) { $('fmsg').textContent = ay === 0 || ay === 90 ? '0° 和 90° 不能删' : `${ay}° 没有关键帧`; return } push(); farRows = farRows.filter(r => r[0] !== ay); farPreview = null; $('fmsg').textContent = `已删掉 ${ay}°（没保存）`; showTab(); syncSliders(); draw() }
+$('fundo').onclick = () => { const prev = farUndo.pop(); if (!prev) { $('fmsg').textContent = '没有可撤销的'; return } farRows = prev; farPreview = null; $('fmsg').textContent = '已撤销（没保存）'; showTab(); syncSliders(); draw() }
+$('fsave').onclick = async () => { const r = await fetch('http://127.0.0.1:5199/save?name=far-eye-keys.json', { method: 'POST', body: JSON.stringify({ note: '远侧眼手调 rows [head yaw, sphere yaw φ, track yaw ψ]', saved: new Date().toISOString(), rows: farRows }, null, 1) }).then(x => x.text()).catch(e => 'error ' + e)
+  $('fmsg').textContent = r === 'ok' ? '已保存（如有旧文件，已备份到 bench-tasks/备份/）' : '保存失败：' + r }
+yawIn.addEventListener('input', () => { farPreview = null; syncSliders(); draw() })
+for (const b of document.querySelectorAll<HTMLButtonElement>('button[data-k]')) b.addEventListener('click', () => { farPreview = null; syncSliders(); draw() })
+showTab(); syncSliders()
