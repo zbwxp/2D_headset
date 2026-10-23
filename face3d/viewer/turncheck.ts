@@ -131,9 +131,33 @@ function draw() {
       const ax = freeX ? psi : m * E.anchor[0] * Math.cos(w) + E.z * Math.sin(w)
       const map = (p: V): V => { const qx = m * (p[0] - E.anchor[0]), qy = p[1] - E.anchor[1], z2 = Math.max(0, E.r * E.r - qx * qx - qy * qy)
         return [ax + Math.cos(f) * qx + Math.sin(f) * (Math.sqrt(z2) - E.r), p[1]] }
+      const samples: V[][] = (E.base as [V, V, V, V][]).map(c => Array.from({ length: 31 }, (_, i) => { const t = i / 30, u = 1 - t
+        return [u * u * u * c[0][0] + 3 * u * u * t * c[1][0] + 3 * u * t * t * c[2][0] + t * t * t * c[3][0], u * u * u * c[0][1] + 3 * u * u * t * c[1][1] + 3 * u * t * t * c[2][1] + t * t * t * c[3][1]] as V }))
+      let pts2 = samples.map(row => row.map(map))
+      // 眼睛：透视三等分 (bowen 1792765123, 1792765388): 0° near eye : gap : far eye = 1 : 1 : 1 (third L = 28.38, his 0°);
+      // turning, the four corners stay equal thirds in 3D — the eye line turned by the head yaw ψ, its centre at D·sin ψ
+      // (D = 70.34, from his 45°), seen with width perspective k = 0.009 (his 45°) — x = c + u·L·cos ψ / (1 + k·u·L·sin ψ),
+      // u = −1.5 … 1.5. Each eye: the 0° eye bent by the sphere frame by ψ (near with the head, far against), scaled by its
+      // perspective (width k, height k/3) and put on its corners' middle. 0–55° this, 55–65° blended into the keys, then keys
+      if ((document.getElementById('thirds') as HTMLInputElement | null)?.checked && ay < 65) {
+        const L = 28.38, K = 0.009, D = 70.34, ps = (ay * Math.PI) / 180, cx = D * Math.sin(ps)
+        const X = (u: number) => cx + (u * L * Math.cos(ps)) / (1 + K * u * L * Math.sin(ps))
+        const [uo, ui] = far ? [1.5, 0.5] : [-1.5, -0.5], mid = (X(uo) + X(ui)) / 2, uc = (uo + ui) / 2
+        const sw = 1 / (1 + K * uc * L * Math.sin(ps)), sh2 = 1 / (1 + (K / 3) * uc * L * Math.sin(ps))
+        // the sphere yaw is solved so that the eye, scaled by its perspective, spans exactly its two corners (dot 1792765449:
+        // the layout fixes the final width — the sphere frame is not a second narrowing on top)
+        const c0 = (E.base as [V, V, V, V][])[0]!, target = Math.abs(X(uo) - X(ui)) / sw
+        const relAt = (f2: number) => (p: V): V => { const qx = m * (p[0] - E.anchor[0]), qy = p[1] - E.anchor[1], z2 = Math.max(0, E.r * E.r - qx * qx - qy * qy); return [Math.cos(f2) * qx + Math.sin(f2) * (Math.sqrt(z2) - E.r), qy] }
+        const width = (f2: number) => { const r = relAt(f2); return Math.abs(r(c0[3]!)[0] - r(c0[0]!)[0]) }
+        let lo = 0, hi = Math.PI / 2 - 1e-3
+        for (let it = 0; it < 40; it++) { const md = (lo + hi) / 2; if (width(far ? -md : md) > target) lo = md; else hi = md }
+        const rel = relAt(far ? -lo : lo), cm = (rel(c0[0]!)[0] + rel(c0[3]!)[0]) / 2
+        const th3 = samples.map(row => row.map(p => { const r2 = rel(p); return [mid + (r2[0] - cm) * sw, E.anchor[1] + r2[1] * sh2] as V }))
+        const wgt = ay <= 55 ? 0 : (ay - 55) / 10
+        pts2 = th3.map((row, i) => row.map((q, j) => [q[0] + (pts2[i]![j]![0] - q[0]) * wgt, q[1] + (pts2[i]![j]![1] - q[1]) * wgt] as V))
+      }
       const path = new Path2D()
-      for (const c of E.base) for (let i = 0; i <= 30; i++) { const t = i / 30, u = 1 - t, p: V = [u * u * u * c[0][0] + 3 * u * u * t * c[1][0] + 3 * u * t * t * c[2][0] + t * t * t * c[3][0], u * u * u * c[0][1] + 3 * u * u * t * c[1][1] + 3 * u * t * t * c[2][1] + t * t * t * c[3][1]]
-        const q = P(F(map(p))); i ? path.lineTo(...q) : path.moveTo(...q) }
+      for (const row of pts2) row.forEach((q, i) => { const s2 = P(F(q)); i ? path.lineTo(...s2) : path.moveTo(...s2) })
       return { path, phi, psi }
     }
     const near = eyePath(false), far = eyePath(true)
@@ -176,6 +200,7 @@ panel.innerHTML = `<b>远侧眼手调</b>（只对「侧脸平片」版本；只
   球面 yaw <input id="fphi" type="range" min="-180" max="0" step="0.5" style="width:260px"> <input id="fphiN" type="number" step="0.5" style="width:70px"><br>
   <button id="frec">记为这个角度的关键帧</button> <button id="fdel">删掉这个角度的关键帧</button> <button id="fundo">撤销</button> <button id="fsave">保存到文件</button>
   <label title="不改你的关键帧，只是显示用拟合公式算的远侧眼：|球面 yaw| = 9.69·√头yaw，x = 28.56 + 47.8·sin 头yaw"><input id="ffit" type="checkbox"> 显示拟合公式（对照）</label>
+  <label title="两只眼按透视三等分摆放（0–60°），远近眼按透视放大缩小，眼形用球面框；55–65° 过渡回关键帧"><input id="thirds" type="checkbox"> 眼睛：透视三等分（对照）</label>
   <span id="fmsg" style="color:#555"></span><div id="ftab" style="color:#333;margin-top:4px"></div>`
 const $ = (id: string) => document.getElementById(id) as HTMLInputElement
 const curYaw = () => Math.round(Math.abs(+yawIn.value) * 2) / 2
@@ -196,3 +221,4 @@ for (const b of document.querySelectorAll<HTMLButtonElement>('button[data-k]')) 
 showTab(); syncSliders()
 
 $('ffit').onchange = () => { farPreview = null; draw() }
+$('thirds').onchange = () => { farPreview = null; draw() }
