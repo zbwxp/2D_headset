@@ -85,35 +85,20 @@ function draw() {
     : a <= 45 ? (a * sh.theta45) / 45 : sh.theta45 + ((a - 45) * (90 - sh.theta45)) / 45
   const thDeg = thAt(ay)
   const th = (thDeg * Math.PI) / 180
-  // 共用点 (bowen 1792762417: the sheet looked twisted near 11° once the outline eased): crown and chin, shared by the outline
-  // and the side sheet, move with the sheet's own progress — between keyframes A, B by (sin θ − sin θA) / (sin θB − sin θA) —
-  // so the sheet's ends and its inside turn together; keyframes unchanged (dot 1792762452: one transform for the whole sheet)
-  const SHARED = ['cmv3m1am1-6/pmv3m1am1-4', 'cmv3m1am1-6/pmv3m1am1-2', 'pmv6kklw1-11', 'pmv6kklw1-2']
-  const sprog = (a: number, b: number) => { const sa = Math.sin((thAt(a) * Math.PI) / 180), sb = Math.sin((thAt(b) * Math.PI) / 180); return sb === sa ? t : (Math.sin(th) - sa) / (sb - sa) }
-  if (sh) for (const id of SHARED) if (A.pts[id] && B.pts[id]) pts[id] = lerp(A.pts[id]!, B.pts[id]!, sprog(A.yaw, B.yaw))
   const K90 = data.keys[data.keys.length - 1]!
-  // 三点共面 (bowen 1792762575): each frame the side face lies on the plane through the crown, the chin (both where the outline
-  // puts them) and the nose tip (on its sheet turn, x = d·sin θ) — x = a + b·d + c·y over a sheet point's depth d (its x at 90°)
-  // and height y; the sheet's other points and its handles are placed on that plane. Identity at 90°, all on the middle line
-  // at 0°; between, the plane may lean (bowen's 45° crown is off the axis sheet)
-  let plane: [number, number, number] | null = null
-  if (sh) {
-    const NOSE = 'pmv6kklw1-7', CR = 'pmv6kklw1-11', CH = 'pmv6kklw1-2'
-    const q = [[K90.pts[CR]![0], K90.pts[CR]![1], pts[CR]![0]], [K90.pts[CH]![0], K90.pts[CH]![1], pts[CH]![0]], [sh.pts[NOSE]![0], sh.pts[NOSE]![1], sh.pts[NOSE]![0] * Math.sin(th)]]
-    const M = q.map(r => [1, r[0]!, r[1]!, r[2]!])   // solve a + b·d + c·y = x
-    for (let i = 0; i < 3; i++) { let piv = i; for (let r = i + 1; r < 3; r++) if (Math.abs(M[r]![i]!) > Math.abs(M[piv]![i]!)) piv = r; [M[i], M[piv]] = [M[piv]!, M[i]!]
-      for (let r = 0; r < 3; r++) if (r !== i) { const f = M[r]![i]! / M[i]![i]!; M[r] = M[r]!.map((v, k) => v - f * M[i]![k]!) } }
-    plane = [M[0]![3]! / M[0]![0]!, M[1]![3]! / M[1]![1]!, M[2]![3]! / M[2]![2]!]
-    for (const [id, [d, y]] of Object.entries(sh.pts)) pts[id] = [plane[0] + plane[1] * d + plane[2] * y, y]
-  }
+  // 刚性平片 (bowen 1792762758): the side face is one rigid sheet through the turning axis — every sheet point, the crown and the
+  // chin included (shared with the outline, which takes them from here), and every sheet handle at x = d·sin θ, d its x at 90°,
+  // height kept. Replaces the crown / chin progress and the per-frame plane (bowen 1792762417 / 1792762575)
+  const SHEET: Record<string, V> = sh ? { ...sh.pts, 'pmv6kklw1-11': K90.pts['pmv6kklw1-11']!, 'pmv6kklw1-2': K90.pts['pmv6kklw1-2']! } : {}
+  const OUTLINE_SHARED: Record<string, string> = { 'cmv3m1am1-6/pmv3m1am1-4': 'pmv6kklw1-11', 'cmv3m1am1-6/pmv3m1am1-2': 'pmv6kklw1-2' }
+  if (sh) { for (const [id, [d, y]] of Object.entries(SHEET)) pts[id] = [d * Math.sin(th), y]; for (const [o, sid] of Object.entries(OUTLINE_SHARED)) if (pts[o]) pts[o] = pts[sid]! }
   // lines matched by their end points across the keys (the names follow the files); each as its screen Bézier
   type Bz = { side: boolean; a: string; b: string; c: [V, V, V, V] }
   const bz: Bz[] = A.lines.map(l => { const m = B.lines.find(x => x.a === l.a && x.b === l.b)!, n = K90.lines.find(x => x.a === l.a && x.b === l.b)!, a = pts[l.a]!, b = pts[l.b]!
-    const onSheet = (id: string) => !!sh && id in sh.pts, sq = (h: V): V => (plane ? [plane[1] * h[0] + plane[2] * h[1], h[1]] : [h[0] * Math.sin(th), h[1]])
+    const onSheet = (id: string) => !!sh && id in SHEET, sq = (h: V): V => [h[0] * Math.sin(th), h[1]]
     const same = (key: Key) => key.lines.find(x => x.a === l.a && x.b === l.b)!
-    const shared = (id: string) => !!sh && SHARED.includes(id), sp = sh ? sprog(A.yaw, B.yaw) : t
-    const ha = onSheet(l.a) ? sq(n.ha) : shared(l.a) ? lerp(l.ha, m.ha, sp) : smooth ? smoothV(data.keys, key => same(key).ha, ay) : lerp(l.ha, m.ha, t)
-    const hb = onSheet(l.b) ? sq(n.hb) : shared(l.b) ? lerp(l.hb, m.hb, sp) : smooth ? smoothV(data.keys, key => same(key).hb, ay) : lerp(l.hb, m.hb, t)
+    const ha = onSheet(l.a) && l.side ? sq(n.ha) : smooth ? smoothV(data.keys, key => same(key).ha, ay) : lerp(l.ha, m.ha, t)
+    const hb = onSheet(l.b) && l.side ? sq(n.hb) : smooth ? smoothV(data.keys, key => same(key).hb, ay) : lerp(l.hb, m.hb, t)
     return { side: !!l.side, a: l.a, b: l.b, c: [P(F(a)), P(F([a[0] + ha[0], a[1] + ha[1]])), P(F([b[0] + hb[0], b[1] + hb[1]])), P(F(b))] } })
   const stroke = (q: Bz) => { g.beginPath(); g.moveTo(...q.c[0]); g.bezierCurveTo(...q.c[1], ...q.c[2], ...q.c[3]); g.stroke() }
   // 真·外轮廓 (bowen 1792671397, 1792675303): the same implicit rule as bench — the outline's lines and the side face's lines
