@@ -157,13 +157,14 @@ function draw() {
       // the eyes sit on a curved face — at 0° each eye's surface already faces α off the camera, so bowen's 0° eye is the
       // sphere frame at −γα of a flat eye (inverted once here, per sample). Turning ψ the sphere frame is γ·(ψ − α) for the
       // near eye (it first faces the camera, so it widens), and for the far eye ±γ·(ψ + α) (sign: bowen's decided "against
-      // the head" 1792686126, or the physical "with the head"). α = 29°, γ = 0.86 fit dot's 24 eye widths (rms ≈ 1) and his
-      // 90° near eye width (18.8 vs 19.4). Centre: the eye track x = x0·cos ψ + z·sin ψ. 近大远小: one strength κ on the eye's
+      // the head" 1792686126, kept 1792770380, or the physical "with the head"). α = 28°, γ = 0.76, κ = 0.003 fit the thirds
+      // (0–50°, rms 1.4) and his 90° near eye width (19.2 vs 19.4) with the far eye against; κ gives near/far height 1.12 at
+      // 45° (his 45° reference 1.08–1.16, dot's 12 pictures 1.04). Centre: the eye track x = x0·cos ψ + z·sin ψ. 近大远小: one strength κ on the eye's
       // depth d = z·cos ψ − x0·sin ψ, scale 1 / (1 − κ·(d − z)), the same across and up — the near eye hardly changes depth
       // (it swings forward then back), the far eye recedes. The far eye is hidden once its surface faces away (ψ + α ≥ 90°)
       const facing = (document.getElementById('facing') as HTMLInputElement | null)?.checked
       if (facing) {
-        const AL = 29, GA = 0.86, kap = +((document.getElementById('kappa') as HTMLInputElement | null)?.value ?? 0.002)
+        const AL = 28, GA = 0.76, kap = +((document.getElementById('kappa') as HTMLInputElement | null)?.value ?? 0.003)
         const physFar = (document.getElementById('farWith') as HTMLInputElement | null)?.checked
         const rad = (d: number) => (d * Math.PI) / 180, sgnF = far && !physFar ? -1 : 1
         const f0 = far ? sgnF * rad(GA * AL) : -rad(GA * AL), f = far ? sgnF * rad(GA * (ay + AL)) : rad(GA * (ay - AL))
@@ -247,7 +248,7 @@ panel.innerHTML = `<b>远侧眼手调</b>（只对「侧脸平片」版本；只
   球面 yaw <input id="fphi" type="range" min="-180" max="0" step="0.5" style="width:260px"> <input id="fphiN" type="number" step="0.5" style="width:70px"><br>
   <button id="frec">记为这个角度的关键帧</button> <button id="fdel">删掉这个角度的关键帧</button> <button id="fundo">撤销</button> <button id="fsave">保存到文件</button>
   <label title="不改你的关键帧，只是显示用拟合公式算的远侧眼：|球面 yaw| = 9.69·√头yaw，x = 28.56 + 47.8·sin 头yaw"><input id="ffit" type="checkbox"> 显示拟合公式（对照）</label>
-  <label title="两只眼按透视三等分摆放（0–90°），远近眼按透视放大缩小，眼形用球面框；脸轮廓 + 侧脸的外轮廓裁剪；不勾 = 原来的表和手调"><input id="thirds" type="checkbox" checked> 眼睛：透视三等分</label> <label title="近侧眼在 0–32° 需要比 0° 眼睛更宽时，横向拉宽到正好对上眼角"><input id="stretch" type="checkbox"> 拉宽到眼角（对照）</label> <label title="球面框从眼睛正对镜头算（0° 时每只眼已转开 29°，转速 0.86）+ 原来的眼睛轨道 + 按每只眼远近的近大远小（横竖一样）"><input id="facing" type="checkbox"> 眼睛：朝向 + 远近（对照）</label> <label>近大远小 <input id="kappa" type="number" step="0.0005" value="0.002" style="width:5em"></label> <label title="远侧眼顺着头弯（物理方向）；不勾 = 你定的反向弯"><input id="farWith" type="checkbox"> 远侧眼顺着头弯</label>
+  <label title="两只眼按透视三等分摆放（0–90°），远近眼按透视放大缩小，眼形用球面框；脸轮廓 + 侧脸的外轮廓裁剪；不勾 = 原来的表和手调"><input id="thirds" type="checkbox" checked> 眼睛：透视三等分</label> <label title="近侧眼在 0–32° 需要比 0° 眼睛更宽时，横向拉宽到正好对上眼角"><input id="stretch" type="checkbox"> 拉宽到眼角（对照）</label> <label title="球面框从眼睛正对镜头算（0° 时每只眼已转开 28°，转速 0.76）+ 原来的眼睛轨道 + 按每只眼远近的近大远小（横竖一样）"><input id="facing" type="checkbox"> 眼睛：朝向 + 远近（对照）</label> <label>近大远小 <input id="kappa" type="number" step="0.0005" value="0.003" style="width:5em"></label> <label title="远侧眼顺着头弯（物理方向）；不勾 = 你定的反向弯"><input id="farWith" type="checkbox"> 远侧眼顺着头弯</label>
   <span id="fmsg" style="color:#555"></span><div id="ftab" style="color:#333;margin-top:4px"></div>`
 const $ = (id: string) => document.getElementById(id) as HTMLInputElement
 const curYaw = () => Math.round(Math.abs(+yawIn.value) * 2) / 2
