@@ -91,12 +91,25 @@ function draw() {
   const SHARED = ['cmv3m1am1-6/pmv3m1am1-4', 'cmv3m1am1-6/pmv3m1am1-2', 'pmv6kklw1-11', 'pmv6kklw1-2']
   const sprog = (a: number, b: number) => { const sa = Math.sin((thAt(a) * Math.PI) / 180), sb = Math.sin((thAt(b) * Math.PI) / 180); return sb === sa ? t : (Math.sin(th) - sa) / (sb - sa) }
   if (sh) for (const id of SHARED) if (A.pts[id] && B.pts[id]) pts[id] = lerp(A.pts[id]!, B.pts[id]!, sprog(A.yaw, B.yaw))
-  if (sh) for (const [id, [d, y]] of Object.entries(sh.pts)) pts[id] = [d * Math.sin(th), y]
   const K90 = data.keys[data.keys.length - 1]!
+  // 三点共面 (bowen 1792762575): each frame the side face lies on the plane through the crown, the chin (both where the outline
+  // puts them) and the nose tip (on its sheet turn, x = d·sin θ) — x = a + b·d + c·y over a sheet point's depth d (its x at 90°)
+  // and height y; the sheet's other points and its handles are placed on that plane. Identity at 90°, all on the middle line
+  // at 0°; between, the plane may lean (bowen's 45° crown is off the axis sheet)
+  let plane: [number, number, number] | null = null
+  if (sh) {
+    const NOSE = 'pmv6kklw1-7', CR = 'pmv6kklw1-11', CH = 'pmv6kklw1-2'
+    const q = [[K90.pts[CR]![0], K90.pts[CR]![1], pts[CR]![0]], [K90.pts[CH]![0], K90.pts[CH]![1], pts[CH]![0]], [sh.pts[NOSE]![0], sh.pts[NOSE]![1], sh.pts[NOSE]![0] * Math.sin(th)]]
+    const M = q.map(r => [1, r[0]!, r[1]!, r[2]!])   // solve a + b·d + c·y = x
+    for (let i = 0; i < 3; i++) { let piv = i; for (let r = i + 1; r < 3; r++) if (Math.abs(M[r]![i]!) > Math.abs(M[piv]![i]!)) piv = r; [M[i], M[piv]] = [M[piv]!, M[i]!]
+      for (let r = 0; r < 3; r++) if (r !== i) { const f = M[r]![i]! / M[i]![i]!; M[r] = M[r]!.map((v, k) => v - f * M[i]![k]!) } }
+    plane = [M[0]![3]! / M[0]![0]!, M[1]![3]! / M[1]![1]!, M[2]![3]! / M[2]![2]!]
+    for (const [id, [d, y]] of Object.entries(sh.pts)) pts[id] = [plane[0] + plane[1] * d + plane[2] * y, y]
+  }
   // lines matched by their end points across the keys (the names follow the files); each as its screen Bézier
   type Bz = { side: boolean; a: string; b: string; c: [V, V, V, V] }
   const bz: Bz[] = A.lines.map(l => { const m = B.lines.find(x => x.a === l.a && x.b === l.b)!, n = K90.lines.find(x => x.a === l.a && x.b === l.b)!, a = pts[l.a]!, b = pts[l.b]!
-    const onSheet = (id: string) => !!sh && id in sh.pts, sq = (h: V): V => [h[0] * Math.sin(th), h[1]]
+    const onSheet = (id: string) => !!sh && id in sh.pts, sq = (h: V): V => (plane ? [plane[1] * h[0] + plane[2] * h[1], h[1]] : [h[0] * Math.sin(th), h[1]])
     const same = (key: Key) => key.lines.find(x => x.a === l.a && x.b === l.b)!
     const shared = (id: string) => !!sh && SHARED.includes(id), sp = sh ? sprog(A.yaw, B.yaw) : t
     const ha = onSheet(l.a) ? sq(n.ha) : shared(l.a) ? lerp(l.ha, m.ha, sp) : smooth ? smoothV(data.keys, key => same(key).ha, ay) : lerp(l.ha, m.ha, t)
