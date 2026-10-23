@@ -127,6 +127,7 @@ function draw() {
   if (E) {
     const at = (tab: [number, number, number][]) => { const k = tab.findIndex(r => r[0] >= ay); if (k <= 0) return tab[0]!.slice(1) as [number, number]
       const a = tab[k - 1]!, b = tab[k]!, u = (ay - a[0]) / (b[0] - a[0]); return [a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u] as [number, number] }
+    let hiddenFar = false
     const eyePath = (far: boolean) => {
       // the far eye of 侧脸平片 by its hand-tuned table: [φ, centre x]; the others by their track [φ, ψ]
       const freeX = far && varSel.value.startsWith('侧脸平片')
@@ -152,7 +153,29 @@ function draw() {
       // spans exactly its two corners (dot 1792765449: not a second narrowing), put on the corners' middle. The eyes keep
       // their thirds even outside the face; the outer silhouette clips what shows (below)
       let solved: number | null = null, corners: [number, number] | null = null
-      if (thirdsOn()) {
+      // 眼睛：朝向 + 远近 (对照; bowen 1792769114 / 1792769653 / 1792769914, calibrated on dot's 12 pictures 1792769363):
+      // the eyes sit on a curved face — at 0° each eye's surface already faces α off the camera, so bowen's 0° eye is the
+      // sphere frame at −γα of a flat eye (inverted once here, per sample). Turning ψ the sphere frame is γ·(ψ − α) for the
+      // near eye (it first faces the camera, so it widens), and for the far eye ±γ·(ψ + α) (sign: bowen's decided "against
+      // the head" 1792686126, or the physical "with the head"). α = 29°, γ = 0.86 fit dot's 24 eye widths (rms ≈ 1) and his
+      // 90° near eye width (18.8 vs 19.4). Centre: the eye track x = x0·cos ψ + z·sin ψ. 近大远小: one strength κ on the eye's
+      // depth d = z·cos ψ − x0·sin ψ, scale 1 / (1 − κ·(d − z)), the same across and up — the near eye hardly changes depth
+      // (it swings forward then back), the far eye recedes. The far eye is hidden once its surface faces away (ψ + α ≥ 90°)
+      const facing = (document.getElementById('facing') as HTMLInputElement | null)?.checked
+      if (facing) {
+        const AL = 29, GA = 0.86, kap = +((document.getElementById('kappa') as HTMLInputElement | null)?.value ?? 0.002)
+        const physFar = (document.getElementById('farWith') as HTMLInputElement | null)?.checked
+        const rad = (d: number) => (d * Math.PI) / 180, sgnF = far && !physFar ? -1 : 1
+        const f0 = far ? sgnF * rad(GA * AL) : -rad(GA * AL), f = far ? sgnF * rad(GA * (ay + AL)) : rad(GA * (ay - AL))
+        const x0 = m * E.anchor[0], z = E.z, ps = rad(ay), cxT = x0 * Math.cos(ps) + z * Math.sin(ps), d = z * Math.cos(ps) - x0 * Math.sin(ps)
+        const sc = 1 / (1 - kap * (d - z)), R = E.r
+        const bend = (fb: number, qx: number, qy: number) => Math.cos(fb) * qx + Math.sin(fb) * (Math.sqrt(Math.max(0, R * R - qx * qx - qy * qy)) - R)
+        pts2 = samples.map(row => row.map(p => { const qd = m * (p[0] - E.anchor[0]), qy = p[1] - E.anchor[1], lim = Math.sqrt(Math.max(0, R * R - qy * qy))
+          let lo = -0.8 * lim, hi = 0.8 * lim; for (let it = 0; it < 40; it++) { const md = (lo + hi) / 2; if (bend(f0, md, qy) < qd) lo = md; else hi = md }
+          return [cxT + sc * bend(f, (lo + hi) / 2, qy), E.anchor[1] + sc * qy] as V }))
+        solved = (f * 180) / Math.PI
+        if (far && ay + AL >= 90) hiddenFar = true
+      } else if (thirdsOn()) {
         const L = 28.38, K = 0.009, D = 70.34, A90 = 10.49, P0 = 50, ps = (ay * Math.PI) / 180, b = K * L * Math.sin(ps)
         const law = (d: number): [number, number] => { const r = (d * Math.PI) / 180; return [D * Math.sin(r), L * Math.cos(r)] }
         const herm = (v0: number, m0: number, v1: number, t: number) => (2 * t ** 3 - 3 * t ** 2 + 1) * v0 + (t ** 3 - 2 * t ** 2 + t) * m0 + (-2 * t ** 3 + 3 * t ** 2) * v1
@@ -176,13 +199,13 @@ function draw() {
       }
       const path = new Path2D()
       for (const row of pts2) row.forEach((q, i) => { const s2 = P(F(q)); i ? path.lineTo(...s2) : path.moveTo(...s2) })
-      return { path, phi: solved ?? phi, psi, thirds: solved !== null, corners }
+      return { path, phi: solved ?? phi, psi, thirds: solved !== null, corners, hidden: far && hiddenFar }
     }
     const near = eyePath(false), far = eyePath(true); lastEyes = { near: near.corners, far: far.corners }
     if (near.thirds && outerIn.checked && (faceR || sideR)) {
       // the eyes keep their thirds layout; what shows is clipped by the outer silhouette — the face outline and the side face
       // together (bowen 1792767860), the rest thin grey
-      for (const e of [near, far]) { g.strokeStyle = '#b8b8b8'; g.lineWidth = 1; g.stroke(e.path)
+      for (const e of [near, far]) { g.strokeStyle = '#b8b8b8'; g.lineWidth = 1; g.stroke(e.path); if (e.hidden) continue
         for (const R of [faceR, sideR]) if (R) { g.save(); g.clip(R); g.strokeStyle = '#7a3b00'; g.lineWidth = 1.8; g.stroke(e.path); g.restore() } }
     } else if (near.thirds) { g.strokeStyle = '#7a3b00'; g.lineWidth = 1.8; g.stroke(near.path); g.stroke(far.path) }
     else { g.strokeStyle = '#7a3b00'; g.lineWidth = 1.8; g.stroke(near.path) }
@@ -224,7 +247,7 @@ panel.innerHTML = `<b>远侧眼手调</b>（只对「侧脸平片」版本；只
   球面 yaw <input id="fphi" type="range" min="-180" max="0" step="0.5" style="width:260px"> <input id="fphiN" type="number" step="0.5" style="width:70px"><br>
   <button id="frec">记为这个角度的关键帧</button> <button id="fdel">删掉这个角度的关键帧</button> <button id="fundo">撤销</button> <button id="fsave">保存到文件</button>
   <label title="不改你的关键帧，只是显示用拟合公式算的远侧眼：|球面 yaw| = 9.69·√头yaw，x = 28.56 + 47.8·sin 头yaw"><input id="ffit" type="checkbox"> 显示拟合公式（对照）</label>
-  <label title="两只眼按透视三等分摆放（0–90°），远近眼按透视放大缩小，眼形用球面框；脸轮廓 + 侧脸的外轮廓裁剪；不勾 = 原来的表和手调"><input id="thirds" type="checkbox" checked> 眼睛：透视三等分</label> <label title="近侧眼在 0–32° 需要比 0° 眼睛更宽时，横向拉宽到正好对上眼角"><input id="stretch" type="checkbox"> 拉宽到眼角（对照）</label>
+  <label title="两只眼按透视三等分摆放（0–90°），远近眼按透视放大缩小，眼形用球面框；脸轮廓 + 侧脸的外轮廓裁剪；不勾 = 原来的表和手调"><input id="thirds" type="checkbox" checked> 眼睛：透视三等分</label> <label title="近侧眼在 0–32° 需要比 0° 眼睛更宽时，横向拉宽到正好对上眼角"><input id="stretch" type="checkbox"> 拉宽到眼角（对照）</label> <label title="球面框从眼睛正对镜头算（0° 时每只眼已转开 29°，转速 0.86）+ 原来的眼睛轨道 + 按每只眼远近的近大远小（横竖一样）"><input id="facing" type="checkbox"> 眼睛：朝向 + 远近（对照）</label> <label>近大远小 <input id="kappa" type="number" step="0.0005" value="0.002" style="width:5em"></label> <label title="远侧眼顺着头弯（物理方向）；不勾 = 你定的反向弯"><input id="farWith" type="checkbox"> 远侧眼顺着头弯</label>
   <span id="fmsg" style="color:#555"></span><div id="ftab" style="color:#333;margin-top:4px"></div>`
 const $ = (id: string) => document.getElementById(id) as HTMLInputElement
 const curYaw = () => Math.round(Math.abs(+yawIn.value) * 2) / 2
@@ -247,4 +270,5 @@ showTab(); syncSliders()
 $('ffit').onchange = () => { farPreview = null; draw() }
 $('thirds').onchange = () => { farPreview = null; draw() }
 $('stretch').onchange = () => draw()
+for (const id of ['facing', 'kappa', 'farWith']) { $(id).onchange = () => draw(); $(id).oninput = () => draw() }
 ;(window as any).__eyes = () => lastEyes
