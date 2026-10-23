@@ -37,14 +37,17 @@ const lerp = (a: V, b: V, t: number): V => [a[0] + (b[0] - a[0]) * t, a[1] + (b[
 // −90 … 90 (bowen 1792603165, 1792634536): a turn to the other side is the mirror of the same turn — near (the ear side,
 // two lines) and far (three lines) change sides at 0°, where the symmetric 01 makes them meet
 const MX = (p: V): V => [-p[0], p[1]]
-// 平滑插值 (bowen 1792761917: the outline sped then braked at 45°): per coordinate a shape-preserving cubic through all the
-// keyframes (Fritsch–Carlson tangents; ends take their segment's slope), so the speed is continuous at every keyframe while
-// the keyframes themselves stay exactly as drawn; off = the piecewise-linear blend
+// 平滑插值 (bowen 1792761917, 1792762034: like a turn — each stretch eases into the next one's speed): per coordinate a cubic
+// through the keyframes whose speed is continuous; at an inner keyframe the speed is the next stretch's mean speed (0 where the
+// direction changes), the last stretch keeps its mean speed, and the first stretch starts at 2·its mean − that speed — so
+// 0 → 45° goes fast then slow and meets 45 → 90° exactly. Keyframes stay as drawn; off = piecewise linear
 function smoothAt(ys: number[], vs: number[], x: number): number {
   const n = ys.length; if (n < 3) { const t = (x - ys[0]!) / (ys[1]! - ys[0]!); return vs[0]! + (vs[1]! - vs[0]!) * t }
   const h = ys.slice(1).map((y, j) => y - ys[j]!), s = h.map((hj, j) => (vs[j + 1]! - vs[j]!) / hj), m = new Array<number>(n)
-  m[0] = s[0]!; m[n - 1] = s[n - 2]!
-  for (let j = 1; j < n - 1; j++) { const a = s[j - 1]!, b = s[j]!; if (a * b <= 0) { m[j] = 0; continue } const w1 = 2 * h[j]! + h[j - 1]!, w2 = h[j]! + 2 * h[j - 1]!; m[j] = (w1 + w2) / (w1 / a + w2 / b) }
+  m[n - 1] = s[n - 2]!
+  for (let j = n - 2; j >= 1; j--) m[j] = s[j - 1]! * s[j]! > 0 ? s[j]! : 0
+  m[0] = 2 * s[0]! - m[1]!
+  if (s[0]! === 0) m[0] = 0; else if (m[0]! / s[0]! < 0) m[0] = 0; else if (m[0]! / s[0]! > 3) m[0] = 3 * s[0]!
   let i = ys.findIndex(y => y >= x) - 1; i = Math.max(0, Math.min(n - 2, i))
   const t = (x - ys[i]!) / h[i]!, t2 = t * t, t3 = t2 * t
   return (2 * t3 - 3 * t2 + 1) * vs[i]! + (t3 - 2 * t2 + t) * h[i]! * m[i]! + (-2 * t3 + 3 * t2) * vs[i + 1]! + (t3 - t2) * h[i]! * m[i + 1]!
