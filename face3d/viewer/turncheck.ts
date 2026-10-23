@@ -120,6 +120,7 @@ function draw() {
     path.closePath(); return near(end, first.c[0]) ? path : null
   }
   const faceR = region(bz.filter(q => !q.side)), sideR = region(bz.filter(q => q.side)), outer = outerIn.checked && faceR && sideR
+  ;(window as any).__bz = bz.map(q => ({ side: q.side, c: q.c.map(p => [(p[0] - OX) / Z, (p[1] - OY) / Z]) }))
   // 眼睛 (bowen 1792682066): position = the eye centre on its track (x = x0·cos ψ + z·sin ψ, height kept), shape = the bench
   // sphere frame (deform/index.ts sphereField, yaw only) on the 0° eye; φ, ψ linear in head yaw between the table's rows.
   // The far eye is hidden where it lies inside the side face's region (bench 隐式遮挡), drawn thin grey there
@@ -204,9 +205,9 @@ function draw() {
       let n = 0
       for (const row of pts2) row.forEach((q, i) => { const s2 = P(F(q)), v = seen.length ? seen[n]! : true, pv = seen.length && i ? seen[n - 1]! : false
         i ? path.lineTo(...s2) : path.moveTo(...s2); if (v) { i && pv ? shown.lineTo(...s2) : shown.moveTo(...s2) } n++ })
-      return { path, phi: solved ?? phi, psi, thirds: solved !== null, corners, shown: seen.length ? shown : path }
+      return { path, phi: solved ?? phi, psi, thirds: solved !== null, corners, shown: seen.length ? shown : path, io: [pts2[0]![0]!, pts2[0]![pts2[0]!.length - 1]!] as [V, V] }
     }
-    const near = eyePath(false), far = eyePath(true); lastEyes = { near: near.corners, far: far.corners }
+    const near = eyePath(false), far = eyePath(true); lastEyes = { near: near.corners, far: far.corners, nearIO: near.io, farIO: far.io }
     if (near.thirds && outerIn.checked && (faceR || sideR)) {
       // the eyes keep their thirds layout; what shows is clipped by the outer silhouette — the face outline and the side face
       // together (bowen 1792767860), the rest thin grey
