@@ -92,6 +92,12 @@ function draw() {
   const SHEET: Record<string, V> = sh ? { ...sh.pts, 'pmv6kklw1-11': K90.pts['pmv6kklw1-11']!, 'pmv6kklw1-2': K90.pts['pmv6kklw1-2']! } : {}
   const OUTLINE_SHARED: Record<string, string> = { 'cmv3m1am1-6/pmv3m1am1-4': 'pmv6kklw1-11', 'cmv3m1am1-6/pmv3m1am1-2': 'pmv6kklw1-2' }
   if (sh) { for (const [id, [d, y]] of Object.entries(SHEET)) pts[id] = [d * Math.sin(th), y]; for (const [o, sid] of Object.entries(OUTLINE_SHARED)) if (pts[o]) pts[o] = pts[sid]! }
+  // 山根 at 90° (bowen 1792767860): the deepest point (smallest depth d) of the side face line 眉心 (pmv6kklw1-9) – 鼻尖 (pmv6kklw1-7)
+  const bridge90 = (() => { const l = sh && K90.lines.find(x => [x.a, x.b].sort().join() === 'pmv6kklw1-7,pmv6kklw1-9'); if (!l) return null
+    const a = SHEET[l.a]!, b = SHEET[l.b]!, c: V[] = [a, [a[0] + l.ha[0], a[1] + l.ha[1]], [b[0] + l.hb[0], b[1] + l.hb[1]], b]
+    let mn = Infinity; for (let i = 0; i <= 200; i++) { const t = i / 200, u = 1 - t; mn = Math.min(mn, u * u * u * c[0]![0] + 3 * u * u * t * c[1]![0] + 3 * u * t * t * c[2]![0] + t * t * t * c[3]![0]) }
+    return mn })()
+  const thirdsOn = () => !!(document.getElementById('thirds') as HTMLInputElement | null)?.checked
   // lines matched by their end points across the keys (the names follow the files); each as its screen Bézier
   type Bz = { side: boolean; a: string; b: string; c: [V, V, V, V] }
   const bz: Bz[] = A.lines.map(l => { const m = B.lines.find(x => x.a === l.a && x.b === l.b)!, n = K90.lines.find(x => x.a === l.a && x.b === l.b)!, a = pts[l.a]!, b = pts[l.b]!
@@ -134,35 +140,48 @@ function draw() {
       const samples: V[][] = (E.base as [V, V, V, V][]).map(c => Array.from({ length: 31 }, (_, i) => { const t = i / 30, u = 1 - t
         return [u * u * u * c[0][0] + 3 * u * u * t * c[1][0] + 3 * u * t * t * c[2][0] + t * t * t * c[3][0], u * u * u * c[0][1] + 3 * u * u * t * c[1][1] + 3 * u * t * t * c[2][1] + t * t * t * c[3][1]] as V }))
       let pts2 = samples.map(row => row.map(map))
-      // 眼睛：透视三等分 (bowen 1792765123, 1792765388): 0° near eye : gap : far eye = 1 : 1 : 1 (third L = 28.38, his 0°);
-      // turning, the four corners stay equal thirds in 3D — the eye line turned by the head yaw ψ, its centre at D·sin ψ
-      // (D = 70.34, from his 45°), seen with width perspective k = 0.009 (his 45°) — x = c + u·L·cos ψ / (1 + k·u·L·sin ψ),
-      // u = −1.5 … 1.5. Each eye: the 0° eye bent by the sphere frame by ψ (near with the head, far against), scaled by its
-      // perspective (width k, height k/3) and put on its corners' middle. 0–55° this, 55–65° blended into the keys, then keys
-      if ((document.getElementById('thirds') as HTMLInputElement | null)?.checked && ay < 65) {
-        const L = 28.38, K = 0.009, D = 70.34, ps = (ay * Math.PI) / 180, cx = D * Math.sin(ps)
-        const X = (u: number) => cx + (u * L * Math.cos(ps)) / (1 + K * u * L * Math.sin(ps))
+      // 眼睛：透视三等分 (bowen 1792765123, 1792765388, 1792767860): 0° near eye : gap : far eye = 1 : 1 : 1 (third L = 28.38, his
+      // 0°); turning, the four corners stay perspective thirds — x = c + u·a / (1 + u·b), u = −1.5 … 1.5, b = k·L·sin ψ with
+      // k = 0.009 (his 45°; dot's 12 free pictures give 0.0091). Up to 50° the eye line turns: c = D·sin ψ (D = 70.34, his 45°),
+      // a = L·cos ψ. That spacing would close to 0 at 90°, but at 90° bowen draws the near eye one part wide with its inner corner
+      // half a part from 山根 (the deepest point of the side face between 眉心 and 鼻尖) — his hand-tuned 90° near eye is exactly
+      // that with the same k: c = 山根, a = 10.49 (corners 73.2 / 53.7 vs his 73.1 / 53.7). So 50 → 90° c and a ease (cubic,
+      // speed kept at 50°, standing still at 90°, the turn's extreme) into those values. Each eye: the 0° eye bent by the sphere
+      // frame (near with the head, far against), its yaw solved so that the eye scaled by its perspective (width b, height b/3)
+      // spans exactly its two corners (dot 1792765449: not a second narrowing), put on the corners' middle. The eyes keep
+      // their thirds even outside the face; the outer silhouette clips what shows (below)
+      let solved: number | null = null
+      if (thirdsOn()) {
+        const L = 28.38, K = 0.009, D = 70.34, A90 = 10.49, P0 = 50, ps = (ay * Math.PI) / 180, b = K * L * Math.sin(ps)
+        const law = (d: number): [number, number] => { const r = (d * Math.PI) / 180; return [D * Math.sin(r), L * Math.cos(r)] }
+        const herm = (v0: number, m0: number, v1: number, t: number) => (2 * t ** 3 - 3 * t ** 2 + 1) * v0 + (t ** 3 - 2 * t ** 2 + t) * m0 + (-2 * t ** 3 + 3 * t ** 2) * v1
+        const [cx, sp] = ay <= P0 || bridge90 === null ? law(ay) : (() => { const t = (ay - P0) / (90 - P0), h = ((90 - P0) * Math.PI) / 180, [c0v, a0v] = law(P0), r0 = (P0 * Math.PI) / 180
+          return [herm(c0v, D * Math.cos(r0) * h, bridge90, t), herm(a0v, -L * Math.sin(r0) * h, A90, t)] as [number, number] })()
+        const X = (u: number) => cx + (u * sp) / (1 + u * b)
         const [uo, ui] = far ? [1.5, 0.5] : [-1.5, -0.5], mid = (X(uo) + X(ui)) / 2, uc = (uo + ui) / 2
-        const sw = 1 / (1 + K * uc * L * Math.sin(ps)), sh2 = 1 / (1 + (K / 3) * uc * L * Math.sin(ps))
-        // the sphere yaw is solved so that the eye, scaled by its perspective, spans exactly its two corners (dot 1792765449:
-        // the layout fixes the final width — the sphere frame is not a second narrowing on top)
+        const sw = 1 / (1 + uc * b), sh2 = 1 / (1 + (uc * b) / 3)
         const c0 = (E.base as [V, V, V, V][])[0]!, target = Math.abs(X(uo) - X(ui)) / sw
         const relAt = (f2: number) => (p: V): V => { const qx = m * (p[0] - E.anchor[0]), qy = p[1] - E.anchor[1], z2 = Math.max(0, E.r * E.r - qx * qx - qy * qy); return [Math.cos(f2) * qx + Math.sin(f2) * (Math.sqrt(z2) - E.r), qy] }
         const width = (f2: number) => { const r = relAt(f2); return Math.abs(r(c0[3]!)[0] - r(c0[0]!)[0]) }
         let lo = 0, hi = Math.PI / 2 - 1e-3
         for (let it = 0; it < 40; it++) { const md = (lo + hi) / 2; if (width(far ? -md : md) > target) lo = md; else hi = md }
         const rel = relAt(far ? -lo : lo), cm = (rel(c0[0]!)[0] + rel(c0[3]!)[0]) / 2
-        const th3 = samples.map(row => row.map(p => { const r2 = rel(p); return [mid + (r2[0] - cm) * sw, E.anchor[1] + r2[1] * sh2] as V }))
-        const wgt = ay <= 55 ? 0 : (ay - 55) / 10
-        pts2 = th3.map((row, i) => row.map((q, j) => [q[0] + (pts2[i]![j]![0] - q[0]) * wgt, q[1] + (pts2[i]![j]![1] - q[1]) * wgt] as V))
+        pts2 = samples.map(row => row.map(p => { const r2 = rel(p); return [mid + (r2[0] - cm) * sw, E.anchor[1] + r2[1] * sh2] as V }))
+        solved = ((far ? -lo : lo) * 180) / Math.PI
       }
       const path = new Path2D()
       for (const row of pts2) row.forEach((q, i) => { const s2 = P(F(q)); i ? path.lineTo(...s2) : path.moveTo(...s2) })
-      return { path, phi, psi }
+      return { path, phi: solved ?? phi, psi, thirds: solved !== null }
     }
     const near = eyePath(false), far = eyePath(true)
-    g.strokeStyle = '#7a3b00'; g.lineWidth = 1.8; g.stroke(near.path)
-    if (outerIn.checked && sideR) {
+    if (near.thirds && outerIn.checked && (faceR || sideR)) {
+      // the eyes keep their thirds layout; what shows is clipped by the outer silhouette — the face outline and the side face
+      // together (bowen 1792767860), the rest thin grey
+      for (const e of [near, far]) { g.strokeStyle = '#b8b8b8'; g.lineWidth = 1; g.stroke(e.path)
+        for (const R of [faceR, sideR]) if (R) { g.save(); g.clip(R); g.strokeStyle = '#7a3b00'; g.lineWidth = 1.8; g.stroke(e.path); g.restore() } }
+    } else if (near.thirds) { g.strokeStyle = '#7a3b00'; g.lineWidth = 1.8; g.stroke(near.path); g.stroke(far.path) }
+    else { g.strokeStyle = '#7a3b00'; g.lineWidth = 1.8; g.stroke(near.path) }
+    if (near.thirds) { /* drawn above */ } else if (outerIn.checked && sideR) {
       g.strokeStyle = '#b8b8b8'; g.lineWidth = 1; g.stroke(far.path)
       // shown only inside the face outline (bowen 1792686822: the part poking out is not drawn) and outside the side face
       const clip = new Path2D(); clip.rect(0, 0, cv.width, cv.height); clip.addPath(sideR)
@@ -200,7 +219,7 @@ panel.innerHTML = `<b>远侧眼手调</b>（只对「侧脸平片」版本；只
   球面 yaw <input id="fphi" type="range" min="-180" max="0" step="0.5" style="width:260px"> <input id="fphiN" type="number" step="0.5" style="width:70px"><br>
   <button id="frec">记为这个角度的关键帧</button> <button id="fdel">删掉这个角度的关键帧</button> <button id="fundo">撤销</button> <button id="fsave">保存到文件</button>
   <label title="不改你的关键帧，只是显示用拟合公式算的远侧眼：|球面 yaw| = 9.69·√头yaw，x = 28.56 + 47.8·sin 头yaw"><input id="ffit" type="checkbox"> 显示拟合公式（对照）</label>
-  <label title="两只眼按透视三等分摆放（0–60°），远近眼按透视放大缩小，眼形用球面框；55–65° 过渡回关键帧"><input id="thirds" type="checkbox"> 眼睛：透视三等分（对照）</label>
+  <label title="两只眼按透视三等分摆放（0–90°），远近眼按透视放大缩小，眼形用球面框；脸轮廓 + 侧脸的外轮廓裁剪；不勾 = 原来的表和手调"><input id="thirds" type="checkbox" checked> 眼睛：透视三等分</label>
   <span id="fmsg" style="color:#555"></span><div id="ftab" style="color:#333;margin-top:4px"></div>`
 const $ = (id: string) => document.getElementById(id) as HTMLInputElement
 const curYaw = () => Math.round(Math.abs(+yawIn.value) * 2) / 2
