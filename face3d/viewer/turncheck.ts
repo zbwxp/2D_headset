@@ -53,6 +53,7 @@ function smoothAt(ys: number[], vs: number[], x: number): number {
   return (2 * t3 - 3 * t2 + 1) * vs[i]! + (t3 - 2 * t2 + t) * h[i]! * m[i]! + (-2 * t3 + 3 * t2) * vs[i + 1]! + (t3 - t2) * h[i]! * m[i + 1]!
 }
 const smoothV = (keys: Key[], get: (k: Key) => V, x: number): V => { const ys = keys.map(k => k.yaw), a = keys.map(get); return [smoothAt(ys, a.map(p => p[0]), x), smoothAt(ys, a.map(p => p[1]), x)] }
+let lastEyes: unknown = null
 function draw() {
   // any number of keyframes (粗调: 0 / 25 / 34 / 45 / 50 / 61 / 75 / 90): the pair around the yaw
   const yaw = +yawIn.value, ay = Math.abs(yaw), flip = yaw < 0, i = Math.max(0, Math.min(data.keys.length - 2, data.keys.findIndex(k => k.yaw >= ay) - 1)), A = data.keys[i]!, B = data.keys[i + 1]!, t = (ay - A.yaw) / (B.yaw - A.yaw)
@@ -150,7 +151,7 @@ function draw() {
       // frame (near with the head, far against), its yaw solved so that the eye scaled by its perspective (width b, height b/3)
       // spans exactly its two corners (dot 1792765449: not a second narrowing), put on the corners' middle. The eyes keep
       // their thirds even outside the face; the outer silhouette clips what shows (below)
-      let solved: number | null = null
+      let solved: number | null = null, corners: [number, number] | null = null
       if (thirdsOn()) {
         const L = 28.38, K = 0.009, D = 70.34, A90 = 10.49, P0 = 50, ps = (ay * Math.PI) / 180, b = K * L * Math.sin(ps)
         const law = (d: number): [number, number] => { const r = (d * Math.PI) / 180; return [D * Math.sin(r), L * Math.cos(r)] }
@@ -166,14 +167,18 @@ function draw() {
         let lo = 0, hi = Math.PI / 2 - 1e-3
         for (let it = 0; it < 40; it++) { const md = (lo + hi) / 2; if (width(far ? -md : md) > target) lo = md; else hi = md }
         const rel = relAt(far ? -lo : lo), cm = (rel(c0[0]!)[0] + rel(c0[3]!)[0]) / 2
-        pts2 = samples.map(row => row.map(p => { const r2 = rel(p); return [mid + (r2[0] - cm) * sw, E.anchor[1] + r2[1] * sh2] as V }))
+        // the sphere frame only narrows: when the corners ask for more than the 0° eye (the near eye up to ~32°) the eye falls
+        // short of them; 拉宽 (对照, asked bowen 1792768482) stretches it sideways to reach them
+        const st = (document.getElementById('stretch') as HTMLInputElement | null)?.checked && width(far ? -lo : lo) < target ? target / width(far ? -lo : lo) : 1
+        pts2 = samples.map(row => row.map(p => { const r2 = rel(p); return [mid + (r2[0] - cm) * sw * st, E.anchor[1] + r2[1] * sh2] as V }))
+        corners = [X(uo), X(ui)]
         solved = ((far ? -lo : lo) * 180) / Math.PI
       }
       const path = new Path2D()
       for (const row of pts2) row.forEach((q, i) => { const s2 = P(F(q)); i ? path.lineTo(...s2) : path.moveTo(...s2) })
-      return { path, phi: solved ?? phi, psi, thirds: solved !== null }
+      return { path, phi: solved ?? phi, psi, thirds: solved !== null, corners }
     }
-    const near = eyePath(false), far = eyePath(true)
+    const near = eyePath(false), far = eyePath(true); lastEyes = { near: near.corners, far: far.corners }
     if (near.thirds && outerIn.checked && (faceR || sideR)) {
       // the eyes keep their thirds layout; what shows is clipped by the outer silhouette — the face outline and the side face
       // together (bowen 1792767860), the rest thin grey
@@ -219,7 +224,7 @@ panel.innerHTML = `<b>远侧眼手调</b>（只对「侧脸平片」版本；只
   球面 yaw <input id="fphi" type="range" min="-180" max="0" step="0.5" style="width:260px"> <input id="fphiN" type="number" step="0.5" style="width:70px"><br>
   <button id="frec">记为这个角度的关键帧</button> <button id="fdel">删掉这个角度的关键帧</button> <button id="fundo">撤销</button> <button id="fsave">保存到文件</button>
   <label title="不改你的关键帧，只是显示用拟合公式算的远侧眼：|球面 yaw| = 9.69·√头yaw，x = 28.56 + 47.8·sin 头yaw"><input id="ffit" type="checkbox"> 显示拟合公式（对照）</label>
-  <label title="两只眼按透视三等分摆放（0–90°），远近眼按透视放大缩小，眼形用球面框；脸轮廓 + 侧脸的外轮廓裁剪；不勾 = 原来的表和手调"><input id="thirds" type="checkbox" checked> 眼睛：透视三等分</label>
+  <label title="两只眼按透视三等分摆放（0–90°），远近眼按透视放大缩小，眼形用球面框；脸轮廓 + 侧脸的外轮廓裁剪；不勾 = 原来的表和手调"><input id="thirds" type="checkbox" checked> 眼睛：透视三等分</label> <label title="近侧眼在 0–32° 需要比 0° 眼睛更宽时，横向拉宽到正好对上眼角"><input id="stretch" type="checkbox"> 拉宽到眼角（对照）</label>
   <span id="fmsg" style="color:#555"></span><div id="ftab" style="color:#333;margin-top:4px"></div>`
 const $ = (id: string) => document.getElementById(id) as HTMLInputElement
 const curYaw = () => Math.round(Math.abs(+yawIn.value) * 2) / 2
@@ -241,3 +246,5 @@ showTab(); syncSliders()
 
 $('ffit').onchange = () => { farPreview = null; draw() }
 $('thirds').onchange = () => { farPreview = null; draw() }
+$('stretch').onchange = () => draw()
+;(window as any).__eyes = () => lastEyes
