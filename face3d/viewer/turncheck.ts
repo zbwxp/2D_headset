@@ -125,7 +125,9 @@ function draw() {
       const freeX = far && varSel.value.startsWith('侧脸平片')
       // 拟合公式（对照, bowen 01:09 keys, 2026-10-23）: |φ| = 9.69·√yaw (0–75°, ±2.5), x = 28.56 + 47.8·sin yaw (0–90°, ±2.4)
       const fitted: [number, number] = [-9.69 * Math.sqrt(ay), 28.56 + 47.8 * Math.sin((ay * Math.PI) / 180)]
-      const [phi, psi] = freeX && farPreview ? farPreview : freeX && (document.getElementById('ffit') as HTMLInputElement | null)?.checked ? fitted : at(far ? E.far : E.near), f = (phi * Math.PI) / 180, w = (psi * Math.PI) / 180, m = far ? -1 : 1
+      // the hand-tuned far eye eases between its keyframes like the outline (平滑插值, bowen 1792762956)
+      const farSmooth = (): [number, number] => { const r = E.far, ys = r.map(q => q[0]); return [smoothAt(ys, r.map(q => q[1]), ay), smoothAt(ys, r.map(q => q[2]), ay)] }
+      const [phi, psi] = freeX && farPreview ? farPreview : freeX && (document.getElementById('ffit') as HTMLInputElement | null)?.checked ? fitted : freeX && smooth ? farSmooth() : at(far ? E.far : E.near), f = (phi * Math.PI) / 180, w = (psi * Math.PI) / 180, m = far ? -1 : 1
       const ax = freeX ? psi : m * E.anchor[0] * Math.cos(w) + E.z * Math.sin(w)
       const map = (p: V): V => { const qx = m * (p[0] - E.anchor[0]), qy = p[1] - E.anchor[1], z2 = Math.max(0, E.r * E.r - qx * qx - qy * qy)
         return [ax + Math.cos(f) * qx + Math.sin(f) * (Math.sqrt(z2) - E.r), p[1]] }
@@ -177,8 +179,7 @@ panel.innerHTML = `<b>远侧眼手调</b>（只对「侧脸平片」版本；只
   <span id="fmsg" style="color:#555"></span><div id="ftab" style="color:#333;margin-top:4px"></div>`
 const $ = (id: string) => document.getElementById(id) as HTMLInputElement
 const curYaw = () => Math.round(Math.abs(+yawIn.value) * 2) / 2
-const interp = (ay: number): [number, number] => { const t = farRows, k = t.findIndex(r => r[0] >= ay); if (k <= 0) return [t[0]![1], t[0]![2]]
-  const a = t[k - 1]!, b = t[k]!, u = (ay - a[0]) / (b[0] - a[0]); return [a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u] }
+const interp = (ay: number): [number, number] => { const ys = farRows.map(r => r[0]); return farRows.length < 2 ? [farRows[0]![1], farRows[0]![2]] : [smoothAt(ys, farRows.map(r => r[1]), ay), smoothAt(ys, farRows.map(r => r[2]), ay)] }
 const showTab = () => { $('ftab').textContent = '关键帧（头 yaw：球面 yaw / 横向 x）　' + farRows.map(r => `${r[0]}°：${r[1]} / ${r[2]}`).join('　') }
 const syncSliders = () => { const [phi, psi] = farPreview ?? interp(curYaw()); $('fphi').value = $('fphiN').value = String(+phi.toFixed(2)); $('fpsi').value = $('fpsiN').value = String(+psi.toFixed(2)) }
 const preview = (phi: number, psi: number) => { farPreview = [phi, psi]; $('fphi').value = $('fphiN').value = String(phi); $('fpsi').value = $('fpsiN').value = String(psi); $('fmsg').textContent = `预览 ${curYaw()}°（还没记录）`; draw() }
