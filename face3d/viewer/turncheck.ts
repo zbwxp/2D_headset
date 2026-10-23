@@ -37,6 +37,19 @@ const lerp = (a: V, b: V, t: number): V => [a[0] + (b[0] - a[0]) * t, a[1] + (b[
 // −90 … 90 (bowen 1792603165, 1792634536): a turn to the other side is the mirror of the same turn — near (the ear side,
 // two lines) and far (three lines) change sides at 0°, where the symmetric 01 makes them meet
 const MX = (p: V): V => [-p[0], p[1]]
+// 平滑插值 (bowen 1792761917: the outline sped then braked at 45°): per coordinate a shape-preserving cubic through all the
+// keyframes (Fritsch–Carlson tangents; ends take their segment's slope), so the speed is continuous at every keyframe while
+// the keyframes themselves stay exactly as drawn; off = the piecewise-linear blend
+function smoothAt(ys: number[], vs: number[], x: number): number {
+  const n = ys.length; if (n < 3) { const t = (x - ys[0]!) / (ys[1]! - ys[0]!); return vs[0]! + (vs[1]! - vs[0]!) * t }
+  const h = ys.slice(1).map((y, j) => y - ys[j]!), s = h.map((hj, j) => (vs[j + 1]! - vs[j]!) / hj), m = new Array<number>(n)
+  m[0] = s[0]!; m[n - 1] = s[n - 2]!
+  for (let j = 1; j < n - 1; j++) { const a = s[j - 1]!, b = s[j]!; if (a * b <= 0) { m[j] = 0; continue } const w1 = 2 * h[j]! + h[j - 1]!, w2 = h[j]! + 2 * h[j - 1]!; m[j] = (w1 + w2) / (w1 / a + w2 / b) }
+  let i = ys.findIndex(y => y >= x) - 1; i = Math.max(0, Math.min(n - 2, i))
+  const t = (x - ys[i]!) / h[i]!, t2 = t * t, t3 = t2 * t
+  return (2 * t3 - 3 * t2 + 1) * vs[i]! + (t3 - 2 * t2 + t) * h[i]! * m[i]! + (-2 * t3 + 3 * t2) * vs[i + 1]! + (t3 - t2) * h[i]! * m[i + 1]!
+}
+const smoothV = (keys: Key[], get: (k: Key) => V, x: number): V => { const ys = keys.map(k => k.yaw), a = keys.map(get); return [smoothAt(ys, a.map(p => p[0]), x), smoothAt(ys, a.map(p => p[1]), x)] }
 function draw() {
   // any number of keyframes (粗调: 0 / 25 / 34 / 45 / 50 / 61 / 75 / 90): the pair around the yaw
   const yaw = +yawIn.value, ay = Math.abs(yaw), flip = yaw < 0, i = Math.max(0, Math.min(data.keys.length - 2, data.keys.findIndex(k => k.yaw >= ay) - 1)), A = data.keys[i]!, B = data.keys[i + 1]!, t = (ay - A.yaw) / (B.yaw - A.yaw)
@@ -54,7 +67,8 @@ function draw() {
   if (all.temple !== undefined) fixed.push([all.temple, '#3a7bd5', `太阳穴点 ${all.temple.toFixed(1)}`])
   for (const [y, c, lab] of fixed) { g.strokeStyle = c; g.setLineDash([6, 4]); g.beginPath(); g.moveTo(0, OY + y * Z); g.lineTo(cv.width, OY + y * Z); g.stroke(); g.fillStyle = c; g.fillText(lab, 6, OY + y * Z - 4) }
   g.setLineDash([]); g.strokeStyle = '#111'; g.lineWidth = 2.5
-  const pts: Record<string, V> = {}; for (const k in A.pts) pts[k] = lerp(A.pts[k]!, B.pts[k]!, t)
+  const smooth = (document.getElementById('smooth') as HTMLInputElement | null)?.checked ?? true
+  const pts: Record<string, V> = {}; for (const k in A.pts) pts[k] = smooth ? smoothV(data.keys, key => key.pts[k]!, ay) : lerp(A.pts[k]!, B.pts[k]!, t)
   // the circular variant (bowen 1792601957, dot 1792602067): a point at front offset x0 and depth R turning about the
   // vertical axis: x = x0·cos + R·sin, its height kept (dot 1792602159) — instead of the piecewise blend
   for (const [id, [x0, R, y]] of Object.entries(all.circ?.[varSel.value] ?? {})) { const r = (ay * Math.PI) / 180; pts[id] = [x0 * Math.cos(r) + R * Math.sin(r), y] }
@@ -73,7 +87,9 @@ function draw() {
   type Bz = { side: boolean; a: string; b: string; c: [V, V, V, V] }
   const bz: Bz[] = A.lines.map(l => { const m = B.lines.find(x => x.a === l.a && x.b === l.b)!, n = K90.lines.find(x => x.a === l.a && x.b === l.b)!, a = pts[l.a]!, b = pts[l.b]!
     const onSheet = (id: string) => !!sh && id in sh.pts, sq = (h: V): V => [h[0] * Math.sin(th), h[1]]
-    const ha = onSheet(l.a) ? sq(n.ha) : lerp(l.ha, m.ha, t), hb = onSheet(l.b) ? sq(n.hb) : lerp(l.hb, m.hb, t)
+    const same = (key: Key) => key.lines.find(x => x.a === l.a && x.b === l.b)!
+    const ha = onSheet(l.a) ? sq(n.ha) : smooth ? smoothV(data.keys, key => same(key).ha, ay) : lerp(l.ha, m.ha, t)
+    const hb = onSheet(l.b) ? sq(n.hb) : smooth ? smoothV(data.keys, key => same(key).hb, ay) : lerp(l.hb, m.hb, t)
     return { side: !!l.side, a: l.a, b: l.b, c: [P(F(a)), P(F([a[0] + ha[0], a[1] + ha[1]])), P(F([b[0] + hb[0], b[1] + hb[1]])), P(F(b))] } })
   const stroke = (q: Bz) => { g.beginPath(); g.moveTo(...q.c[0]); g.bezierCurveTo(...q.c[1], ...q.c[2], ...q.c[3]); g.stroke() }
   // 真·外轮廓 (bowen 1792671397, 1792675303): the same implicit rule as bench — the outline's lines and the side face's lines
@@ -137,7 +153,7 @@ function draw() {
   document.getElementById('yv')!.textContent = `${yaw}°`
   document.getElementById('info')!.textContent = `颅顶 y ${cr[1].toFixed(1)} · 下巴 y ${ch[1].toFixed(1)} · 关键帧 ${flip ? '−' : ''}${A.yaw}° / ${flip ? '−' : ''}${B.yaw}°（${(t * 100).toFixed(0)}%${flip ? '，镜像' : ''}）${sheetText}${eyeText}${errText}`
 }
-yawIn.oninput = draw; refIn.onchange = draw; marksIn.onchange = draw; outerIn.onchange = draw
+yawIn.oninput = draw; refIn.onchange = draw; marksIn.onchange = draw; outerIn.onchange = draw; (document.getElementById("smooth") as HTMLInputElement).onchange = draw
 varSel.onchange = () => { data = { ...all, keys: all.variants[varSel.value]! }; imgs = imgsBy[varSel.value]!; draw() }
 for (const b of document.querySelectorAll<HTMLButtonElement>('button[data-k]')) b.onclick = () => { yawIn.value = b.dataset.k!; draw() }
 draw()
