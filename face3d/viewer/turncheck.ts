@@ -127,7 +127,6 @@ function draw() {
   if (E) {
     const at = (tab: [number, number, number][]) => { const k = tab.findIndex(r => r[0] >= ay); if (k <= 0) return tab[0]!.slice(1) as [number, number]
       const a = tab[k - 1]!, b = tab[k]!, u = (ay - a[0]) / (b[0] - a[0]); return [a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u] as [number, number] }
-    let hiddenFar = false
     const eyePath = (far: boolean) => {
       // the far eye of 侧脸平片 by its hand-tuned table: [φ, centre x]; the others by their track [φ, ψ]
       const freeX = far && varSel.value.startsWith('侧脸平片')
@@ -153,6 +152,7 @@ function draw() {
       // spans exactly its two corners (dot 1792765449: not a second narrowing), put on the corners' middle. The eyes keep
       // their thirds even outside the face; the outer silhouette clips what shows (below)
       let solved: number | null = null, corners: [number, number] | null = null
+      const seen: boolean[] = []
       // 眼睛：朝向 + 远近 (对照; bowen 1792769114 / 1792769653 / 1792769914, calibrated on dot's 12 pictures 1792769363):
       // the eyes sit on a curved face — at 0° each eye's surface already faces α off the camera, so bowen's 0° eye is the
       // sphere frame at −γα of a flat eye (inverted once here, per sample). Turning ψ the sphere frame is γ·(ψ − α) for the
@@ -161,7 +161,7 @@ function draw() {
       // (0–50°, rms 1.4) and his 90° near eye width (19.2 vs 19.4) with the far eye against; κ gives near/far height 1.12 at
       // 45° (his 45° reference 1.08–1.16, dot's 12 pictures 1.04). Centre: the eye track x = x0·cos ψ + z·sin ψ. 近大远小: one strength κ on the eye's
       // depth d = z·cos ψ − x0·sin ψ, scale 1 / (1 − κ·(d − z)), the same across and up — the near eye hardly changes depth
-      // (it swings forward then back), the far eye recedes. The far eye is hidden once its surface faces away (ψ + α ≥ 90°)
+      // (it swings forward then back), the far eye recedes. What the sphere frame folds over (turned past edge-on) is not drawn
       const facing = (document.getElementById('facing') as HTMLInputElement | null)?.checked
       if (facing) {
         const AL = 28, GA = 0.76, kap = +((document.getElementById('kappa') as HTMLInputElement | null)?.value ?? 0.003)
@@ -173,9 +173,11 @@ function draw() {
         const bend = (fb: number, qx: number, qy: number) => Math.cos(fb) * qx + Math.sin(fb) * (Math.sqrt(Math.max(0, R * R - qx * qx - qy * qy)) - R)
         pts2 = samples.map(row => row.map(p => { const qd = m * (p[0] - E.anchor[0]), qy = p[1] - E.anchor[1], lim = Math.sqrt(Math.max(0, R * R - qy * qy))
           let lo = -0.8 * lim, hi = 0.8 * lim; for (let it = 0; it < 40; it++) { const md = (lo + hi) / 2; if (bend(f0, md, qy) < qd) lo = md; else hi = md }
-          return [cxT + sc * bend(f, (lo + hi) / 2, qy), E.anchor[1] + sc * qy] as V }))
+          // the part the sphere frame folds over (its surface turned past edge-on: d x′ / d qx ≤ 0) faces away and is not seen;
+          // the eye is still computed whole (dot 1792771032), the outer silhouette clips the rest
+          const qf = (lo + hi) / 2, zz = Math.sqrt(Math.max(1e-9, R * R - qf * qf - qy * qy)); seen.push(Math.cos(f) - (Math.sin(f) * qf) / zz > 0)
+          return [cxT + sc * bend(f, qf, qy), E.anchor[1] + sc * qy] as V }))
         solved = (f * 180) / Math.PI
-        if (far && ay + AL >= 90) hiddenFar = true
       } else if (thirdsOn()) {
         const L = 28.38, K = 0.009, D = 70.34, A90 = 10.49, P0 = 50, ps = (ay * Math.PI) / 180, b = K * L * Math.sin(ps)
         const law = (d: number): [number, number] => { const r = (d * Math.PI) / 180; return [D * Math.sin(r), L * Math.cos(r)] }
@@ -198,17 +200,24 @@ function draw() {
         corners = [X(uo), X(ui)]
         solved = ((far ? -lo : lo) * 180) / Math.PI
       }
-      const path = new Path2D()
-      for (const row of pts2) row.forEach((q, i) => { const s2 = P(F(q)); i ? path.lineTo(...s2) : path.moveTo(...s2) })
-      return { path, phi: solved ?? phi, psi, thirds: solved !== null, corners, hidden: far && hiddenFar }
+      const path = new Path2D(), shown = new Path2D()
+      let n = 0
+      for (const row of pts2) row.forEach((q, i) => { const s2 = P(F(q)), v = seen.length ? seen[n]! : true, pv = seen.length && i ? seen[n - 1]! : false
+        i ? path.lineTo(...s2) : path.moveTo(...s2); if (v) { i && pv ? shown.lineTo(...s2) : shown.moveTo(...s2) } n++ })
+      return { path, phi: solved ?? phi, psi, thirds: solved !== null, corners, shown: seen.length ? shown : path }
     }
     const near = eyePath(false), far = eyePath(true); lastEyes = { near: near.corners, far: far.corners }
     if (near.thirds && outerIn.checked && (faceR || sideR)) {
       // the eyes keep their thirds layout; what shows is clipped by the outer silhouette — the face outline and the side face
       // together (bowen 1792767860), the rest thin grey
-      for (const e of [near, far]) { g.strokeStyle = '#b8b8b8'; g.lineWidth = 1; g.stroke(e.path); if (e.hidden) continue
-        for (const R of [faceR, sideR]) if (R) { g.save(); g.clip(R); g.strokeStyle = '#7a3b00'; g.lineWidth = 1.8; g.stroke(e.path); g.restore() } }
-    } else if (near.thirds) { g.strokeStyle = '#7a3b00'; g.lineWidth = 1.8; g.stroke(near.path); g.stroke(far.path) }
+      // 朝向 + 远近: the far eye lies behind the middle plane, so the near half of the head covers it — it shows only inside the
+      // face outline and outside the side face (the bench 隐式遮挡 rule, dot 1792771032: the head decides what is seen)
+      const facingOn = (document.getElementById('facing') as HTMLInputElement | null)?.checked
+      for (const e of [near, far]) { g.strokeStyle = '#b8b8b8'; g.lineWidth = 1; g.stroke(e.path)
+        if (facingOn && e === far && faceR && sideR) { const out = new Path2D(); out.rect(0, 0, cv.width, cv.height); out.addPath(sideR)
+          g.save(); g.clip(faceR); g.clip(out, 'evenodd'); g.strokeStyle = '#7a3b00'; g.lineWidth = 1.8; g.stroke(e.shown); g.restore(); continue }
+        for (const R of [faceR, sideR]) if (R) { g.save(); g.clip(R); g.strokeStyle = '#7a3b00'; g.lineWidth = 1.8; g.stroke(e.shown); g.restore() } }
+    } else if (near.thirds) { g.strokeStyle = '#7a3b00'; g.lineWidth = 1.8; g.stroke(near.shown); g.stroke(far.shown) }
     else { g.strokeStyle = '#7a3b00'; g.lineWidth = 1.8; g.stroke(near.path) }
     if (near.thirds) { /* drawn above */ } else if (outerIn.checked && sideR) {
       g.strokeStyle = '#b8b8b8'; g.lineWidth = 1; g.stroke(far.path)
