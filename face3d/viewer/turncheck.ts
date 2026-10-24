@@ -264,6 +264,32 @@ function draw() {
       drawEar({ up, tip, low, upLine: { ha: sx(K.upLine.ha), hb: sx(K.upLine.hb) }, lowLine: { ha: sx(K.lowLine.ha), hb: sx(K.lowLine.hb) } })
       for (const v of [up, low]) { const [x, y] = P(F(v)); g.fillStyle = '#c2185b'; g.beginPath(); g.arc(x, y, 3.5, 0, 7); g.fill() }
     }
+    // 远侧耳 on a 假脸 (bowen 1792814749): the far side's two-line contour where turning puts it (not the seen outline) —
+    // crown and chin from the side sheet (shared), the far ear root the near one's mirror turned rigidly (x0 43.91, depth
+    // 15.88: x = 43.91·cos + 15.88·sin, height 25), each handle the near one's mirror, its 0° x and 90° x as width and depth
+    // (x = −h0·cos + h90·sin), its height eased cos²/sin² between the two. The far ear: the near ear mirrored, hung the same
+    // way (heights 1.6 / 30.2), its facing the mirror of the near one's, 46.3°·(1 + yaw / 90) — so it turns edge-on at
+    // 43.7° and past it. Shown only outside the face outline and the side face; the rest and the 假脸 thin grey
+    const KF = data.keys, k0 = KF[0]!, k90 = KF[KF.length - 1]!, R0 = 'cmv3m1am1-6/pmv3m1am1-1', CR = 'cmv3m1am1-6/pmv3m1am1-4', CH = 'cmv3m1am1-6/pmv3m1am1-2'
+    const nl = (k: Key, b: string) => k.lines.find(l => l.a === R0 && l.b === b)
+    const ps = (ay * Math.PI) / 180, cs = Math.cos(ps), sn = Math.sin(ps)
+    const fh = (h0: V, h90: V): V => [-h0[0] * cs + h90[0] * sn, h0[1] * cs * cs + h90[1] * sn * sn]
+    const rootF: V = [-k0.pts[R0]![0] * cs + k90.pts[R0]![0] * sn, 25]
+    const fake = [CR, CH].map(b => { const l0 = nl(k0, b), l9 = nl(k90, b); return l0 && l9 && pts[b] ? { a: rootF, b: pts[b]!, ha: fh(l0.ha, l9.ha), hb: fh(l0.hb, l9.hb) } : null })
+    if (fake[0] && fake[1]) {
+      const cub = (f: { a: V; b: V; ha: V; hb: V }): V[] => [f.a, [f.a[0] + f.ha[0], f.a[1] + f.ha[1]], [f.b[0] + f.hb[0], f.b[1] + f.hb[1]], f.b]
+      const yAt = (c: V[], yy: number): V => { let best: V = c[0]!; for (let i = 0; i <= 400; i++) { const t = i / 400, u = 1 - t, q: V = [u ** 3 * c[0]![0] + 3 * u * u * t * c[1]![0] + 3 * u * t * t * c[2]![0] + t ** 3 * c[3]![0], u ** 3 * c[0]![1] + 3 * u * u * t * c[1]![1] + 3 * u * t * t * c[2]![1] + t ** 3 * c[3]![1]]; if (Math.abs(q[1] - yy) < Math.abs(best[1] - yy)) best = q } return best }
+      const cu = cub(fake[0]), cl = cub(fake[1])
+      g.setLineDash([4, 4]); g.strokeStyle = '#aaa'; g.lineWidth = 1
+      for (const c of [cu, cl]) { const q = c.map(v => P(F(v))); g.beginPath(); g.moveTo(...q[0]!); g.bezierCurveTo(...q[1]!, ...q[2]!, ...q[3]!); g.stroke() }
+      g.setLineDash([])
+      const upF = yAt(cu, 1.6), lowF = yAt(cl, 30.2), kf = Math.cos(((F0 * (1 + ay / 90)) * Math.PI) / 180), mx = (v: V): V => [-v[0] * kf, v[1]]
+      const farEar = { up: upF, tip: [upF[0] - (K.tip[0] - K.up[0]) * kf, upF[1] + (K.tip[1] - K.up[1])] as V, low: lowF, upLine: { ha: mx(K.upLine.ha), hb: mx(K.upLine.hb) }, lowLine: { ha: mx(K.lowLine.ha), hb: mx(K.lowLine.hb) } }
+      g.strokeStyle = '#c9a0b4'; g.lineWidth = 1; drawEar(farEar)
+      g.save()
+      for (const R of [faceR, sideR]) if (R) { const out = new Path2D(); out.rect(0, 0, cv.width, cv.height); out.addPath(R); g.clip(out, 'evenodd') }
+      g.strokeStyle = '#c2185b'; g.lineWidth = 2.2; drawEar(farEar); g.restore()
+    }
   }
   g.strokeStyle = '#111'; g.lineWidth = 2.5
   // the endpoints (bowen 1792602867; names bowen 1792634536): crown, chin, near ear root; far 颧骨点, 太阳穴点
