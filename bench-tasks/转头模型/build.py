@@ -5,10 +5,10 @@
 import base64, json, os
 BT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..') + '/'   # the repo's bench-tasks/, wherever the repo is
 OUT = BT + '转头模型/'
-T = json.load(open(BT + '迁移/turncheck.json'))
-V = [n for n in T['variants'] if '远侧脸收 5' in n][0]
-K, SH, E = T['variants'][V], T['sheet'][V], T['eyes']
-EAR = json.load(open(BT + '耳朵-2026-10-24/ear-keys.json'))['keys']
+# the inputs, archived beside this script (sources/: the final variant of 迁移/turncheck.json, its sheet and eyes; the ear keys)
+T = json.load(open(OUT + 'sources/turncheck-final.json'))
+K, SH, E = T['keys'], T['sheet'], T['eyes']
+EAR = json.load(open(OUT + 'sources/ear-keys.json'))['keys']
 ID = {'cmv3m1am1-6/pmv3m1am1-4': 'crown', 'cmv3m1am1-6/pmv3m1am1-2': 'chin', 'cmv3m1am1-6/pmv3m1am1-1': 'nearRoot',
       'pmv3m1am1-1': 'zyg', 'pm03-skf': 'temple',
       'pmv6kklw1-11': 'crown', 'pmv6kklw1-2': 'chin', 'pmv6kklw1-3': 'lipLow', 'pmv6kklw1-5': 'lipUp', 'pmv6kklw1-7': 'noseTip', 'pmv6kklw1-9': 'brow'}
@@ -23,11 +23,7 @@ k90 = K[-1]
 sheetPts = {ID[p]: r(v) for p, v in SH['pts'].items()}
 sheetPts['crown'] = r(k90['pts']['pmv6kklw1-11']); sheetPts['chin'] = r(k90['pts']['pmv6kklw1-2'])
 sideLines = [{'name': 'side' + str(i + 1), 'label': l['name'], 'a': ID[l['a']], 'b': ID[l['b']], 'ha': r(l['ha']), 'hb': r(l['hb'])} for i, l in enumerate(x for x in k90['lines'] if x.get('side'))]
-refs = []
-for k in K:
-    src, f = k['ref']['src'], f"ref-{k['yaw']}.png"
-    open(OUT + f, 'wb').write(base64.b64decode(src.split(',', 1)[1]))
-    refs.append({'yaw': k['yaw'], 'file': f, **{q: round(k['ref'][q], 4) for q in ('x', 'y', 'w', 'h')}})
+refs = [{'yaw': k['yaw'], 'file': k['ref']['src'], **{q: round(k['ref'][q], 4) for q in ('x', 'y', 'w', 'h')}} for k in K]
 e90 = EAR['90']
 model = {
   'note': '转头模型 — the final turning-head model (bowen 1792849247). Build: bench-tasks/转头模型/build.py. Rules: face3d/turnmodel/README.md',
