@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><title>转头模型</title>
+<style>body{margin:0;font:14px system-ui;background:#fafaf8}.bar{padding:6px 12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}canvas{display:block;margin:0 auto;background:#fff;border:1px solid #ddd}input[type=number]{width:4.5em}</style></head>
+<body>
+<div class="bar">转头 <input id="yaw" type="range" min="-90" max="90" step="0.5" value="0" style="width:420px"> <b id="yv">0°</b>
+<button data-k="-90">−90°</button><button data-k="-45">−45°</button><button data-k="0">0°</button><button data-k="45">45°</button><button data-k="90">90°</button>
+<label><input id="ref" type="checkbox" checked> 参考图</label> <label><input id="marks" type="checkbox" checked> 标点</label> <label title="远侧耳挂的那条对称两段假线"><input id="fake" type="checkbox"> 假线</label> <label title="被挡住的部分画浅灰"><input id="hidden" type="checkbox" checked> 被挡部分</label></div>
+<div class="bar" id="params" style="color:#444"></div>
+<div class="bar" id="info" style="color:#555"></div>
+<canvas id="c" width="760" height="760"></canvas><script type="module" src="./turnmodel.ts"></script></body></html>
