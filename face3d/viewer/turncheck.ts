@@ -17,6 +17,9 @@ const FARKEYS = '/@fs/Users/bowen/Documents/headset-face3d/bench-tasks/%E8%BF%81
 const trackX = (psi: number) => (all.eyes ? -all.eyes.anchor[0] * Math.cos((psi * Math.PI) / 180) + all.eyes.z * Math.sin((psi * Math.PI) / 180) : 0)
 const toX = (rows: [number, number, number][]) => rows.map(r => [r[0], r[1], +trackX(r[2]).toFixed(2)] as [number, number, number])
 const saved = await fetch(FARKEYS + '?t=' + Date.now()).then(r => (r.ok ? r.json() : null)).catch(() => null)
+// bowen's hand-tuned near ear at 0 / 45 / 90° (bench-tasks/耳朵-2026-10-24/ear-keys.json): shown grey at those angles
+type EarKey = { up: V; tip: V; low: V; upLine: { ha: V; hb: V }; lowLine: { ha: V; hb: V } }
+const earKeys: Record<string, EarKey> | null = await fetch('/@fs/Users/bowen/Documents/headset-face3d/bench-tasks/' + encodeURI('耳朵-2026-10-24/ear-keys.json') + '?t=' + Date.now()).then(r => (r.ok ? r.json() : null)).then(j => j?.keys ?? null).catch(() => null)
 let farRows: [number, number, number][] = saved?.rows ? (saved.mode === 'x' ? saved.rows : toX(saved.rows)) : all.eyes ? toX(all.eyes.far) : []
 const farUndo: [number, number, number][][] = []
 let farPreview: [number, number] | null = null   // slider values at the current head yaw, not yet recorded
@@ -238,6 +241,30 @@ function draw() {
     const clip = new Path2D(); clip.rect(0, 0, cv.width, cv.height); clip.addPath(other)
     g.save(); g.clip(clip, 'evenodd'); g.strokeStyle = colour; g.lineWidth = 2.5; stroke(q); g.restore()
   }
+  // 耳朵（朝向） (bowen 1792813942, 1792814242; fit 1792814046): the near ear. 上耳点 / 下耳点 sit on the near face outline
+  // (右颅 / 右下颌) at fixed heights 1.6 / 30.2 (the mean of bowen's three); the ear's shape is bowen's 90° one, hung on 上耳点,
+  // a plate that faces the camera at 90° and is turned 46.3° away at 0° (his 0° width) — facing 46.3°·(1 − yaw / 90),
+  // sideways offsets × cos(facing), heights kept. Grey dashed: his hand-tuned ear at exactly 0 / 45 / 90°
+  if ((document.getElementById('ear') as HTMLInputElement | null)?.checked && earKeys?.['90']) {
+    const inv = (q: V): V => { const m: V = [(q[0] - OX) / Z, (q[1] - OY) / Z]; return flip ? MX(m) : m }
+    const near = (a: string, b: string) => bz.find(q => q.a === a && q.b === b)
+    const atY = (q: Bz | undefined, yy: number): V | null => { if (!q) return null; const c = q.c.map(inv); let best: V | null = null
+      for (let i = 0; i <= 400; i++) { const t = i / 400, u = 1 - t, p: V = [u ** 3 * c[0]![0] + 3 * u * u * t * c[1]![0] + 3 * u * t * t * c[2]![0] + t ** 3 * c[3]![0], u ** 3 * c[0]![1] + 3 * u * u * t * c[1]![1] + 3 * u * t * t * c[2]![1] + t ** 3 * c[3]![1]]
+        if (!best || Math.abs(p[1] - yy) < Math.abs(best[1] - yy)) best = p } return best }
+    const up = atY(near('cmv3m1am1-6/pmv3m1am1-1', 'cmv3m1am1-6/pmv3m1am1-4'), 1.6), low = atY(near('cmv3m1am1-6/pmv3m1am1-1', 'cmv3m1am1-6/pmv3m1am1-2'), 30.2)
+    const K = earKeys['90']!, F0 = 46.3, k = Math.cos(((F0 * (1 - ay / 90)) * Math.PI) / 180), sx = (v: V): V => [v[0] * k, v[1]]
+    const drawEar = (e: { up: V; tip: V; low: V; upLine: { ha: V; hb: V }; lowLine: { ha: V; hb: V } }) => {
+      const seg = (a: V, ha: V, hb: V, b: V) => { const q = [a, [a[0] + ha[0], a[1] + ha[1]] as V, [b[0] + hb[0], b[1] + hb[1]] as V, b].map(v => P(F(v))); g.beginPath(); g.moveTo(...q[0]!); g.bezierCurveTo(...q[1]!, ...q[2]!, ...q[3]!); g.stroke() }
+      seg(e.up, e.upLine.ha, e.upLine.hb, e.tip); seg(e.tip, e.lowLine.ha, e.lowLine.hb, e.low) }
+    const key = earKeys[String(ay)]
+    if (key) { g.setLineDash([5, 4]); g.strokeStyle = '#888'; g.lineWidth = 1.5; drawEar(key); g.setLineDash([]) }
+    if (up && low) {
+      const tip: V = [up[0] + (K.tip[0] - K.up[0]) * k, up[1] + (K.tip[1] - K.up[1])]
+      g.strokeStyle = '#c2185b'; g.lineWidth = 2.2
+      drawEar({ up, tip, low, upLine: { ha: sx(K.upLine.ha), hb: sx(K.upLine.hb) }, lowLine: { ha: sx(K.lowLine.ha), hb: sx(K.lowLine.hb) } })
+      for (const v of [up, low]) { const [x, y] = P(F(v)); g.fillStyle = '#c2185b'; g.beginPath(); g.arc(x, y, 3.5, 0, 7); g.fill() }
+    }
+  }
   g.strokeStyle = '#111'; g.lineWidth = 2.5
   // the endpoints (bowen 1792602867; names bowen 1792634536): crown, chin, near ear root; far 颧骨点, 太阳穴点
   const marks: [string, string, string][] = [['cmv3m1am1-6/pmv3m1am1-4', '#7a00ff', '颅顶'], ['cmv3m1am1-6/pmv3m1am1-2', '#00a651', '下巴'], ['cmv3m1am1-6/pmv3m1am1-1', '#e00078', '耳根'], ['pmv3m1am1-1', '#333', '颧骨点'], ['pm03-skf', '#3a7bd5', '太阳穴点'], ['pm03-skb', '#e00', '后切点']]
@@ -260,7 +287,7 @@ panel.innerHTML = `<b>远侧眼手调</b>（只对「侧脸平片」版本；只
   球面 yaw <input id="fphi" type="range" min="-180" max="0" step="0.5" style="width:260px"> <input id="fphiN" type="number" step="0.5" style="width:70px"><br>
   <button id="frec">记为这个角度的关键帧</button> <button id="fdel">删掉这个角度的关键帧</button> <button id="fundo">撤销</button> <button id="fsave">保存到文件</button>
   <label title="不改你的关键帧，只是显示用拟合公式算的远侧眼：|球面 yaw| = 9.69·√头yaw，x = 28.56 + 47.8·sin 头yaw"><input id="ffit" type="checkbox"> 显示拟合公式（对照）</label>
-  <label title="两只眼按透视三等分摆放（0–90°），远近眼按透视放大缩小，眼形用球面框；脸轮廓 + 侧脸的外轮廓裁剪；不勾 = 原来的表和手调"><input id="thirds" type="checkbox" checked> 眼睛：透视三等分</label> <label title="近侧眼在 0–32° 需要比 0° 眼睛更宽时，横向拉宽到正好对上眼角"><input id="stretch" type="checkbox"> 拉宽到眼角（对照）</label> <label title="球面框从眼睛正对镜头算（0° 时每只眼已转开 28°，转速 0.76）+ 原来的眼睛轨道 + 按每只眼远近的近大远小（横竖一样）"><input id="facing" type="checkbox" checked> 眼睛：朝向 + 远近（对照）</label> <label>近大远小 <input id="kappa" type="number" step="0.0005" value="0.003" style="width:5em"></label> <label title="远侧眼顺着头弯（物理方向）；不勾 = 你定的反向弯"><input id="farWith" type="checkbox"> 远侧眼顺着头弯</label>
+  <label title="两只眼按透视三等分摆放（0–90°），远近眼按透视放大缩小，眼形用球面框；脸轮廓 + 侧脸的外轮廓裁剪；不勾 = 原来的表和手调"><input id="thirds" type="checkbox" checked> 眼睛：透视三等分</label> <label title="近侧眼在 0–32° 需要比 0° 眼睛更宽时，横向拉宽到正好对上眼角"><input id="stretch" type="checkbox"> 拉宽到眼角（对照）</label> <label title="球面框从眼睛正对镜头算（0° 时每只眼已转开 28°，转速 0.76）+ 原来的眼睛轨道 + 按每只眼远近的近大远小（横竖一样）"><input id="facing" type="checkbox" checked> 眼睛：朝向 + 远近（对照）</label> <label title="近侧耳：上下耳点贴近侧脸轮廓（高 1.6 / 30.2），耳形用你 90° 的，横向 × cos(朝向)，朝向 46.3°×(1 − yaw/90)；灰虚线 = 你在 0 / 45 / 90° 调的"><input id="ear" type="checkbox" checked> 耳朵（朝向）</label> <label>近大远小 <input id="kappa" type="number" step="0.0005" value="0.003" style="width:5em"></label> <label title="远侧眼顺着头弯（物理方向）；不勾 = 你定的反向弯"><input id="farWith" type="checkbox"> 远侧眼顺着头弯</label>
   <span id="fmsg" style="color:#555"></span><div id="ftab" style="color:#333;margin-top:4px"></div>`
 const $ = (id: string) => document.getElementById(id) as HTMLInputElement
 const curYaw = () => Math.round(Math.abs(+yawIn.value) * 2) / 2
@@ -283,5 +310,5 @@ showTab(); syncSliders()
 $('ffit').onchange = () => { farPreview = null; draw() }
 $('thirds').onchange = () => { farPreview = null; draw() }
 $('stretch').onchange = () => draw()
-for (const id of ['facing', 'kappa', 'farWith']) { $(id).onchange = () => draw(); $(id).oninput = () => draw() }
+for (const id of ['facing', 'kappa', 'farWith', 'ear']) { $(id).onchange = () => draw(); $(id).oninput = () => draw() }
 ;(window as any).__eyes = () => lastEyes
