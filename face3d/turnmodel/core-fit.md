@@ -65,3 +65,21 @@ degree, and B stays open later.
 2. Pitch ±45 views for now: (a) copies of the pitch-0 row (the head does not nod yet), or (b) left for a pitch model later.
    Recommended: (a).
 3. Occlusion for attached lines: they inherit their bone's rule (recommended), or each semantic layer sets its own.
+
+## 6. Agreed with dot so far (2026-10-25, not yet bowen's decision)
+
+- **Order:** pitch bones first (bowen 1792858563, dot 1792858601). A / B waits until pitch is in; then combined angles test
+  snapshot interpolation and occlusion. At pitch 0 the model must still give this version exactly (a test against
+  fixtures/old-turncheck.json and the current 25).
+- **The model is the editable source;** snapshots only feed core playback. A rebake keeps bone ids (derived from the model's
+  names), updates positions only, and reports added or removed lines instead of handling them silently.
+- **Edits at 90°.** Bone structure goes back to the model. Width, taper and ends of a semantic line are not per view and stay
+  in its semantic layer. A per-view shape tweak of an attached line is refused by core today (bone-derived); it is a separate
+  feature, not this round.
+- **Base view (integration need, dot 1792858616).** attach and derive always take FRONT (0,0) as base. Side-face assets must
+  be drawn and attached at 90°, because the sheet is a vertical line at 0°. A selectable base view is needed under A or B.
+- **Occlusion of attached lines.** Each takes its bone's region rule and is re-clipped with its own geometry. Regions come from
+  the bone layer only. A fold-hidden part follows the bone at the same bone coordinate.
+- **Pitch** is marked unsupported until it is modelled; a copied row is never presented as support.
+- **Precision.** snapshot-test.ts measures only the snapshot step (0.84 at 15°). The full chain (eye Bézier refit, attach
+  refit, occlusion) has to be measured after baking.
