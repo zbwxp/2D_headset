@@ -116,3 +116,15 @@ describe('parameters with no solution are refused (dot 1792855783)', () => {
     for (let y = -90; y <= 90; y += 0.5) expect(() => evaluate(M, y)).not.toThrow()
   })
 })
+
+describe('inputs must be finite numbers (dot 1792856126)', () => {
+  it('NaN or Infinity in the yaw or any parameter is refused', () => {
+    expect(() => evaluate(M, NaN)).toThrow(ModelRefusal)
+    expect(() => evaluate(M, Infinity)).toThrow(ModelRefusal)
+    for (const k of Object.keys(params(M))) for (const bad of [NaN, Infinity, -Infinity]) expect(() => evaluate(M, 30, { ...params(M), [k]: bad })).toThrow(ModelRefusal)
+  })
+  it('every coordinate of a view is finite', () => {
+    const f = evaluate(M, 33.3), all = [...f.outline, ...f.side, ...f.ears.near, ...f.ears.far, ...f.ears.fake].flatMap(l => l.c).concat(f.eyes.near.flatMap(e => e.pts), f.eyes.far.flatMap(e => e.pts), Object.values(f.points))
+    expect(all.every(v => Number.isFinite(v[0]) && Number.isFinite(v[1]))).toBe(true)
+  })
+})

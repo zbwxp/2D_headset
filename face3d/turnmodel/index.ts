@@ -73,6 +73,9 @@ export const params = (m: ModelData): Params => Object.fromEntries(Object.entrie
 
 /** The view at `yaw` (−90 … 90; a turn to the other side is the mirror of the same turn, bowen 1792603165). */
 export function evaluate(m: ModelData, yaw: number, p: Params = params(m)): Frame {
+  // every input a finite number (dot 1792856126): NaN or Infinity would give non-finite lines that look like a view
+  if (!Number.isFinite(yaw)) throw new ModelRefusal(`yaw ${yaw} is not a finite number`)
+  for (const [k, v] of Object.entries(p)) if (!Number.isFinite(v)) throw new ModelRefusal(`${k} ${v} is not a finite number`)
   const f = evaluateRight(m, Math.min(90, Math.abs(yaw)), p)
   if (yaw >= 0) return f
   const mx = (v: V): V => [-v[0], v[1]], mc = (c: Cubic): Cubic => c.map(mx) as Cubic

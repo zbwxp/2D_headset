@@ -37,7 +37,8 @@ function stroke(p: Path2D, show: Show, R: Record<string, Path2D | null>, colour:
 
 function draw() {
   const yaw = +$('yaw').value, ay = Math.abs(yaw), flip = yaw < 0
-  const p = Object.fromEntries((Object.keys(P0) as (keyof Params)[]).map(k => [k, +$('p-' + k).value])) as unknown as Params
+  // an empty box is no value (dot 1792856126), not 0: refused like any other value with no answer
+  const p = Object.fromEntries((Object.keys(P0) as (keyof Params)[]).map(k => [k, $('p-' + k).value.trim() === '' ? NaN : +$('p-' + k).value])) as unknown as Params
   let f: Frame
   try { f = evaluate(M, yaw, p) } catch (e) {
     // a parameter with no solution is refused (dot 1792855783): the last good view stays, the reason is shown
