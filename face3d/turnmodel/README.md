@@ -4,7 +4,7 @@ The final anime turning-head model (bowen 1792849247 「打包」). One pure fun
 comes out, each with the rule that decides what of it is seen.
 
 - Code: `face3d/turnmodel/index.ts` — `evaluate(model, yaw, params?) → Frame`. No drawing, no DOM.
-- Data: `bench-tasks/转头模型/model.json`, built by `bench-tasks/转头模型/build.py` from bowen's files (read only).
+- Data: `bench-tasks/转头模型/model.json`, built by `bench-tasks/转头模型/build.py` from bowen's files (read only). Every path is relative to the repository.
 - Viewer: `face3d/viewer/turnmodel.html` (port 5192). It only draws; the parameters can be tried in its boxes (not saved).
 - Tests: `face3d/turnmodel/turnmodel.test.ts`, in the project run (`npx vitest run`); `fixtures/old-turncheck.json` is the old turncheck's output at nine yaws, the new model is checked against it.
 
@@ -36,6 +36,9 @@ Yaw runs −90 … 90. A turn to the other side is the mirror of the same turn (
    The near eye shows inside the outline or the side face. The far eye shows inside the outline and outside the side face.
 4. **Near ear** (bowen 1792813942): 上耳点 / 下耳点 sit on nearSkull / nearJaw at fixed heights (线上点). The ear is bowen's 90°
    ear, a plate turned φ0·(1 − yaw / 90) away from the camera: sideways offsets × cos(facing), heights kept.
+   The ear's **shape** at 90° is bowen's exactly (tip offset and handles); its **position** is not. The fixed heights put
+   上耳点 / 下耳点 0.6–1.1 away from where he drew them at 90°, and 0–2.3 at 0° and 45°. This is the result of the chosen rule,
+   and it was not re-fitted (dot 1792856044).
 5. **Far ear** (bowen 1792814749, 1792837565, 1792846244): the mirror of the near ear, hung on a 假线. The 假线 is the symmetric
    two-line contour on the far side; it turns with the head and shares the crown and chin. Its ear root is the near one's
    mirror turned with the head, plus push × how far the far 颧骨点 has moved out since 0°. The far ear faces

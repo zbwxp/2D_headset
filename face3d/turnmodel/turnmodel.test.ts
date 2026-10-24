@@ -74,7 +74,7 @@ describe('ears', () => {
       expect(f.points.nearEarUp![1]).toBeCloseTo(p.earUp, 3); expect(f.points.nearEarLow![1]).toBeCloseTo(p.earLow, 3)
     }
   })
-  it('at 90° the near ear is bowen\'s 90° ear on the outline (its shape exactly)', () => {
+  it('at 90° the near ear has bowen\'s 90° shape exactly (tip offset, handles); its points sit at the fixed heights, not at his drawn place', () => {
     const f = evaluate(M, 90), e = M.ear, [up, lo] = f.ears.near
     expect(dist(up!.c[3], [f.points.nearEarUp![0] + e.tip[0] - e.up[0], f.points.nearEarUp![1] + e.tip[1] - e.up[1]])).toBeLessThan(1e-9)
     expect(dist(up!.c[1], [up!.c[0][0] + e.upLine.ha[0], up!.c[0][1] + e.upLine.ha[1]])).toBeLessThan(1e-9)

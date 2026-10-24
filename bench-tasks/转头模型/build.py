@@ -3,7 +3,7 @@
 # pulled in 5 (1792811015), chin handle (1792764100)); its 侧脸平片 sheet; turncheck.json eyes (his 0° eye, track, sphere r);
 # bench-tasks/耳朵-2026-10-24/ear-keys.json (his hand-tuned near ear, the 90° shape). Read only; writes model.json and ref-*.png.
 import base64, json, os
-BT = '/Users/bowen/Documents/headset-face3d/bench-tasks/'
+BT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..') + '/'   # the repo's bench-tasks/, wherever the repo is
 OUT = BT + '转头模型/'
 T = json.load(open(BT + '迁移/turncheck.json'))
 V = [n for n in T['variants'] if '远侧脸收 5' in n][0]

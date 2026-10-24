@@ -2,9 +2,11 @@
 // cross-fade between the neighbouring keyframes (only a comparison); the parameters can be tried in the boxes (not saved).
 import { evaluate, params, ModelRefusal, type ModelData, type Frame, type Cubic, type V, type Show, type Params } from '../turnmodel'
 
-const DIR = '/@fs/Users/bowen/Documents/headset-face3d/bench-tasks/' + encodeURI('转头模型/')
-const M: ModelData & { refs: { yaw: number; file: string; x: number; y: number; w: number; h: number }[] } = await (await fetch(DIR + 'model.json?t=' + Date.now())).json()
-const imgs = await Promise.all(M.refs.map(r => new Promise<HTMLImageElement>(res => { const i = new Image(); i.onload = () => res(i); i.src = DIR + r.file })))
+// the data and pictures by paths relative to this file (dot 1792856044: no machine path), resolved by the dev server
+import model from '../../bench-tasks/转头模型/model.json'
+const PICS = import.meta.glob('../../bench-tasks/转头模型/ref-*.png', { eager: true, query: '?url', import: 'default' }) as Record<string, string>
+const M = model as unknown as ModelData & { refs: { yaw: number; file: string; x: number; y: number; w: number; h: number }[] }
+const imgs = await Promise.all(M.refs.map(r => new Promise<HTMLImageElement>(res => { const i = new Image(); i.onload = () => res(i); i.src = PICS['../../bench-tasks/转头模型/' + r.file]! })))
 const cv = document.getElementById('c') as HTMLCanvasElement, g = cv.getContext('2d')!
 const Z = 3.4, OX = cv.width / 2, OY = cv.height * 0.55, P = (p: V): V => [OX + p[0] * Z, OY + p[1] * Z]
 const $ = (id: string) => document.getElementById(id) as HTMLInputElement
