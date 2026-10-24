@@ -1,0 +1,416 @@
+{
+ "note": "俯仰 fit (dot 1792859761: the fitted angle is the model's angle, not a measurement; one set of points sets it, others test).",
+ "scale": 0.17623357664233577,
+ "zero": {
+  "iris": 5.660689034837236,
+  "lid": 11.521314106225015,
+  "nose": 22.93274957167333,
+  "mouth": 36.677921187892636,
+  "chin": 61.395013706453454,
+  "earT": -3.588507138777841,
+  "earB": 29.584500856653342
+ },
+ "depthDiff": {
+  "iris": 14.286999999999992,
+  "lid": 14.590000000000003,
+  "nose": 41.587999999999994,
+  "mouth": 34.976,
+  "chin": 22.218000000000004,
+  "earT": -38.294000000000004,
+  "earB": -33.809000000000005
+ },
+ "pictures": {
+  "zero-01": {
+   "label": "zero",
+   "fitted": 0.0,
+   "setRms": 0.1,
+   "res": {
+    "iris": 0.5,
+    "lid": -0.1,
+    "nose": -0.1,
+    "mouth": -0.1,
+    "chin": -0.7,
+    "earT": 0.1,
+    "earB": -0.0
+   }
+  },
+  "zero-02": {
+   "label": "zero",
+   "fitted": -1.0,
+   "setRms": 0.25,
+   "res": {
+    "iris": 0.0,
+    "lid": -0.0,
+    "nose": 0.3,
+    "mouth": -0.2,
+    "chin": -0.2,
+    "earT": -1.3,
+    "earB": -1.0
+   }
+  },
+  "zero-03": {
+   "label": "zero",
+   "fitted": 0.0,
+   "setRms": 0.23,
+   "res": {
+    "iris": -0.3,
+    "lid": 0.0,
+    "nose": 0.1,
+    "mouth": -0.3,
+    "chin": -0.1,
+    "earT": 0.9,
+    "earB": -0.3
+   }
+  },
+  "zero-04": {
+   "label": "zero",
+   "fitted": 1.0,
+   "setRms": 0.5,
+   "res": {
+    "iris": -0.2,
+    "lid": 0.1,
+    "nose": -0.4,
+    "mouth": 0.6,
+    "chin": 1.1,
+    "earT": 0.3,
+    "earB": 1.3
+   }
+  },
+  "up15-01": {
+   "label": "up15",
+   "fitted": -11.5,
+   "setRms": 1.01,
+   "res": {
+    "iris": -3.6,
+    "lid": 0.0,
+    "nose": -1.1,
+    "mouth": 0.9,
+    "chin": 6.8,
+    "earT": 2.4,
+    "earB": 1.6
+   }
+  },
+  "up15-02": {
+   "label": "up15",
+   "fitted": -7.0,
+   "setRms": 0.47,
+   "res": {
+    "iris": -1.2,
+    "lid": 0.3,
+    "nose": -0.5,
+    "mouth": 0.5,
+    "chin": 7.0,
+    "earT": 5.2,
+    "earB": 7.3
+   }
+  },
+  "up15-03": {
+   "label": "up15",
+   "fitted": -7.5,
+   "setRms": 0.17,
+   "res": {
+    "iris": -2.8,
+    "lid": -0.3,
+    "nose": 0.2,
+    "mouth": -0.0,
+    "chin": 4.9,
+    "earT": 5.0,
+    "earB": 6.0
+   }
+  },
+  "up15-04": {
+   "label": "up15",
+   "fitted": -8.5,
+   "setRms": 0.64,
+   "res": {
+    "iris": -2.6,
+    "lid": -0.3,
+    "nose": -0.4,
+    "mouth": 0.8,
+    "chin": 5.3,
+    "earT": 3.3,
+    "earB": 5.2
+   }
+  },
+  "up30-01": {
+   "label": "up30",
+   "fitted": -12.0,
+   "setRms": 0.24,
+   "res": {
+    "iris": -3.5,
+    "lid": -0.8,
+    "nose": 0.1,
+    "mouth": -0.3,
+    "chin": 7.9,
+    "earT": 6.6,
+    "earB": 7.5
+   }
+  },
+  "up30-02": {
+   "label": "up30",
+   "fitted": -15.0,
+   "setRms": 0.16,
+   "res": {
+    "iris": -3.4,
+    "lid": -0.0,
+    "nose": -0.1,
+    "mouth": -0.2,
+    "chin": 6.7,
+    "earT": 0.9,
+    "earB": -0.4
+   }
+  },
+  "up30-03": {
+   "label": "up30",
+   "fitted": -10.0,
+   "setRms": 1.15,
+   "res": {
+    "iris": -3.1,
+    "lid": -0.3,
+    "nose": -1.2,
+    "mouth": 1.1,
+    "chin": 10.4,
+    "earT": 8.2,
+    "earB": 10.3
+   }
+  },
+  "up30-04": {
+   "label": "up30",
+   "fitted": -14.0,
+   "setRms": 0.5,
+   "res": {
+    "iris": -3.8,
+    "lid": -1.3,
+    "nose": 0.5,
+    "mouth": -0.5,
+    "chin": 7.9,
+    "earT": 2.4,
+    "earB": 4.8
+   }
+  },
+  "up45-01": {
+   "label": "up45",
+   "fitted": -24.5,
+   "setRms": 0.4,
+   "res": {
+    "iris": -7.2,
+    "lid": -4.0,
+    "nose": -0.3,
+    "mouth": 0.5,
+    "chin": -0.9,
+    "earT": 10.5,
+    "earB": 10.5
+   }
+  },
+  "up45-02": {
+   "label": "up45",
+   "fitted": -21.5,
+   "setRms": 0.73,
+   "res": {
+    "iris": -7.4,
+    "lid": -2.6,
+    "nose": -0.6,
+    "mouth": 0.9,
+    "chin": 0.9,
+    "earT": 7.8,
+    "earB": 8.1
+   }
+  },
+  "up45-03": {
+   "label": "up45",
+   "fitted": -19.5,
+   "setRms": 0.3,
+   "res": {
+    "iris": -7.0,
+    "lid": -2.5,
+    "nose": -0.4,
+    "mouth": 0.2,
+    "chin": -0.8,
+    "earT": 12.7,
+    "earB": 13.5
+   }
+  },
+  "up45-04": {
+   "label": "up45",
+   "fitted": -24.0,
+   "setRms": 1.24,
+   "res": {
+    "iris": -7.8,
+    "lid": -3.7,
+    "nose": -1.2,
+    "mouth": 1.3,
+    "chin": 0.6,
+    "earT": 6.4,
+    "earB": 11.5
+   }
+  },
+  "down15-01": {
+   "label": "down15",
+   "fitted": 2.0,
+   "setRms": 0.62,
+   "res": {
+    "iris": -1.9,
+    "lid": 0.3,
+    "nose": 0.6,
+    "mouth": -0.6,
+    "chin": -7.0,
+    "earT": -5.0,
+    "earB": -7.2
+   }
+  },
+  "down15-02": {
+   "label": "down15",
+   "fitted": 3.0,
+   "setRms": 1.48,
+   "res": {
+    "iris": -4.6,
+    "lid": 0.5,
+    "nose": 1.4,
+    "mouth": -1.5,
+    "chin": -7.6,
+    "earT": -5.4,
+    "earB": -7.7
+   }
+  },
+  "down15-03": {
+   "label": "down15",
+   "fitted": 3.5,
+   "setRms": 1.38,
+   "res": {
+    "iris": -3.8,
+    "lid": 0.4,
+    "nose": 1.1,
+    "mouth": -1.6,
+    "chin": -7.8,
+    "earT": -6.0,
+    "earB": -7.3
+   }
+  },
+  "down15-04": {
+   "label": "down15",
+   "fitted": -0.5,
+   "setRms": 1.3,
+   "res": {
+    "iris": -4.1,
+    "lid": 0.3,
+    "nose": 1.2,
+    "mouth": -1.4,
+    "chin": -7.5,
+    "earT": -8.4,
+    "earB": -9.8
+   }
+  },
+  "down30-01": {
+   "label": "down30",
+   "fitted": 4.5,
+   "setRms": 0.99,
+   "res": {
+    "iris": -3.0,
+    "lid": 2.3,
+    "nose": 0.9,
+    "mouth": -1.0,
+    "chin": -9.7,
+    "earT": -10.2,
+    "earB": -11.0
+   }
+  },
+  "down30-02": {
+   "label": "down30",
+   "fitted": 2.0,
+   "setRms": 2.23,
+   "res": {
+    "iris": -4.3,
+    "lid": -0.7,
+    "nose": 2.0,
+    "mouth": -2.4,
+    "chin": -13.1,
+    "earT": -11.1,
+    "earB": -13.3
+   }
+  },
+  "down30-03": {
+   "label": "down30",
+   "fitted": 2.5,
+   "setRms": 1.18,
+   "res": {
+    "iris": -3.5,
+    "lid": 0.8,
+    "nose": 1.1,
+    "mouth": -1.2,
+    "chin": -10.6,
+    "earT": -7.7,
+    "earB": -11.5
+   }
+  },
+  "down30-04": {
+   "label": "down30",
+   "fitted": 4.0,
+   "setRms": 2.01,
+   "res": {
+    "iris": -3.9,
+    "lid": 0.4,
+    "nose": 1.9,
+    "mouth": -2.1,
+    "chin": -12.0,
+    "earT": -11.3,
+    "earB": -12.4
+   }
+  },
+  "down45-01": {
+   "label": "down45",
+   "fitted": 6.5,
+   "setRms": 3.07,
+   "res": {
+    "iris": -1.4,
+    "lid": -0.4,
+    "nose": 2.7,
+    "mouth": -3.4,
+    "chin": -13.9,
+    "earT": -10.6,
+    "earB": -12.9
+   }
+  },
+  "down45-02": {
+   "label": "down45",
+   "fitted": 2.0,
+   "setRms": 2.47,
+   "res": {
+    "iris": -0.4,
+    "lid": -0.6,
+    "nose": 2.3,
+    "mouth": -2.6,
+    "chin": -14.5,
+    "earT": -14.1,
+    "earB": -17.9
+   }
+  },
+  "down45-03": {
+   "label": "down45",
+   "fitted": 5.0,
+   "setRms": 2.85,
+   "res": {
+    "iris": -1.3,
+    "lid": 0.3,
+    "nose": 2.5,
+    "mouth": -3.2,
+    "chin": -15.5,
+    "earT": -11.8,
+    "earB": -13.5
+   }
+  },
+  "down45-04": {
+   "label": "down45",
+   "fitted": -1.0,
+   "setRms": 3.65,
+   "res": {
+    "iris": -1.6,
+    "lid": -0.9,
+    "nose": 3.3,
+    "mouth": -4.0,
+    "chin": -18.6,
+    "earT": -18.8,
+    "earB": -22.6
+   }
+  }
+ }
+}
