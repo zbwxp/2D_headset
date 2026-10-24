@@ -278,13 +278,14 @@ function draw() {
     const fake = [CR, CH].map(b => { const l0 = nl(k0, b), l9 = nl(k90, b); return l0 && l9 && pts[b] ? { a: rootF, b: pts[b]!, ha: fh(l0.ha, l9.ha), hb: fh(l0.hb, l9.hb) } : null })
     // 远侧耳挂外轮廓 (bowen 1792815258, as read 1792815287): the far ear hangs on the seen far outline like the near one on
     // its own (上 on 左颊 at 1.6, 下 on 左下颌 at 30.2), the near ear mirrored; its own speed: facing from the mirrored 46.3°
-    // to edge-on (90°) at the angle it is gone (𝜓h, from pictures), so its width cos(facing) shrinks to nothing there; after
-    // that it is not drawn (how it turns behind the head does not matter)
+    // to edge-on (90°) at the angle it is gone (𝜓h, from pictures), so its width cos(facing) shrinks to nothing there; it keeps
+    // turning past it, onto the inner side behind the face, where the clip hides it — so what shows shrinks away instead of
+    // being cut at 𝜓h (bowen 1792815477); how it turns behind the head does not matter
     const onOutline = (document.getElementById('farEarOut') as HTMLInputElement | null)?.checked
     if (onOutline) {
       const hide = +((document.getElementById('farEarHide') as HTMLInputElement | null)?.value ?? 27)
       const upF = atY(near('pmv3m1am1-1', 'pm03-skf'), 1.6), lowF = atY(near('pmv3m1am1-1', 'cmv3m1am1-6/pmv3m1am1-2'), 30.2)
-      if (upF && lowF && ay < hide) {
+      if (upF && lowF) {
         const kf = Math.cos(((F0 + ((90 - F0) * ay) / hide) * Math.PI) / 180), mx = (v: V): V => [-v[0] * kf, v[1]]
         const farEar = { up: upF, tip: [upF[0] - (K.tip[0] - K.up[0]) * kf, upF[1] + (K.tip[1] - K.up[1])] as V, low: lowF, upLine: { ha: mx(K.upLine.ha), hb: mx(K.upLine.hb) }, lowLine: { ha: mx(K.lowLine.ha), hb: mx(K.lowLine.hb) } }
         g.strokeStyle = '#c9a0b4'; g.lineWidth = 1; drawEar(farEar)
