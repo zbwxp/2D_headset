@@ -1,7 +1,7 @@
 // 转头模型: the rules hold at their corners. In the project run (vitest.config.ts)
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { evaluate, params, bez, atHeight, smoothAt, type ModelData, type Cubic, type V } from './index'
+import { evaluate, params, bez, atHeight, smoothAt, ModelRefusal, type ModelData, type Cubic, type V } from './index'
 
 const M = JSON.parse(readFileSync(new URL('../../bench-tasks/转头模型/model.json', import.meta.url), 'utf8')) as ModelData
 const dist = (a: V, b: V) => Math.hypot(a[0] - b[0], a[1] - b[1])
@@ -101,5 +101,18 @@ describe('the same as the old turncheck (its output at nine yaws, fixtures/old-t
     const s = +a < 0 ? -1 : 1, mx = (p: V): V => [s * p[0], p[1]], n = f.eyes.near[0]!.pts, fr = f.eyes.far[0]!.pts
     expect(dist(n[0]!, mx(o.eyes.near[0]!))).toBeLessThan(2e-4); expect(dist(n[30]!, mx(o.eyes.near[1]!))).toBeLessThan(2e-4)
     expect(dist(fr[0]!, mx(o.eyes.far[0]!))).toBeLessThan(2e-4); expect(dist(fr[30]!, mx(o.eyes.far[1]!))).toBeLessThan(2e-4)
+  })
+})
+
+describe('parameters with no solution are refused (dot 1792855783)', () => {
+  it('an ear height off its line is refused, not moved to the nearest point', () => {
+    expect(() => evaluate(M, 30, { ...params(M), earUp: 30 })).toThrow(ModelRefusal)
+    expect(() => evaluate(M, 30, { ...params(M), earLow: 80 })).toThrow(ModelRefusal)
+  })
+  it('an eye facing the 0° eye cannot be unbent from is refused', () => {
+    expect(() => evaluate(M, 0, { ...params(M), eyeAlpha: 60 })).toThrow(ModelRefusal)
+  })
+  it('the defaults solve at every half degree from −90 to 90', () => {
+    for (let y = -90; y <= 90; y += 0.5) expect(() => evaluate(M, y)).not.toThrow()
   })
 })

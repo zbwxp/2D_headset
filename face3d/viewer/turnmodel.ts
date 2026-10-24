@@ -1,6 +1,6 @@
 // 转头模型 viewer (bowen 1792849247): draws face3d/turnmodel at a yaw — nothing is computed here. Reference pictures
 // cross-fade between the neighbouring keyframes (only a comparison); the parameters can be tried in the boxes (not saved).
-import { evaluate, params, type ModelData, type Frame, type Cubic, type V, type Show, type Params } from '../turnmodel'
+import { evaluate, params, ModelRefusal, type ModelData, type Frame, type Cubic, type V, type Show, type Params } from '../turnmodel'
 
 const DIR = '/@fs/Users/bowen/Documents/headset-face3d/bench-tasks/' + encodeURI('转头模型/')
 const M: ModelData & { refs: { yaw: number; file: string; x: number; y: number; w: number; h: number }[] } = await (await fetch(DIR + 'model.json?t=' + Date.now())).json()
@@ -36,7 +36,12 @@ function stroke(p: Path2D, show: Show, R: Record<string, Path2D | null>, colour:
 function draw() {
   const yaw = +$('yaw').value, ay = Math.abs(yaw), flip = yaw < 0
   const p = Object.fromEntries((Object.keys(P0) as (keyof Params)[]).map(k => [k, +$('p-' + k).value])) as unknown as Params
-  const f: Frame = evaluate(M, yaw, p)
+  let f: Frame
+  try { f = evaluate(M, yaw, p) } catch (e) {
+    // a parameter with no solution is refused (dot 1792855783): the last good view stays, the reason is shown
+    if (!(e instanceof ModelRefusal)) throw e
+    document.getElementById('info')!.textContent = '✗ 参数无解：' + e.message; document.getElementById('info')!.style.color = '#c00'; return }
+  document.getElementById('info')!.style.color = '#555'
   g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height)
   if ($('ref').checked) {
     const i = Math.max(0, Math.min(M.refs.length - 2, M.refs.findIndex(r => r.yaw >= ay) - 1)), A = M.refs[i]!, B = M.refs[i + 1]!, t = (ay - A.yaw) / (B.yaw - A.yaw)

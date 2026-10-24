@@ -56,11 +56,15 @@ export function smoothAt(ys: readonly number[], vs: readonly number[], x: number
 }
 const smoothV = (ys: number[], vs: V[], x: number): V => [smoothAt(ys, vs.map(v => v[0]), x), smoothAt(ys, vs.map(v => v[1]), x)]
 
-/** The point of `c` at height `y` (the curve is taken to cross it once). */
-export function atHeight(c: Cubic, y: number): V {
+/** A parameter with no solution (dot 1792855783): refused rather than answered with a plausible-looking wrong view. */
+export class ModelRefusal extends Error {}
+
+/** The point of `c` at height `y`; refused when the curve does not reach that height. */
+export function atHeight(c: Cubic, y: number, what = 'a point'): V {
   let best = bez(c, 0), bt = 0
   for (let i = 1; i <= 200; i++) { const p = bez(c, i / 200); if (Math.abs(p[1] - y) < Math.abs(best[1] - y)) { best = p; bt = i / 200 } }
   let lo = Math.max(0, bt - 1 / 200), hi = Math.min(1, bt + 1 / 200)
+  if ((bez(c, lo)[1] - y) * (bez(c, hi)[1] - y) > 0 && Math.abs(best[1] - y) > 1e-9) throw new ModelRefusal(`${what}: height ${y} is not on its line (it reaches ${best[1].toFixed(2)} at most)`)
   for (let k = 0; k < 40; k++) { const md = (lo + hi) / 2, a = bez(c, lo)[1] - y, m = bez(c, md)[1] - y; if (a * m <= 0) hi = md; else lo = md }
   return bez(c, (lo + hi) / 2)
 }
@@ -117,6 +121,8 @@ function eyes(m: ModelData, ay: number, p: Params): Frame['eyes'] {
         let lo = -0.8 * lim, hi = 0.8 * lim
         for (let k = 0; k < 40; k++) { const md = (lo + hi) / 2; if (bend(f0, md, qy) < qd) lo = md; else hi = md }
         const qf = (lo + hi) / 2, zz = Math.sqrt(Math.max(1e-9, R * R - qf * qf - qy * qy))
+        // the 0° eye must come back from the inverse; when the frame at −γα cannot reach a sample (α or γ too large), refuse
+        if (Math.abs(bend(f0, qf, qy) - qd) > 1e-6) throw new ModelRefusal(`eye: the 0° eye cannot be unbent at α ${p.eyeAlpha}°, γ ${p.eyeRate} (its sample ${i} is out of the sphere frame's reach)`)
         seen.push(Math.cos(f) - (Math.sin(f) * qf) / zz > 0)
         out.push([cx + sc * bend(f, qf, qy), E.anchor[1] + sc * qy])
       }
@@ -141,13 +147,13 @@ function ears(m: ModelData, ay: number, p: Params, pts: Record<string, V>, line:
     const show: Show = mirror ? { outside: ['face', 'side'] } : {}
     return [{ name: 'upper', show, c: cubic(up, sx(A.upLine.ha), sx(A.upLine.hb), tip) }, { name: 'lower', show, c: cubic(tip, sx(A.lowLine.ha), sx(A.lowLine.hb), low) }]
   }
-  const near = plate(atHeight(line('nearSkull'), p.earUp), atHeight(line('nearJaw'), p.earLow), Math.cos(rad(p.earFacing0 * (1 - ay / 90))), false)
+  const near = plate(atHeight(line('nearSkull'), p.earUp, '上耳点 (nearSkull)'), atHeight(line('nearJaw'), p.earLow, '下耳点 (nearJaw)'), Math.cos(rad(p.earFacing0 * (1 - ay / 90))), false)
   const ps = rad(ay), cs = Math.cos(ps), sn = Math.sin(ps)
   const turn = (h0: V, h90: V): V => [-h0[0] * cs + h90[0] * sn, h0[1] * cs * cs + h90[1] * sn * sn]
   const root: V = [-k0.pts.nearRoot![0] * cs + k90.pts.nearRoot![0] * sn + p.fakePush * (pts.zyg![0] - k0.pts.zyg![0]), k0.pts.nearRoot![1]]
   const fake: Line[] = (['nearSkull', 'nearJaw'] as const).map(n => ({ name: n === 'nearSkull' ? 'fakeSkull' : 'fakeJaw', show: {},
     c: cubic(root, turn(k0.handles[n]!.ha, k90.handles[n]!.ha), turn(k0.handles[n]!.hb, k90.handles[n]!.hb), pts[n === 'nearSkull' ? 'crown' : 'chin']!) }))
   pts.fakeRoot = root
-  const far = plate(atHeight(fake[0]!.c, p.earUp), atHeight(fake[1]!.c, p.earLow), Math.cos(rad(p.earFacing0 * (1 + ay / 90))), true)
+  const far = plate(atHeight(fake[0]!.c, p.earUp, '远侧上耳点 (假线)'), atHeight(fake[1]!.c, p.earLow, '远侧下耳点 (假线)'), Math.cos(rad(p.earFacing0 * (1 + ay / 90))), true)
   return { near, far, fake }
 }
