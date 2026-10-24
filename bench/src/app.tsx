@@ -221,7 +221,32 @@ type AxisLock = 'h' | 'v' | 'fixed'
 const AXIS_LABEL: Record<AxisLock, string> = { h: '仅横移', v: '仅竖移', fixed: '固定' }
 // no buttons (bowen 1792632851): the files handed to him carry the limits; the canvas marks them
 let axisLocks: Record<Id, AxisLock> = {}
-function setAxisLocks(next: Record<Id, AxisLock>) { axisLocks = next }
+// 线上点 (bowen 1792812088): an end point kept on target lines — the ear bone's ends on the face outline. It belongs to its
+// own curve and never splits a target; after every edit it goes to the nearest place on its targets, so a drag slides it
+// along them and it follows when they change. Bench glue beside 移动方向, in the file as `bench.onLine` {point: [line, …]}
+let onLinePoints: Record<Id, Id[]> = {}
+function onLineOf(text: string): Record<Id, Id[]> {
+  try { const l = (JSON.parse(text) as { bench?: { onLine?: unknown } }).bench?.onLine; return l && typeof l === 'object' ? { ...(l as Record<Id, Id[]>) } : {} } catch { return {} }
+}
+/** A file's bench limits (移动方向 and 线上点) become the current drawing's. */
+function setLimitsFrom(text: string) { axisLocks = locksOf(text); onLinePoints = onLineOf(text) }
+/** The nearest place to `q` on the given lines (Béziers of `pos`), or null when none of them is there. */
+function nearestOn(lineIds: readonly Id[], lines: readonly { id: Id; a: Id; b: Id; ha: Vec; hb: Vec }[], pos: Map<Id, Vec>, q: Vec): Vec | null {
+  let best: { d: number; p: Vec } | null = null
+  for (const id of lineIds) {
+    const l = lines.find(x => x.id === id), a = l && pos.get(l.a), b = l && pos.get(l.b)
+    if (!l || !a || !b) continue
+    const c = [a, P(a.x + l.ha.x, a.y + l.ha.y), P(b.x + l.hb.x, b.y + l.hb.y), b]
+    const at = (t: number) => { const u = 1 - t; return P(u * u * u * c[0]!.x + 3 * u * u * t * c[1]!.x + 3 * u * t * t * c[2]!.x + t * t * t * c[3]!.x, u * u * u * c[0]!.y + 3 * u * u * t * c[1]!.y + 3 * u * t * t * c[2]!.y + t * t * t * c[3]!.y) }
+    const d2 = (t: number) => { const p = at(t); return (p.x - q.x) ** 2 + (p.y - q.y) ** 2 }
+    let tb = 0; for (let i = 1; i <= 128; i++) if (d2(i / 128) < d2(tb)) tb = i / 128
+    let lo = Math.max(0, tb - 1 / 128), hi = Math.min(1, tb + 1 / 128)
+    for (let i = 0; i < 40; i++) { const m1 = lo + (hi - lo) / 3, m2 = hi - (hi - lo) / 3; if (d2(m1) < d2(m2)) hi = m2; else lo = m1 }
+    const t = (lo + hi) / 2, d = d2(t)
+    if (!best || d < best.d) best = { d, p: at(t) }
+  }
+  return best ? best.p : null
+}
 /** A file's 移动方向 (none if it has no bench entry or is not JSON). */
 function locksOf(text: string): Record<Id, AxisLock> {
   try { const l = (JSON.parse(text) as { bench?: { axisLocks?: unknown } }).bench?.axisLocks; return l && typeof l === 'object' ? { ...(l as Record<Id, AxisLock>) } : {} } catch { return {} }
@@ -229,7 +254,8 @@ function locksOf(text: string): Record<Id, AxisLock> {
 /** The file text for the current drawing: core's archive, with the 移动方向 beside it when there are any. */
 function fileText(): string {
   const text = save(core)
-  return Object.keys(axisLocks).length ? `${text.slice(0, text.lastIndexOf('}'))},"bench":${JSON.stringify({ axisLocks })}}` : text
+  const bench = { ...(Object.keys(axisLocks).length ? { axisLocks } : {}), ...(Object.keys(onLinePoints).length ? { onLine: onLinePoints } : {}) }
+  return Object.keys(bench).length ? `${text.slice(0, text.lastIndexOf('}'))},"bench":${JSON.stringify(bench)}}` : text
 }
 /**
  * `fn` with the axis-locked points put back on their locked coordinate: the edit is tried first (core's own preview,
@@ -238,11 +264,14 @@ function fileText(): string {
  * the try fails: the edit then fails as it would).
  */
 function lockedFix(t: Core, view: string, fn: (e: Editor) => void): ((e: Editor) => void) | null {
-  if (!Object.keys(axisLocks).length) return null
-  let before: Map<Id, Vec>, after: readonly { id: Id; position: Vec }[]
-  try { before = new Map(t.in(view).snapshot().points.map(p => [p.id, p.position])); const r = t.preview(view, fn); if (!r) return null; after = r.snapshot().points } catch { return null }
+  if (!Object.keys(axisLocks).length && !Object.keys(onLinePoints).length) return null
+  let before: Map<Id, Vec>, after: readonly { id: Id; position: Vec }[], lines: Parameters<typeof nearestOn>[1]
+  try { before = new Map(t.in(view).snapshot().points.map(p => [p.id, p.position])); const r = t.preview(view, fn); if (!r) return null; const sn = r.snapshot(); after = sn.points; lines = sn.lines } catch { return null }
+  const pos = new Map(after.map(p => [p.id, p.position]))
   const fixes = after.flatMap(p => {
-    const k = axisLocks[p.id], o = before.get(p.id)
+    const k = axisLocks[p.id], o = before.get(p.id), on = onLinePoints[p.id]
+    // 线上点: onto its targets as they are after the edit (a negligible distance is left alone)
+    if (on) { const q = nearestOn(on, lines, pos, p.position); return q && Math.hypot(q.x - p.position.x, q.y - p.position.y) > 1e-6 ? [{ id: p.id, target: q }] : [] }
     if (!k || !o) return []
     const target = k === 'h' ? P(p.position.x, o.y) : k === 'v' ? P(o.x, p.position.y) : o
     return target.x === p.position.x && target.y === p.position.y ? [] : [{ id: p.id, target }]
@@ -701,7 +730,7 @@ export function App() {
       apply: text => {
         const next = open(text)
         core = next
-        setAxisLocks(locksOf(text))
+        setLimitsFrom(text)
         const ls = core.snapshot().layers, top = ls[ls.length - 1]?.id ?? ''
         setLayer(top); setLayers([top]); refGen.current++
         ix.drawingChanged(); setDrawing(k => k + 1)
@@ -2000,7 +2029,7 @@ export function App() {
                 const next = open(text)
                 gesture.current?.cancel('opening another drawing') // only once the file opened (dot 1791554909)
                 core = next
-                setAxisLocks(locksOf(text))
+                setLimitsFrom(text)
                 refGen.current++
                 const ls = core.snapshot().layers, top = ls[ls.length - 1]?.id ?? ''; setLayer(top); setLayers([top])
                 ix.drawingChanged(); setDrawing(k => k + 1)
@@ -2264,6 +2293,8 @@ export function App() {
             return <circle key={p.id} cx={p.position.x} cy={p.position.y} r={(p.links.length ? 5 : 3.5) * px}
               fill={picked ? '#f80' : on ? '#06f' : p.links.length ? '#fc0' : '#fff'} stroke="#333" strokeWidth={px} />
           })}
+          {/* 线上点 marks: a ring */}
+          {!inBetween && s.points.filter(p => onLinePoints[p.id]).map(p => <circle key={'on' + p.id} data-on-line={`${p.id}:${onLinePoints[p.id]!.join(',')}`} cx={p.position.x} cy={p.position.y} r={8 * px} stroke="#0a0" strokeWidth={1.5 * px} fill="none" pointerEvents="none"><title>线上点</title></circle>)}
           {/* 移动方向 marks: ↔ 仅横移, ↕ 仅竖移, a square 固定 */}
           {!inBetween && s.points.filter(p => axisLocks[p.id]).map(p => { const k = axisLocks[p.id]!, { x, y } = p.position, r = 9 * px
             return <g key={'ax' + p.id} data-axis-lock={`${p.id}:${k}`} stroke="#c0f" strokeWidth={1.5 * px} fill="none" pointerEvents="none"><title>{AXIS_LABEL[k]}</title>
