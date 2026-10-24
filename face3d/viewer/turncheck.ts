@@ -276,7 +276,23 @@ function draw() {
     const fh = (h0: V, h90: V): V => [-h0[0] * cs + h90[0] * sn, h0[1] * cs * cs + h90[1] * sn * sn]
     const rootF: V = [-k0.pts[R0]![0] * cs + k90.pts[R0]![0] * sn, 25]
     const fake = [CR, CH].map(b => { const l0 = nl(k0, b), l9 = nl(k90, b); return l0 && l9 && pts[b] ? { a: rootF, b: pts[b]!, ha: fh(l0.ha, l9.ha), hb: fh(l0.hb, l9.hb) } : null })
-    if (fake[0] && fake[1]) {
+    // 远侧耳挂外轮廓 (bowen 1792815258, as read 1792815287): the far ear hangs on the seen far outline like the near one on
+    // its own (上 on 左颊 at 1.6, 下 on 左下颌 at 30.2), the near ear mirrored; its own speed: facing from the mirrored 46.3°
+    // to edge-on (90°) at the angle it is gone (𝜓h, from pictures), so its width cos(facing) shrinks to nothing there; after
+    // that it is not drawn (how it turns behind the head does not matter)
+    const onOutline = (document.getElementById('farEarOut') as HTMLInputElement | null)?.checked
+    if (onOutline) {
+      const hide = +((document.getElementById('farEarHide') as HTMLInputElement | null)?.value ?? 27)
+      const upF = atY(near('pmv3m1am1-1', 'pm03-skf'), 1.6), lowF = atY(near('pmv3m1am1-1', 'cmv3m1am1-6/pmv3m1am1-2'), 30.2)
+      if (upF && lowF && ay < hide) {
+        const kf = Math.cos(((F0 + ((90 - F0) * ay) / hide) * Math.PI) / 180), mx = (v: V): V => [-v[0] * kf, v[1]]
+        const farEar = { up: upF, tip: [upF[0] - (K.tip[0] - K.up[0]) * kf, upF[1] + (K.tip[1] - K.up[1])] as V, low: lowF, upLine: { ha: mx(K.upLine.ha), hb: mx(K.upLine.hb) }, lowLine: { ha: mx(K.lowLine.ha), hb: mx(K.lowLine.hb) } }
+        g.strokeStyle = '#c9a0b4'; g.lineWidth = 1; drawEar(farEar)
+        g.save()
+        for (const R of [faceR, sideR]) if (R) { const out = new Path2D(); out.rect(0, 0, cv.width, cv.height); out.addPath(R); g.clip(out, 'evenodd') }
+        g.strokeStyle = '#c2185b'; g.lineWidth = 2.2; drawEar(farEar); g.restore()
+      }
+    } else if (fake[0] && fake[1]) {
       const cub = (f: { a: V; b: V; ha: V; hb: V }): V[] => [f.a, [f.a[0] + f.ha[0], f.a[1] + f.ha[1]], [f.b[0] + f.hb[0], f.b[1] + f.hb[1]], f.b]
       const yAt = (c: V[], yy: number): V => { let best: V = c[0]!; for (let i = 0; i <= 400; i++) { const t = i / 400, u = 1 - t, q: V = [u ** 3 * c[0]![0] + 3 * u * u * t * c[1]![0] + 3 * u * t * t * c[2]![0] + t ** 3 * c[3]![0], u ** 3 * c[0]![1] + 3 * u * u * t * c[1]![1] + 3 * u * t * t * c[2]![1] + t ** 3 * c[3]![1]]; if (Math.abs(q[1] - yy) < Math.abs(best[1] - yy)) best = q } return best }
       const cu = cub(fake[0]), cl = cub(fake[1])
@@ -313,7 +329,7 @@ panel.innerHTML = `<b>远侧眼手调</b>（只对「侧脸平片」版本；只
   球面 yaw <input id="fphi" type="range" min="-180" max="0" step="0.5" style="width:260px"> <input id="fphiN" type="number" step="0.5" style="width:70px"><br>
   <button id="frec">记为这个角度的关键帧</button> <button id="fdel">删掉这个角度的关键帧</button> <button id="fundo">撤销</button> <button id="fsave">保存到文件</button>
   <label title="不改你的关键帧，只是显示用拟合公式算的远侧眼：|球面 yaw| = 9.69·√头yaw，x = 28.56 + 47.8·sin 头yaw"><input id="ffit" type="checkbox"> 显示拟合公式（对照）</label>
-  <label title="两只眼按透视三等分摆放（0–90°），远近眼按透视放大缩小，眼形用球面框；脸轮廓 + 侧脸的外轮廓裁剪；不勾 = 原来的表和手调"><input id="thirds" type="checkbox" checked> 眼睛：透视三等分</label> <label title="近侧眼在 0–32° 需要比 0° 眼睛更宽时，横向拉宽到正好对上眼角"><input id="stretch" type="checkbox"> 拉宽到眼角（对照）</label> <label title="球面框从眼睛正对镜头算（0° 时每只眼已转开 28°，转速 0.76）+ 原来的眼睛轨道 + 按每只眼远近的近大远小（横竖一样）"><input id="facing" type="checkbox" checked> 眼睛：朝向 + 远近（对照）</label> <label title="近侧耳：上下耳点贴近侧脸轮廓（高 1.6 / 30.2），耳形用你 90° 的，横向 × cos(朝向)，朝向 46.3°×(1 − yaw/90)；灰虚线 = 你在 0 / 45 / 90° 调的"><input id="ear" type="checkbox" checked> 耳朵（朝向）</label> <label>近大远小 <input id="kappa" type="number" step="0.0005" value="0.003" style="width:5em"></label> <label title="远侧眼顺着头弯（物理方向）；不勾 = 你定的反向弯"><input id="farWith" type="checkbox"> 远侧眼顺着头弯</label>
+  <label title="两只眼按透视三等分摆放（0–90°），远近眼按透视放大缩小，眼形用球面框；脸轮廓 + 侧脸的外轮廓裁剪；不勾 = 原来的表和手调"><input id="thirds" type="checkbox" checked> 眼睛：透视三等分</label> <label title="近侧眼在 0–32° 需要比 0° 眼睛更宽时，横向拉宽到正好对上眼角"><input id="stretch" type="checkbox"> 拉宽到眼角（对照）</label> <label title="球面框从眼睛正对镜头算（0° 时每只眼已转开 28°，转速 0.76）+ 原来的眼睛轨道 + 按每只眼远近的近大远小（横竖一样）"><input id="facing" type="checkbox" checked> 眼睛：朝向 + 远近（对照）</label> <label title="近侧耳：上下耳点贴近侧脸轮廓（高 1.6 / 30.2），耳形用你 90° 的，横向 × cos(朝向)，朝向 46.3°×(1 − yaw/90)；灰虚线 = 你在 0 / 45 / 90° 调的"><input id="ear" type="checkbox" checked> 耳朵（朝向）</label> <label title="远侧耳挂在看得见的远侧脸轮廓上，自己的转速：到这个角度正好侧过去看不到；不勾 = 挂在按真实旋转的「假脸」上"><input id="farEarOut" type="checkbox" checked> 远侧耳挂外轮廓，看不到的角度 <input id="farEarHide" type="number" step="1" value="27" style="width:3.5em">°</label> <label>近大远小 <input id="kappa" type="number" step="0.0005" value="0.003" style="width:5em"></label> <label title="远侧眼顺着头弯（物理方向）；不勾 = 你定的反向弯"><input id="farWith" type="checkbox"> 远侧眼顺着头弯</label>
   <span id="fmsg" style="color:#555"></span><div id="ftab" style="color:#333;margin-top:4px"></div>`
 const $ = (id: string) => document.getElementById(id) as HTMLInputElement
 const curYaw = () => Math.round(Math.abs(+yawIn.value) * 2) / 2
@@ -336,5 +352,5 @@ showTab(); syncSliders()
 $('ffit').onchange = () => { farPreview = null; draw() }
 $('thirds').onchange = () => { farPreview = null; draw() }
 $('stretch').onchange = () => draw()
-for (const id of ['facing', 'kappa', 'farWith', 'ear']) { $(id).onchange = () => draw(); $(id).oninput = () => draw() }
+for (const id of ['facing', 'kappa', 'farWith', 'ear', 'farEarOut', 'farEarHide']) { $(id).onchange = () => draw(); $(id).oninput = () => draw() }
 ;(window as any).__eyes = () => lastEyes
