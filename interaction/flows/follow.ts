@@ -17,6 +17,11 @@ const TINY = 1e-9
 /** The handle offsets a move of `units` by `offset` makes follow, in the snapshot's view. */
 export function followHandles(s: Snapshot, units: readonly Unit[], offset: Vec): Follow[] {
   if (offset.x === 0 && offset.y === 0) return []
+  return followTo(s, units, p => ({ x: p.x + offset.x, y: p.y + offset.y }))
+}
+
+/** The same follow for a move that takes each moved point to `to(its position, id)` (the move need not be one offset). */
+export function followTo(s: Snapshot, units: readonly Unit[], to: (p: Vec, id: Id) => Vec): Follow[] {
   const moved = new Set<Id>(), taken = new Set<string>()
   const lineOf = new Map(s.lines.map(l => [l.id, l]))
   for (const u of units) {
@@ -25,7 +30,7 @@ export function followHandles(s: Snapshot, units: readonly Unit[], offset: Vec):
     else if (u.kind === 'line') { const l = lineOf.get(u.id); if (l) { moved.add(l.a); moved.add(l.b); taken.add(`${l.id}:a`); taken.add(`${l.id}:b`) } }
   }
   const pos = new Map(s.points.map(p => [p.id, p.position]))
-  const at = (id: Id, after: boolean): Vec => { const p = pos.get(id)!; return after && moved.has(id) ? { x: p.x + offset.x, y: p.y + offset.y } : p }
+  const at = (id: Id, after: boolean): Vec => { const p = pos.get(id)!; return after && moved.has(id) ? to(p, id) : p }
   // each line's turn (angle) and length ratio, from its old chord to its new
   const turns = new Map<Id, { angle: number; ratio: number; length: number }>()
   for (const l of s.lines) {

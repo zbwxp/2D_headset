@@ -15,7 +15,7 @@ import { PosePad } from '../../pose-pad'
 import { labelsFor, middleOf, type Kind as LabelKind } from '../../name-labels'
 import { createMover, isArrow, type Target } from '../../move'
 // playback batches reuse editing's pure pieces (docs/playback-tools-checklist.md §2)
-import { followHandles } from '../../interaction/flows/follow'
+import { followHandles, followTo } from '../../interaction/flows/follow'
 import { handlesOf, hitBox, opAt, startHandleDrag, type BoxOp, type Bounds } from '../../interaction/flows/selection-box'
 import { frameOf, dragFrame, FRAME, type FrameControl } from '../../interaction/flows/deform'
 import { deformPlan, deformField, rectQuad, neutralBend, type PlanLine, type Quad, type Bend, type Rect } from '../../deform'
@@ -220,13 +220,15 @@ function changesBetween(before: Model, after: Model, s: Snapshot): string[] {
 type AxisLock = 'h' | 'v' | 'fixed'
 const AXIS_LABEL: Record<AxisLock, string> = { h: '仅横移', v: '仅竖移', fixed: '固定' }
 // no buttons (bowen 1792632851): the files handed to him carry the limits; the canvas marks them
-let axisLocks: Record<Id, AxisLock> = {}
+// both kept without a prototype: a point named `constructor` (or any Object key) is not a limit (dot 1792813821)
+const bare = <T,>(o: object = {}): Record<Id, T> => Object.assign(Object.create(null) as Record<Id, T>, o)
+let axisLocks: Record<Id, AxisLock> = bare()
 // 线上点 (bowen 1792812088): an end point kept on target lines — the ear bone's ends on the face outline. It belongs to its
 // own curve and never splits a target; after every edit it goes to the nearest place on its targets, so a drag slides it
 // along them and it follows when they change. Bench glue beside 移动方向, in the file as `bench.onLine` {point: [line, …]}
-let onLinePoints: Record<Id, Id[]> = {}
+let onLinePoints: Record<Id, Id[]> = bare()
 function onLineOf(text: string): Record<Id, Id[]> {
-  try { const l = (JSON.parse(text) as { bench?: { onLine?: unknown } }).bench?.onLine; return l && typeof l === 'object' ? { ...(l as Record<Id, Id[]>) } : {} } catch { return {} }
+  try { const l = (JSON.parse(text) as { bench?: { onLine?: unknown } }).bench?.onLine; return l && typeof l === 'object' ? bare(Object.fromEntries(Object.entries(l).filter(([, v]) => Array.isArray(v) && v.every(x => typeof x === 'string')))) : bare() } catch { return bare() }
 }
 /** A file's bench limits (移动方向 and 线上点) become the current drawing's. */
 function setLimitsFrom(text: string) { axisLocks = locksOf(text); onLinePoints = onLineOf(text) }
@@ -249,7 +251,7 @@ function nearestOn(lineIds: readonly Id[], lines: readonly { id: Id; a: Id; b: I
 }
 /** A file's 移动方向 (none if it has no bench entry or is not JSON). */
 function locksOf(text: string): Record<Id, AxisLock> {
-  try { const l = (JSON.parse(text) as { bench?: { axisLocks?: unknown } }).bench?.axisLocks; return l && typeof l === 'object' ? { ...(l as Record<Id, AxisLock>) } : {} } catch { return {} }
+  try { const l = (JSON.parse(text) as { bench?: { axisLocks?: unknown } }).bench?.axisLocks; return l && typeof l === 'object' ? bare(Object.fromEntries(Object.entries(l).filter(([, v]) => v === 'h' || v === 'v' || v === 'fixed'))) : bare() } catch { return bare() }
 }
 /** The file text for the current drawing: core's archive, with the 移动方向 beside it when there are any. */
 function fileText(): string {
@@ -265,8 +267,8 @@ function fileText(): string {
  */
 function lockedFix(t: Core, view: string, fn: (e: Editor) => void): ((e: Editor) => void) | null {
   if (!Object.keys(axisLocks).length && !Object.keys(onLinePoints).length) return null
-  let before: Map<Id, Vec>, after: readonly { id: Id; position: Vec }[], lines: Parameters<typeof nearestOn>[1]
-  try { before = new Map(t.in(view).snapshot().points.map(p => [p.id, p.position])); const r = t.preview(view, fn); if (!r) return null; const sn = r.snapshot(); after = sn.points; lines = sn.lines } catch { return null }
+  let s0: Snapshot, before: Map<Id, Vec>, after: readonly { id: Id; position: Vec }[], lines: Parameters<typeof nearestOn>[1]
+  try { s0 = t.in(view).snapshot(); before = new Map(s0.points.map(p => [p.id, p.position])); const r = t.preview(view, fn); if (!r) return null; const sn = r.snapshot(); after = sn.points; lines = sn.lines } catch { return null }
   const pos = new Map(after.map(p => [p.id, p.position]))
   const fixes = after.flatMap(p => {
     const k = axisLocks[p.id], o = before.get(p.id), on = onLinePoints[p.id]
@@ -276,7 +278,16 @@ function lockedFix(t: Core, view: string, fn: (e: Editor) => void): ((e: Editor)
     const target = k === 'h' ? P(p.position.x, o.y) : k === 'v' ? P(o.x, p.position.y) : o
     return target.x === p.position.x && target.y === p.position.y ? [] : [{ id: p.id, target }]
   })
-  return fixes.length ? e => { fn(e); e.move(fixes) } : null
+  if (!fixes.length) return null
+  // 手柄跟随 (dot 1792813624): the edit turned the handles of a limited point's lines for the move it asked for; they follow
+  // the move that is written instead — from the drawing before to the limited positions (a line whose handles the edit
+  // left alone, 手柄跟随 off, stays as it is)
+  const fixed = new Map(fixes.map(f => [f.id, f.target])), fin = new Map(after.map(p => [p.id, fixed.get(p.id) ?? p.position]))
+  const moved = [...fin].filter(([id, q]) => { const o = before.get(id); return o && (o.x !== q.x || o.y !== q.y) }).map(([id]) => ({ kind: 'point' as const, id }))
+  const was = new Map(s0.lines.map(l => [l.id, l])), same = (u: Vec, v: Vec) => u.x === v.x && u.y === v.y
+  const turned = new Set(lines.filter(l => (fixed.has(l.a) || fixed.has(l.b)) && was.has(l.id) && !(same(l.ha, was.get(l.id)!.ha) && same(l.hb, was.get(l.id)!.hb))).map(l => l.id))
+  const follows = turned.size ? followTo(s0, moved, (p, id) => fin.get(id) ?? p).filter(f => turned.has(f.line)) : []
+  return e => { fn(e); e.move(fixes); for (const f of follows) e.moveHandle(f.line, f.end, f.offset) }
 }
 function loggedFor(mode: () => WriteMode, afterWrite: () => void = () => {}, poseView: () => string | null = () => null, placing: () => boolean = () => false): (c: Core) => Core {
   const wrappers = new WeakMap<Core, Core>()
@@ -2294,7 +2305,7 @@ export function App() {
               fill={picked ? '#f80' : on ? '#06f' : p.links.length ? '#fc0' : '#fff'} stroke="#333" strokeWidth={px} />
           })}
           {/* 线上点 marks: a ring */}
-          {!inBetween && s.points.filter(p => onLinePoints[p.id]).map(p => <circle key={'on' + p.id} data-on-line={`${p.id}:${onLinePoints[p.id]!.join(',')}`} cx={p.position.x} cy={p.position.y} r={8 * px} stroke="#0a0" strokeWidth={1.5 * px} fill="none" pointerEvents="none"><title>线上点</title></circle>)}
+          {!inBetween && s.points.filter(p => onLinePoints[p.id]?.some(id => s.lines.some(l => l.id === id))).map(p => <circle key={'on' + p.id} data-on-line={`${p.id}:${onLinePoints[p.id]!.join(',')}`} cx={p.position.x} cy={p.position.y} r={8 * px} stroke="#0a0" strokeWidth={1.5 * px} fill="none" pointerEvents="none"><title>线上点</title></circle>)}
           {/* 移动方向 marks: ↔ 仅横移, ↕ 仅竖移, a square 固定 */}
           {!inBetween && s.points.filter(p => axisLocks[p.id]).map(p => { const k = axisLocks[p.id]!, { x, y } = p.position, r = 9 * px
             return <g key={'ax' + p.id} data-axis-lock={`${p.id}:${k}`} stroke="#c0f" strokeWidth={1.5 * px} fill="none" pointerEvents="none"><title>{AXIS_LABEL[k]}</title>

@@ -64,3 +64,40 @@ describe('线上点', () => {
     expect(JSON.parse(m.data[CURRENT]!).bench).toEqual({ onLine: { e1: ['T'] } })
   })
 })
+
+describe('线上点 with 手柄跟随 (dot 1792813624)', () => {
+  it('a real drag straight off the target (follow on): the point stays where it was on T and its line keeps its handles', async () => {
+    await mount()
+    const svg = document.querySelector('[data-testid="canvas"]') as SVGSVGElement
+    ;(svg as unknown as { getScreenCTM: () => unknown }).getScreenCTM = () => ({ inverse: () => ({}) })
+    const pe = (type: string, x: number, y: number, buttons: number) => { const e = new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0, buttons }); Object.defineProperty(e, 'pointerId', { value: 1 }); return e }
+    const e1 = at('e1'), line = () => bench().core.snapshot().lines.find(l => l.id === 'E')!, h0 = { ha: line().ha, hb: line().hb }
+    expect((bench() as unknown as { ix: { options(): { follow: boolean } } }).ix.options().follow).toBe(true)
+    // T at e1 (50, 30) is horizontal: straight down off it, so the nearest place stays e1
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true })) })
+    await act(async () => { svg.dispatchEvent(pe('pointerdown', e1.x, e1.y, 1)); window.dispatchEvent(pe('pointermove', e1.x, e1.y + 25, 1)) })
+    await act(async () => { window.dispatchEvent(pe('pointerup', e1.x, e1.y + 25, 0)) })
+    expect(at('e1').x).toBeCloseTo(e1.x, 4); expect(at('e1').y).toBeCloseTo(e1.y, 4)
+    expect(line().ha.x).toBeCloseTo(h0.ha.x, 4); expect(line().ha.y).toBeCloseTo(h0.ha.y, 4)
+    expect(line().hb.x).toBeCloseTo(h0.hb.x, 4); expect(line().hb.y).toBeCloseTo(h0.hb.y, 4)
+  })
+  it('a target that is gone (split away) shows no mark', async () => {
+    await mount()
+    await act(async () => { bench().edit(e => e.deleteLine('T')) })
+    expect(bench().svg() ?? '').not.toContain('data-on-line=')
+  })
+})
+
+describe('limits from a file (dot 1792813821)', () => {
+  it('a point named constructor is not taken for a limit: the drawing opens and moves freely', async () => {
+    const d = Core.newDocument({ layer: { id: 'layer-1', name: 'L' } })
+    d.edit(e => e.line('K', { id: 'constructor', layer: 'layer-1', position: { x: 0, y: 0 } }, { id: 'k2', layer: 'layer-1', position: { x: 10, y: 0 } }))
+    ;(window as { benchStore?: Store }).benchStore = { async get(k) { return k === CURRENT ? save(d) : undefined }, async put() {} }
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const root = createRoot(host); roots.push(root)
+    await act(async () => { root.render(<App />); await wait(20) })
+    await act(async () => { bench().edit(e => e.move([{ id: 'constructor', target: { x: 3, y: 4 } }])) })
+    expect(at('constructor')).toEqual({ x: 3, y: 4 })
+    expect(bench().svg() ?? '').not.toContain('data-on-line=')
+  })
+})
