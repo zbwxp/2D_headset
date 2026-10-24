@@ -6,7 +6,7 @@ comes out, each with the rule that decides what of it is seen.
 - Code: `face3d/turnmodel/index.ts` — `evaluate(model, yaw, params?) → Frame`. No drawing, no DOM.
 - Data: `bench-tasks/转头模型/model.json`, built by `bench-tasks/转头模型/build.py` from bowen's files (read only).
 - Viewer: `face3d/viewer/turnmodel.html` (port 5192). It only draws; the parameters can be tried in its boxes (not saved).
-- Tests: `face3d/turnmodel/turnmodel.test.ts` — run `npx vitest run --dir face3d/turnmodel --config /dev/null`.
+- Tests: `face3d/turnmodel/turnmodel.test.ts`, in the project run (`npx vitest run`); `fixtures/old-turncheck.json` is the old turncheck's output at nine yaws, the new model is checked against it.
 
 Yaw runs −90 … 90. A turn to the other side is the mirror of the same turn (bowen 1792603165).
 

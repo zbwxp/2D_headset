@@ -1,4 +1,4 @@
-// 转头模型: the rules hold at their corners. Run: npx vitest run --dir face3d/turnmodel
+// 转头模型: the rules hold at their corners. In the project run (vitest.config.ts)
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { evaluate, params, bez, atHeight, smoothAt, type ModelData, type Cubic, type V } from './index'
@@ -90,5 +90,16 @@ describe('ears', () => {
   it('atHeight finds the crossing', () => {
     const c: Cubic = [[0, 0], [5, 3], [8, 7], [10, 10]]
     expect(atHeight(c, 4)[1]).toBeCloseTo(4, 6)
+  })
+})
+
+describe('the same as the old turncheck (its output at nine yaws, fixtures/old-turncheck.json)', () => {
+  const OLD = JSON.parse(readFileSync(new URL('./fixtures/old-turncheck.json', import.meta.url), 'utf8')) as Record<string, { bz: { side: boolean; c: V[] }[]; eyes: { near: V[]; far: V[] } }>
+  for (const a of Object.keys(OLD).filter(k => !k.startsWith('_'))) it(`${a}°: every outline and side line, the eye corners`, () => {
+    const f = evaluate(M, +a), lines = [...f.outline, ...f.side], o = OLD[a]!
+    for (const q of o.bz) expect(Math.min(...lines.map(l => Math.max(...[0, 1, 2, 3].map(i => dist(l.c[i]!, q.c[i]!)))))).toBeLessThan(2e-4)
+    const s = +a < 0 ? -1 : 1, mx = (p: V): V => [s * p[0], p[1]], n = f.eyes.near[0]!.pts, fr = f.eyes.far[0]!.pts
+    expect(dist(n[0]!, mx(o.eyes.near[0]!))).toBeLessThan(2e-4); expect(dist(n[30]!, mx(o.eyes.near[1]!))).toBeLessThan(2e-4)
+    expect(dist(fr[0]!, mx(o.eyes.far[0]!))).toBeLessThan(2e-4); expect(dist(fr[30]!, mx(o.eyes.far[1]!))).toBeLessThan(2e-4)
   })
 })
