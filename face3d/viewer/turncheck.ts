@@ -272,7 +272,9 @@ function draw() {
     // 43.7° and past it. Shown only outside the face outline and the side face; the rest and the 假脸 thin grey
     const KF = data.keys, k0 = KF[0]!, k90 = KF[KF.length - 1]!, R0 = 'cmv3m1am1-6/pmv3m1am1-1', CR = 'cmv3m1am1-6/pmv3m1am1-4', CH = 'cmv3m1am1-6/pmv3m1am1-2'
     const nl = (k: Key, b: string) => k.lines.find(l => l.a === R0 && l.b === b)
-    const ps = (ay * Math.PI) / 180, cs = Math.cos(ps), sn = Math.sin(ps)
+    // its own speed (bowen 1792815258 / 1792837565): the 假脸 turns at sp × the head's yaw (sp 1 = a real turn), up to 90°
+    const sp = +((document.getElementById('fakeSpeed') as HTMLInputElement | null)?.value ?? 0.6), ayF = Math.min(90, sp * ay)
+    const ps = (ayF * Math.PI) / 180, cs = Math.cos(ps), sn = Math.sin(ps)
     const fh = (h0: V, h90: V): V => [-h0[0] * cs + h90[0] * sn, h0[1] * cs * cs + h90[1] * sn * sn]
     const rootF: V = [-k0.pts[R0]![0] * cs + k90.pts[R0]![0] * sn, 25]
     const fake = [CR, CH].map(b => { const l0 = nl(k0, b), l9 = nl(k90, b); return l0 && l9 && pts[b] ? { a: rootF, b: pts[b]!, ha: fh(l0.ha, l9.ha), hb: fh(l0.hb, l9.hb) } : null })
@@ -300,7 +302,7 @@ function draw() {
       g.setLineDash([4, 4]); g.strokeStyle = '#aaa'; g.lineWidth = 1
       for (const c of [cu, cl]) { const q = c.map(v => P(F(v))); g.beginPath(); g.moveTo(...q[0]!); g.bezierCurveTo(...q[1]!, ...q[2]!, ...q[3]!); g.stroke() }
       g.setLineDash([])
-      const upF = yAt(cu, 1.6), lowF = yAt(cl, 30.2), kf = Math.cos(((F0 * (1 + ay / 90)) * Math.PI) / 180), mx = (v: V): V => [-v[0] * kf, v[1]]
+      const upF = yAt(cu, 1.6), lowF = yAt(cl, 30.2), kf = Math.cos(((F0 * (1 + ayF / 90)) * Math.PI) / 180), mx = (v: V): V => [-v[0] * kf, v[1]]
       const farEar = { up: upF, tip: [upF[0] - (K.tip[0] - K.up[0]) * kf, upF[1] + (K.tip[1] - K.up[1])] as V, low: lowF, upLine: { ha: mx(K.upLine.ha), hb: mx(K.upLine.hb) }, lowLine: { ha: mx(K.lowLine.ha), hb: mx(K.lowLine.hb) } }
       g.strokeStyle = '#c9a0b4'; g.lineWidth = 1; drawEar(farEar)
       g.save()
@@ -330,7 +332,7 @@ panel.innerHTML = `<b>远侧眼手调</b>（只对「侧脸平片」版本；只
   球面 yaw <input id="fphi" type="range" min="-180" max="0" step="0.5" style="width:260px"> <input id="fphiN" type="number" step="0.5" style="width:70px"><br>
   <button id="frec">记为这个角度的关键帧</button> <button id="fdel">删掉这个角度的关键帧</button> <button id="fundo">撤销</button> <button id="fsave">保存到文件</button>
   <label title="不改你的关键帧，只是显示用拟合公式算的远侧眼：|球面 yaw| = 9.69·√头yaw，x = 28.56 + 47.8·sin 头yaw"><input id="ffit" type="checkbox"> 显示拟合公式（对照）</label>
-  <label title="两只眼按透视三等分摆放（0–90°），远近眼按透视放大缩小，眼形用球面框；脸轮廓 + 侧脸的外轮廓裁剪；不勾 = 原来的表和手调"><input id="thirds" type="checkbox" checked> 眼睛：透视三等分</label> <label title="近侧眼在 0–32° 需要比 0° 眼睛更宽时，横向拉宽到正好对上眼角"><input id="stretch" type="checkbox"> 拉宽到眼角（对照）</label> <label title="球面框从眼睛正对镜头算（0° 时每只眼已转开 28°，转速 0.76）+ 原来的眼睛轨道 + 按每只眼远近的近大远小（横竖一样）"><input id="facing" type="checkbox" checked> 眼睛：朝向 + 远近（对照）</label> <label title="近侧耳：上下耳点贴近侧脸轮廓（高 1.6 / 30.2），耳形用你 90° 的，横向 × cos(朝向)，朝向 46.3°×(1 − yaw/90)；灰虚线 = 你在 0 / 45 / 90° 调的"><input id="ear" type="checkbox" checked> 耳朵（朝向）</label> <label title="远侧耳挂在看得见的远侧脸轮廓上，自己的转速：到这个角度正好侧过去看不到；不勾 = 挂在按真实旋转的「假脸」上"><input id="farEarOut" type="checkbox" checked> 远侧耳挂外轮廓，看不到的角度 <input id="farEarHide" type="number" step="1" value="27" style="width:3.5em">°</label> <label>近大远小 <input id="kappa" type="number" step="0.0005" value="0.003" style="width:5em"></label> <label title="远侧眼顺着头弯（物理方向）；不勾 = 你定的反向弯"><input id="farWith" type="checkbox"> 远侧眼顺着头弯</label>
+  <label title="两只眼按透视三等分摆放（0–90°），远近眼按透视放大缩小，眼形用球面框；脸轮廓 + 侧脸的外轮廓裁剪；不勾 = 原来的表和手调"><input id="thirds" type="checkbox" checked> 眼睛：透视三等分</label> <label title="近侧眼在 0–32° 需要比 0° 眼睛更宽时，横向拉宽到正好对上眼角"><input id="stretch" type="checkbox"> 拉宽到眼角（对照）</label> <label title="球面框从眼睛正对镜头算（0° 时每只眼已转开 28°，转速 0.76）+ 原来的眼睛轨道 + 按每只眼远近的近大远小（横竖一样）"><input id="facing" type="checkbox" checked> 眼睛：朝向 + 远近（对照）</label> <label title="近侧耳：上下耳点贴近侧脸轮廓（高 1.6 / 30.2），耳形用你 90° 的，横向 × cos(朝向)，朝向 46.3°×(1 − yaw/90)；灰虚线 = 你在 0 / 45 / 90° 调的"><input id="ear" type="checkbox" checked> 耳朵（朝向）</label> <label title="远侧耳挂在看得见的远侧脸轮廓上，自己的转速：到这个角度正好侧过去看不到；不勾 = 挂在按真实旋转的「假脸」上"><input id="farEarOut" type="checkbox"> 远侧耳挂外轮廓，看不到的角度 <input id="farEarHide" type="number" step="1" value="27" style="width:3.5em">°</label> <label title="远侧耳接在对称的两段假脸上（近侧两段线的镜像，耳根定位）；假脸的转速 = 头转角度 × 这个数（1 = 真实旋转）"><input id="fakeSpeed" type="number" step="0.05" value="0.6" style="width:4em"> 假脸转速</label> <label>近大远小 <input id="kappa" type="number" step="0.0005" value="0.003" style="width:5em"></label> <label title="远侧眼顺着头弯（物理方向）；不勾 = 你定的反向弯"><input id="farWith" type="checkbox"> 远侧眼顺着头弯</label>
   <span id="fmsg" style="color:#555"></span><div id="ftab" style="color:#333;margin-top:4px"></div>`
 const $ = (id: string) => document.getElementById(id) as HTMLInputElement
 const curYaw = () => Math.round(Math.abs(+yawIn.value) * 2) / 2
@@ -353,5 +355,5 @@ showTab(); syncSliders()
 $('ffit').onchange = () => { farPreview = null; draw() }
 $('thirds').onchange = () => { farPreview = null; draw() }
 $('stretch').onchange = () => draw()
-for (const id of ['facing', 'kappa', 'farWith', 'ear', 'farEarOut', 'farEarHide']) { $(id).onchange = () => draw(); $(id).oninput = () => draw() }
+for (const id of ['facing', 'kappa', 'farWith', 'ear', 'farEarOut', 'farEarHide', 'fakeSpeed']) { $(id).onchange = () => draw(); $(id).oninput = () => draw() }
 ;(window as any).__eyes = () => lastEyes
