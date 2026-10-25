@@ -1,0 +1,339 @@
+{
+ "note": "bowen 第1版（仅竖移锁定下的修改，bowen 1792925428：眼角和低头头型并不严格垂直，下一版放开再改）。points = view:0,0 里改动过的骨线点，before = 改前（备份 -before-耳点线上-181018），after = 第1版。",
+ "files": {
+  "12-仰45-yaw0-pitch45": {
+   "axisLocks": {
+    "cmv3m1am1-6/pmv3m1am1-4": "v",
+    "cmv3m1am1-6/pmv3m1am1-2": "v",
+    "cmv3m1am1-6/pmv3m1am1-1": "v",
+    "pmv3m1am1-1": "v",
+    "pm03-skf": "v",
+    "pmv6kklw1-2": "v",
+    "pmv6kklw1-3": "v",
+    "pmv6kklw1-5": "v",
+    "pmv6kklw1-7": "v",
+    "pmv6kklw1-9": "v",
+    "pmv6kklw1-11": "v",
+    "pey-R-in": "v",
+    "pey-R-out": "v",
+    "pey-R-mid": "v",
+    "pey-L-in": "v",
+    "pey-L-out": "v",
+    "pey-L-mid": "v",
+    "pear-R-tip": "v"
+   },
+   "onLine": {
+    "pear-R-up": [
+     "lm03-skb"
+    ],
+    "pear-R-low": [
+     "cmv3m1am1-6/lmv3m1am1-3"
+    ]
+   },
+   "points": {
+    "pmv3m1am1-1": {
+     "before": [
+      43.911,
+      25
+     ],
+     "after": [
+      43.911,
+      35
+     ]
+    },
+    "cmv3m1am1-6/pmv3m1am1-1": {
+     "before": [
+      -43.911,
+      25
+     ],
+     "after": [
+      -43.911,
+      38.21
+     ]
+    },
+    "cmv3m1am1-6/pmv3m1am1-2": {
+     "before": [
+      0,
+      62.3
+     ],
+     "after": [
+      0,
+      48.693
+     ]
+    },
+    "cmv3m1am1-6/pmv3m1am1-4": {
+     "before": [
+      0,
+      -82.2
+     ],
+     "after": [
+      0,
+      -62.174
+     ]
+    },
+    "pmv6kklw1-2": {
+     "before": [
+      0,
+      62.3
+     ],
+     "after": [
+      0,
+      48.693
+     ]
+    },
+    "pmv6kklw1-11": {
+     "before": [
+      0,
+      -82.2
+     ],
+     "after": [
+      0,
+      -62.174
+     ]
+    },
+    "pm03-skf": {
+     "before": [
+      51.207,
+      -5.67
+     ],
+     "after": [
+      51.207,
+      -3.62
+     ]
+    },
+    "pey-R-in": {
+     "before": [
+      -14.064,
+      0.323
+     ],
+     "after": [
+      -14.064,
+      -4.477
+     ]
+    },
+    "pey-R-mid": {
+     "before": [
+      -26.41,
+      14.21
+     ],
+     "after": [
+      -26.41,
+      5.21
+     ]
+    },
+    "pey-L-in": {
+     "before": [
+      15.194,
+      0.503
+     ],
+     "after": [
+      15.194,
+      -6.497
+     ]
+    },
+    "pey-L-out": {
+     "before": [
+      43.318,
+      1.668
+     ],
+     "after": [
+      43.318,
+      4.685
+     ]
+    },
+    "pey-L-mid": {
+     "before": [
+      26.41,
+      14.21
+     ],
+     "after": [
+      26.41,
+      5.21
+     ]
+    },
+    "pear-R-up": {
+     "before": [
+      -49.753,
+      3.896
+     ],
+     "after": [
+      -46.799,
+      28.469
+     ]
+    },
+    "pear-R-tip": {
+     "before": [
+      -64.186,
+      0.053
+     ],
+     "after": [
+      -64.186,
+      27.053
+     ]
+    },
+    "pear-R-low": {
+     "before": [
+      -42.065,
+      30.206
+     ],
+     "after": [
+      -40.679,
+      44.456
+     ]
+    }
+   }
+  },
+  "13-俯45-yaw0-pitch-45": {
+   "axisLocks": {
+    "cmv3m1am1-6/pmv3m1am1-4": "v",
+    "cmv3m1am1-6/pmv3m1am1-2": "v",
+    "cmv3m1am1-6/pmv3m1am1-1": "v",
+    "pmv3m1am1-1": "v",
+    "pm03-skf": "v",
+    "pmv6kklw1-2": "v",
+    "pmv6kklw1-3": "v",
+    "pmv6kklw1-5": "v",
+    "pmv6kklw1-7": "v",
+    "pmv6kklw1-9": "v",
+    "pmv6kklw1-11": "v",
+    "pey-R-in": "v",
+    "pey-R-out": "v",
+    "pey-R-mid": "v",
+    "pey-L-in": "v",
+    "pey-L-out": "v",
+    "pey-L-mid": "v",
+    "pear-R-tip": "v"
+   },
+   "onLine": {
+    "pear-R-up": [
+     "lm03-skb"
+    ],
+    "pear-R-low": [
+     "cmv3m1am1-6/lmv3m1am1-3"
+    ]
+   },
+   "points": {
+    "pmv3m1am1-1": {
+     "before": [
+      43.911,
+      25
+     ],
+     "after": [
+      43.911,
+      9
+     ]
+    },
+    "cmv3m1am1-6/pmv3m1am1-1": {
+     "before": [
+      -43.911,
+      25
+     ],
+     "after": [
+      -43.911,
+      10
+     ]
+    },
+    "cmv3m1am1-6/pmv3m1am1-2": {
+     "before": [
+      0,
+      62.3
+     ],
+     "after": [
+      0,
+      46.3
+     ]
+    },
+    "cmv3m1am1-6/pmv3m1am1-4": {
+     "before": [
+      0,
+      -82.2
+     ],
+     "after": [
+      0,
+      -94.164
+     ]
+    },
+    "pmv6kklw1-2": {
+     "before": [
+      0,
+      62.3
+     ],
+     "after": [
+      0,
+      46.3
+     ]
+    },
+    "pmv6kklw1-11": {
+     "before": [
+      0,
+      -82.2
+     ],
+     "after": [
+      0,
+      -94.164
+     ]
+    },
+    "pm03-skf": {
+     "before": [
+      51.207,
+      -5.67
+     ],
+     "after": [
+      51.207,
+      -2.67
+     ]
+    },
+    "pey-R-in": {
+     "before": [
+      -14.064,
+      0.323
+     ],
+     "after": [
+      -14.064,
+      8.323
+     ]
+    },
+    "pey-R-out": {
+     "before": [
+      -41.818,
+      1.685
+     ],
+     "after": [
+      -41.818,
+      2.485
+     ]
+    },
+    "pey-L-in": {
+     "before": [
+      15.194,
+      0.503
+     ],
+     "after": [
+      15.194,
+      6.519
+     ]
+    },
+    "pear-R-up": {
+     "before": [
+      -49.753,
+      3.896
+     ],
+     "after": [
+      -60.051,
+      -16.069
+     ]
+    },
+    "pear-R-low": {
+     "before": [
+      -42.065,
+      30.206
+     ],
+     "after": [
+      -42.58,
+      13.006
+     ]
+    }
+   }
+  }
+ }
+}
