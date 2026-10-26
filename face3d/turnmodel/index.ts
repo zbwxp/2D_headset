@@ -111,7 +111,33 @@ function pitchChange(m: ModelData, pitch: number) {
   return { pt: (n: string) => d(k => k.pts[n]!), ha: (n: string) => d(k => k.handles[n]!.ha), hb: (n: string) => d(k => k.handles[n]!.hb) }
 }
 
+/**
+ * 俯仰 at any turn (bowen 1793028098, from the VRoid head 1793027986): seen side-on, nodding only turns the whole side view
+ * about the neck, its shapes unchanged; seen front-on it is bowen's keys. So the view is a blend of two: (a) the turn plus
+ * bowen's pitch change (front-on), (b) the turn's own view turned in the picture plane by the pitch angle about the near ear
+ * (between 上耳点 and 下耳点; the neck's turning point, as in VRoid). The blend weight is how far the turn has got toward
+ * side-on (the side face's speed curve): 0 at 0°, 1 at 90°. Pitch 0 is the turn exactly.
+ */
 function evaluateRight(m: ModelData, ay: number, p: Params, pitch: number): Frame {
+  const turn = frontPitch(m, ay, p, 0)
+  if (pitch === 0) return turn
+  const a = frontPitch(m, ay, p, pitch), u = along(m.sheet.speed, ay)
+  if (u === 0) return a
+  const up = turn.points.nearEarUp!, lo = turn.points.nearEarLow!, o: V = [(up[0] + lo[0]) / 2, (up[1] + lo[1]) / 2]
+  // 仰 (pitch > 0) brings the front (+x at a positive turn) up (−y on screen)
+  const c = Math.cos(rad(pitch)), sn = Math.sin(rad(pitch))
+  const rot = (q: V): V => { const dx = q[0] - o[0], dy = q[1] - o[1]; return [o[0] + c * dx + sn * dy, o[1] - sn * dx + c * dy] }
+  const mix = (qa: V, qb: V): V => [qa[0] + u * (rot(qb)[0] - qa[0]), qa[1] + u * (rot(qb)[1] - qa[1])]
+  const lines = (la: Line[], lb: Line[]): Line[] => la.map((l, i) => ({ ...l, c: l.c.map((q, j) => mix(q, lb[i]!.c[j]!)) as Cubic }))
+  const eyeLines = (la: EyeLine[], lb: EyeLine[]): EyeLine[] => la.map((l, i) => ({ ...l, pts: l.pts.map((q, j) => mix(q, lb[i]!.pts[j]!)) }))
+  return { yaw: ay, pitch, outline: lines(a.outline, turn.outline), side: lines(a.side, turn.side),
+    eyes: { near: eyeLines(a.eyes.near, turn.eyes.near), far: eyeLines(a.eyes.far, turn.eyes.far) },
+    ears: { near: lines(a.ears.near, turn.ears.near), far: lines(a.ears.far, turn.ears.far), fake: lines(a.ears.fake, turn.ears.fake) },
+    points: Object.fromEntries(Object.entries(a.points).map(([k, q]) => [k, mix(q, turn.points[k]!)])) }
+}
+
+/** The turn plus bowen's front-on pitch change (see evaluateRight for how it is blended with the side-on rotation). */
+function frontPitch(m: ModelData, ay: number, p: Params, pitch: number): Frame {
   const D = pitchChange(m, pitch)
   const K = m.outline.keys, ys = K.map(k => k.yaw), k0 = K[0]!, k90 = K[K.length - 1]!
   // 脸片 (bowen 1792762758 rigid sheet → 1793026252 keyframes + a speed curve, 5 numbers): two keyframes, 0° = every point on the

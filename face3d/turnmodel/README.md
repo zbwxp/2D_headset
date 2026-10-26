@@ -52,14 +52,17 @@ Yaw runs −90 … 90. A turn to the other side is the mirror of the same turn (
 
 - **Keys:** bowen's hand-tuned files at yaw 0: pitch 0 (his 0° file), +45 仰 (12, 第3版), −45 俯 (13, 第3版); extracted by
   `bench-tasks/俯仰-2026-10-25/export-pitch-keys.py` into `sources/pitch-keys.json`.
-- **Outline and ears:** the keys eased through −45 / 0 / 45 like the outline's, minus the pitch-0 key: the change pitch makes,
-  added on top of the turn at any yaw (bowen 1793025770, 方案 a). The ear points' heights change by his change and stay on the
-  outline (bowen 1793024823); the 假线 and the far ear follow the near side mirrored.
+- **Front-on (yaw 0):** the outline and ears are the keys eased through −45 / 0 / 45 like the outline's, minus the pitch-0
+  key: the change pitch makes, added on top of the turn (bowen 1793025770, 方案 a). The ear points' heights change by his
+  change and stay on the outline (bowen 1793024823); the 假线 and the far ear follow the near side mirrored.
+- **Side-on (yaw 90):** nodding turns the whole 90° view in the picture plane by the pitch angle about the near ear (between
+  上耳点 and 下耳点), its shapes unchanged — as the VRoid head shows (bowen 1793027986 / 1793028098). Side face included.
+- **Between:** a blend of the two, weighted by how far the turn has got toward side-on (the side face's speed curve).
 - **Eyes:** both on one sphere (centre 16 above the eye-corner line, r 95), turned about the horizontal axis by +51.3° / −41.5°
   at ±45, scaled 0.949 / 0.913 and moved −2.4 / +15.1, eased between (fitted to his ±45 eye bones, mean 1.7 / 1.1, max 3.0 / 2.2;
   `bench-tasks/俯仰-2026-10-25/sphere-fit.mjs`).
-- **Not modelled yet:** the side face's pitch (only crown and chin follow the outline); combined yaw and pitch is the change
-  added on top, not drawn by bowen — corner keys (±45 × 45 / 90) would replace it where it looks wrong.
+- **Not drawn by bowen:** every view between 0 and 90° with pitch is the blend above; the side face front-on has no pitch rule
+  (only crown and chin follow the outline; it is a vertical line there anyway).
 
 ## Parameters
 

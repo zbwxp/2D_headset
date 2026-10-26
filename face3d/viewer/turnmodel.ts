@@ -76,7 +76,7 @@ function draw() {
   }
   $('yv').textContent = `${yaw}°`; $('pv').textContent = pitch > 0 ? `仰 ${pitch}°` : pitch < 0 ? `俯 ${-pitch}°` : '0°'
   document.getElementById('info')!.textContent = `侧脸片 走到 ${(along(M.sheet.speed, ay) * 100).toFixed(0)}%（快慢曲线 5 个数）${flip ? ' · 镜像' : ''} · 关键帧：转头 0 / 45 / 90°，俯仰 0 / ±45°（你画的）`
-    + (pitch ? ' · 俯仰：轮廓和耳朵 = 你的关键帧的变化量叠加；眼睛 = 共用球面框；侧脸俯仰未建模（只有颅顶、下巴跟着轮廓）' : '')
+    + (pitch ? ` · 俯仰：正脸 = 你的关键帧（眼睛 = 共用球面框），侧面 = 整张图绕耳根转 ${pitch}°，中间按转头进度 ${(along(M.sheet.speed, ay) * 100).toFixed(0)}% 过渡` : '')
 }
 $('yaw').oninput = draw
 for (const id of ['ref', 'marks', 'fake', 'hidden']) $(id).onchange = draw

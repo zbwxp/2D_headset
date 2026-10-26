@@ -154,10 +154,10 @@ describe('俯仰 (bowen 1793026490): his ±45 keys as a change added to the turn
         for (const i of [0, 1]) { expect(l.c[1][i] - l.c[0][i]).toBeCloseTo(l0.c[1][i] - l0.c[0][i] + h.ha[i] - h0.ha[i], 9); expect(l.c[2][i] - l.c[3][i]).toBeCloseTo(l0.c[2][i] - l0.c[3][i] + h.hb[i] - h0.hb[i], 9) } }
     }
   })
-  it('the ear points move by his change in height and stay on the outline', () => {
+  it('front-on, the ear points move by his change in height and stay on the outline', () => {
     const P = params(M)
     for (const k of K.filter(k => k.pitch)) {
-      const f = evaluate(M, 20, undefined, k.pitch)
+      const f = evaluate(M, 0, undefined, k.pitch)
       expect(f.points.nearEarUp![1]).toBeCloseTo(P.earUp + k.pts.earUp![1] - k0.pts.earUp![1], 6)
       expect(f.points.nearEarLow![1]).toBeCloseTo(P.earLow + k.pts.earLow![1] - k0.pts.earLow![1], 6)
       expect(near(f.outline.find(l => l.name === 'nearSkull')!.c, f.points.nearEarUp!)).toBeLessThan(1e-6)
@@ -172,6 +172,16 @@ describe('俯仰 (bowen 1793026490): his ±45 keys as a change added to the turn
     expect((corner(dn, 30) - corner(dn, 0)) - (corner(f0, 30) - corner(f0, 0))).toBeLessThan(0)
     // pitch moves the samples, not what the turn hides
     up.eyes.near.forEach((e, i) => expect(e.seen).toEqual(f0.eyes.near[i]!.seen)); up.eyes.far.forEach((e, i) => expect(e.seen).toEqual(f0.eyes.far[i]!.seen))
+  })
+  it('side-on (90°), nodding turns the whole 90° view in the picture plane about the near ear, by the pitch angle (VRoid, bowen 1793028098)', () => {
+    const f0 = evaluate(M, 90), up = f0.points.nearEarUp!, lo = f0.points.nearEarLow!, o: V = [(up[0] + lo[0]) / 2, (up[1] + lo[1]) / 2]
+    for (const pt of [45, -30]) {
+      const f = evaluate(M, 90, undefined, pt), c = Math.cos((pt * Math.PI) / 180), sn = Math.sin((pt * Math.PI) / 180)
+      for (const [k, q] of Object.entries(f0.points)) { const dx = q[0] - o[0], dy = q[1] - o[1]
+        expect(f.points[k]![0]).toBeCloseTo(o[0] + c * dx + sn * dy, 9); expect(f.points[k]![1]).toBeCloseTo(o[1] - sn * dx + c * dy, 9) }
+      // 仰 brings the nose up, 俯 down
+      expect(Math.sign(f0.points.noseTip![1] - f.points.noseTip![1])).toBe(Math.sign(pt))
+    }
   })
   it('only −45 … 45 has keys; NaN is refused', () => {
     expect(() => evaluate(M, 0, undefined, 46)).toThrow(ModelRefusal)
