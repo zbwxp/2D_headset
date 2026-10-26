@@ -112,28 +112,28 @@ function pitchChange(m: ModelData, pitch: number) {
 }
 
 /**
- * 俯仰 at any turn (bowen 1793028098, from the VRoid head 1793027986): seen side-on, nodding only turns the whole side view
- * about the neck, its shapes unchanged; seen front-on it is bowen's keys. So the view is a blend of two: (a) the turn plus
- * bowen's pitch change (front-on), (b) the turn's own view turned in the picture plane by the pitch angle about the near ear
- * (between 上耳点 and 下耳点; the neck's turning point, as in VRoid). The blend weight is how far the turn has got toward
- * side-on (the side face's speed curve): 0 at 0°, 1 at 90°. Pitch 0 is the turn exactly.
+ * 俯仰 at any turn (bowen 1793028098, VRoid 1793027986; bowen 1793029402: blending two shapes twisted small yaws). A nod p
+ * then a turn y is, on the picture, exactly: a turn y', then a front-on pitch p' (bowen's keys), then the whole picture
+ * turned by ρ in its own plane — sin p' = cos y·sin p, tan ρ = sin y·tan p, cos y' = cos y·cos p / cos p'. Front-on (y 0)
+ * ρ = 0 and p' = p: bowen's keys. Side-on (y 90) p' = 0 and ρ = p: the 90° view turned about the neck. Every step rigid or
+ * keyed; no two shapes are averaged. The in-plane turn is about the near ear (between 上耳点 and 下耳点), as in VRoid.
  */
 function evaluateRight(m: ModelData, ay: number, p: Params, pitch: number): Frame {
-  const turn = frontPitch(m, ay, p, 0)
-  if (pitch === 0) return turn
-  const a = frontPitch(m, ay, p, pitch), u = along(m.sheet.speed, ay)
-  if (u === 0) return a
-  const up = turn.points.nearEarUp!, lo = turn.points.nearEarLow!, o: V = [(up[0] + lo[0]) / 2, (up[1] + lo[1]) / 2]
-  // 仰 (pitch > 0) brings the front (+x at a positive turn) up (−y on screen)
-  const c = Math.cos(rad(pitch)), sn = Math.sin(rad(pitch))
+  if (pitch === 0) return frontPitch(m, ay, p, 0)
+  if (ay === 0) return frontPitch(m, 0, p, pitch) // front-on: bowen's keys exactly (no round trip through asin)
+  const y = rad(ay), pr = rad(pitch), p2 = Math.asin(Math.cos(y) * Math.sin(pr)), rho = Math.atan2(Math.sin(y) * Math.sin(pr), Math.cos(pr))
+  const y2 = Math.acos(Math.max(-1, Math.min(1, (Math.cos(y) * Math.cos(pr)) / Math.cos(p2)))) * (180 / Math.PI)
+  const a = frontPitch(m, y2, p, p2 * (180 / Math.PI))
+  if (rho === 0) return { ...a, yaw: ay, pitch }
+  const turn = frontPitch(m, y2, p, 0), up = turn.points.nearEarUp!, lo = turn.points.nearEarLow!, o: V = [(up[0] + lo[0]) / 2, (up[1] + lo[1]) / 2]
+  // ρ > 0 (仰 at a positive turn) brings the front (+x) up (−y on screen)
+  const c = Math.cos(rho), sn = Math.sin(rho)
   const rot = (q: V): V => { const dx = q[0] - o[0], dy = q[1] - o[1]; return [o[0] + c * dx + sn * dy, o[1] - sn * dx + c * dy] }
-  const mix = (qa: V, qb: V): V => [qa[0] + u * (rot(qb)[0] - qa[0]), qa[1] + u * (rot(qb)[1] - qa[1])]
-  const lines = (la: Line[], lb: Line[]): Line[] => la.map((l, i) => ({ ...l, c: l.c.map((q, j) => mix(q, lb[i]!.c[j]!)) as Cubic }))
-  const eyeLines = (la: EyeLine[], lb: EyeLine[]): EyeLine[] => la.map((l, i) => ({ ...l, pts: l.pts.map((q, j) => mix(q, lb[i]!.pts[j]!)) }))
-  return { yaw: ay, pitch, outline: lines(a.outline, turn.outline), side: lines(a.side, turn.side),
-    eyes: { near: eyeLines(a.eyes.near, turn.eyes.near), far: eyeLines(a.eyes.far, turn.eyes.far) },
-    ears: { near: lines(a.ears.near, turn.ears.near), far: lines(a.ears.far, turn.ears.far), fake: lines(a.ears.fake, turn.ears.fake) },
-    points: Object.fromEntries(Object.entries(a.points).map(([k, q]) => [k, mix(q, turn.points[k]!)])) }
+  const lines = (ls: Line[]): Line[] => ls.map(l => ({ ...l, c: l.c.map(rot) as Cubic }))
+  const eyeLines = (ls: EyeLine[]): EyeLine[] => ls.map(l => ({ ...l, pts: l.pts.map(rot) }))
+  return { yaw: ay, pitch, outline: lines(a.outline), side: lines(a.side), eyes: { near: eyeLines(a.eyes.near), far: eyeLines(a.eyes.far) },
+    ears: { near: lines(a.ears.near), far: lines(a.ears.far), fake: lines(a.ears.fake) },
+    points: Object.fromEntries(Object.entries(a.points).map(([k, q]) => [k, rot(q)])) }
 }
 
 /** The turn plus bowen's front-on pitch change (see evaluateRight for how it is blended with the side-on rotation). */

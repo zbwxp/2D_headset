@@ -183,6 +183,16 @@ describe('俯仰 (bowen 1793026490): his ±45 keys as a change added to the turn
       expect(Math.sign(f0.points.noseTip![1] - f.points.noseTip![1])).toBe(Math.sign(pt))
     }
   })
+  it('turning with a large pitch does not jump: every point moves less than 2.5 per half degree (bowen 1793029402)', () => {
+    for (const pt of [45, -45]) {
+      let prev = evaluate(M, 0, undefined, pt)
+      for (let y = 0.5; y <= 90; y += 0.5) {
+        const f = evaluate(M, y, undefined, pt)
+        for (const [k, q] of Object.entries(f.points)) if (prev.points[k]) expect(Math.hypot(q[0] - prev.points[k]![0], q[1] - prev.points[k]![1])).toBeLessThan(2.5)
+        prev = f
+      }
+    }
+  })
   it('only −45 … 45 has keys; NaN is refused', () => {
     expect(() => evaluate(M, 0, undefined, 46)).toThrow(ModelRefusal)
     expect(() => evaluate(M, 0, undefined, NaN)).toThrow(ModelRefusal)

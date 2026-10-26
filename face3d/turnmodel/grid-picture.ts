@@ -4,7 +4,7 @@ import { writeFileSync } from 'node:fs'
 import { evaluate, type ModelData, type Cubic, type Show, type V, type Frame } from './index'
 import model from '../../bench-tasks/转头模型/model.json'
 const M = model as unknown as ModelData, out = process.argv[2]!
-const YAWS = [0, 30, 60, 75, 90], PITCHES = [45, 0, -45], C = 400, Z = 1.55
+const YAWS = (process.env.YAWS ?? "0 30 60 75 90").split(" ").map(Number), PITCHES = [45, 0, -45], C = 400, Z = 1.55
 let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${C * YAWS.length}" height="${C * YAWS.length}" viewBox="0 0 ${C * YAWS.length} ${C * YAWS.length}"><rect width="100%" height="100%" fill="#fff"/>`
 const d = (c: Cubic, tf: (q: V) => V) => { const q = c.map(tf); return `M${q[0]![0].toFixed(1)},${q[0]![1].toFixed(1)} C${q.slice(1).map(v => v.map(x => x.toFixed(1)).join(',')).join(' ')}` }
 function region(cs: Cubic[], tf: (q: V) => V): string {

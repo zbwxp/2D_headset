@@ -55,13 +55,14 @@ Yaw runs −90 … 90. A turn to the other side is the mirror of the same turn (
 - **Front-on (yaw 0):** the outline and ears are the keys eased through −45 / 0 / 45 like the outline's, minus the pitch-0
   key: the change pitch makes, added on top of the turn (bowen 1793025770, 方案 a). The ear points' heights change by his
   change and stay on the outline (bowen 1793024823); the 假线 and the far ear follow the near side mirrored.
-- **Side-on (yaw 90):** nodding turns the whole 90° view in the picture plane by the pitch angle about the near ear (between
-  上耳点 and 下耳点), its shapes unchanged — as the VRoid head shows (bowen 1793027986 / 1793028098). Side face included.
-- **Between:** a blend of the two, weighted by how far the turn has got toward side-on (the side face's speed curve).
+- **Any turn:** a nod p then a turn y is, on the picture, exactly a turn y', a front-on pitch p' (the keys above), then the
+  whole picture turned by ρ in its own plane about the near ear (between 上耳点 and 下耳点): sin p' = cos y·sin p,
+  tan ρ = sin y·tan p, cos y' = cos y·cos p / cos p' (bowen 1793029402: no averaging of two shapes). Side-on (y 90) this is the
+  90° view turned by p about the neck, as the VRoid head shows (bowen 1793027986 / 1793028098).
 - **Eyes:** both on one sphere (centre 16 above the eye-corner line, r 95), turned about the horizontal axis by +51.3° / −41.5°
   at ±45, scaled 0.949 / 0.913 and moved −2.4 / +15.1, eased between (fitted to his ±45 eye bones, mean 1.7 / 1.1, max 3.0 / 2.2;
   `bench-tasks/俯仰-2026-10-25/sphere-fit.mjs`).
-- **Not drawn by bowen:** every view between 0 and 90° with pitch is the blend above; the side face front-on has no pitch rule
+- **Not drawn by bowen:** every view between 0 and 90° with pitch comes from the split above; the side face front-on has no pitch rule
   (only crown and chin follow the outline; it is a vertical line there anyway).
 
 ## Parameters
