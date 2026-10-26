@@ -18,14 +18,15 @@ let n = 0
 PITCHES.forEach((pitch, r) => YAWS.forEach((yaw, k) => {
   const f: Frame = evaluate(M, yaw, undefined, pitch), ox = k * C + C / 2, oy = r * C + C * 0.55, tf = (q: V): V => [ox + q[0] * Z, oy + q[1] * Z]
   const R = { face: region(f.outline.map(l => l.c), tf), side: region(f.side.map(l => l.c), tf) }, id = `c${n++}`
-  svg += `<defs><clipPath id="${id}-face"><path d="${R.face}"/></clipPath><clipPath id="${id}-side"><path d="${R.side}"/></clipPath><clipPath id="${id}-both"><path d="${R.face} ${R.side}"/></clipPath>`
+  svg += `<defs><clipPath id="${id}-face"><path d="${R.face}"/></clipPath><clipPath id="${id}-side"><path d="${R.side}"/></clipPath>`
   for (const o of ['face', 'side', 'both'] as const) svg += `<mask id="${id}-out-${o}"><rect x="${k * C}" y="${r * C}" width="${C}" height="${C}" fill="#fff"/>${o === 'both' ? `<path d="${R.face}" fill="#000"/><path d="${R.side}" fill="#000"/>` : `<path d="${R[o]}" fill="#000"/>`}</mask>`
   svg += '</defs>'
   const draw = (path: string, show: Show, col: string, w: number) => {
     const ins = show.inside ?? [], outs = show.outside ?? []
-    const clip = ins.length === 2 ? `${id}-both` : ins.length ? `${id}-${ins[0]}` : '', mask = outs.length === 2 ? `${id}-out-both` : outs.length ? `${id}-out-${outs[0]}` : ''
+    const mask = outs.length === 2 ? `${id}-out-both` : outs.length ? `${id}-out-${outs[0]}` : ''
     svg += `<path d="${path}" fill="none" stroke="#ddd" stroke-width="0.8"/>`
-    svg += `<g ${clip && `clip-path="url(#${clip})"`} ${mask && `mask="url(#${mask})"`}><path d="${path}" fill="none" stroke="${col}" stroke-width="${w}"/></g>`
+    // inside ANY of the regions: one stroke per region (one merged clip path would cancel where the two overlap)
+    for (const r of ins.length ? ins : [null]) svg += `<g ${r ? `clip-path="url(#${id}-${r})"` : ''} ${mask && `mask="url(#${mask})"`}><path d="${path}" fill="none" stroke="${col}" stroke-width="${w}"/></g>`
   }
   for (const l of [...f.outline, ...f.side]) draw(d(l.c, tf), l.show, '#111', 1.8)
   for (const e of [...f.eyes.near, ...f.eyes.far]) { let p = ''; e.pts.forEach((q, i) => { if (!e.seen[i]) return; const s = tf(q); p += (i && e.seen[i - 1] ? 'L' : 'M') + s[0].toFixed(1) + ',' + s[1].toFixed(1) }); if (p) draw(p, e.show, '#7a3b00', 1.4) }
