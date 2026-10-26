@@ -139,3 +139,46 @@ describe('inputs must be finite numbers (dot 1792856126)', () => {
     expect(all.every(v => Number.isFinite(v[0]) && Number.isFinite(v[1]))).toBe(true)
   })
 })
+
+describe('俯仰 (bowen 1793026490): his ±45 keys as a change added to the turn', () => {
+  const K = M.pitch.keys, k0 = K.find(k => k.pitch === 0)!
+  it('pitch 0 is the turning head exactly', () => {
+    for (const y of [0, 30, 52, 90, -45]) expect(evaluate(M, y, undefined, 0)).toEqual({ ...evaluate(M, y), pitch: 0 })
+  })
+  it('at yaw 0, pitch ±45 moves every outline point and handle by exactly bowen\'s change from his pitch-0 key', () => {
+    const f0 = evaluate(M, 0)
+    for (const k of K.filter(k => k.pitch)) {
+      const f = evaluate(M, 0, undefined, k.pitch)
+      for (const id of ['crown', 'chin', 'nearRoot', 'zyg', 'temple']) for (const i of [0, 1]) expect(f.points[id]![i]).toBeCloseTo(f0.points[id]![i] + k.pts[id]![i] - k0.pts[id]![i], 9)
+      for (const l of f.outline) { const l0 = f0.outline.find(x => x.name === l.name)!, h = k.handles[l.name]!, h0 = k0.handles[l.name]!
+        for (const i of [0, 1]) { expect(l.c[1][i] - l.c[0][i]).toBeCloseTo(l0.c[1][i] - l0.c[0][i] + h.ha[i] - h0.ha[i], 9); expect(l.c[2][i] - l.c[3][i]).toBeCloseTo(l0.c[2][i] - l0.c[3][i] + h.hb[i] - h0.hb[i], 9) } }
+    }
+  })
+  it('the ear points move by his change in height and stay on the outline', () => {
+    const P = params(M)
+    for (const k of K.filter(k => k.pitch)) {
+      const f = evaluate(M, 20, undefined, k.pitch)
+      expect(f.points.nearEarUp![1]).toBeCloseTo(P.earUp + k.pts.earUp![1] - k0.pts.earUp![1], 6)
+      expect(f.points.nearEarLow![1]).toBeCloseTo(P.earLow + k.pts.earLow![1] - k0.pts.earLow![1], 6)
+      expect(near(f.outline.find(l => l.name === 'nearSkull')!.c, f.points.nearEarUp!)).toBeLessThan(1e-6)
+      expect(near(f.outline.find(l => l.name === 'nearJaw')!.c, f.points.nearEarLow!)).toBeLessThan(1e-6)
+    }
+  })
+  it('the eyes: both on one sphere turned about the horizontal axis (looking up bends the eye line up at the outer corners)', () => {
+    const corner = (f: ReturnType<typeof evaluate>, i: number) => f.eyes.near[0]!.pts[i]![1]
+    const f0 = evaluate(M, 0), up = evaluate(M, 0, undefined, 45), dn = evaluate(M, 0, undefined, -45)
+    // inner corner (sample 0) vs outer corner (sample 30) of the upper lid: the outer corner drops relative to the inner one when looking up
+    expect((corner(up, 30) - corner(up, 0)) - (corner(f0, 30) - corner(f0, 0))).toBeGreaterThan(0)
+    expect((corner(dn, 30) - corner(dn, 0)) - (corner(f0, 30) - corner(f0, 0))).toBeLessThan(0)
+    // pitch moves the samples, not what the turn hides
+    up.eyes.near.forEach((e, i) => expect(e.seen).toEqual(f0.eyes.near[i]!.seen)); up.eyes.far.forEach((e, i) => expect(e.seen).toEqual(f0.eyes.far[i]!.seen))
+  })
+  it('only −45 … 45 has keys; NaN is refused', () => {
+    expect(() => evaluate(M, 0, undefined, 46)).toThrow(ModelRefusal)
+    expect(() => evaluate(M, 0, undefined, NaN)).toThrow(ModelRefusal)
+  })
+  it('every yaw and pitch on a 5° grid solves', () => {
+    for (let y = -90; y <= 90; y += 5) for (let p = -45; p <= 45; p += 5) expect(() => evaluate(M, y, undefined, p)).not.toThrow()
+  })
+})
+

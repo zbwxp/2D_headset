@@ -9,6 +9,7 @@ OUT = BT + '转头模型/'
 T = json.load(open(OUT + 'sources/turncheck-final.json'))
 K, SH, E = T['keys'], T['sheet'], T['eyes']
 EAR = json.load(open(OUT + 'sources/ear-keys.json'))['keys']
+PK = json.load(open(OUT + 'sources/pitch-keys.json'))
 ID = {'cmv3m1am1-6/pmv3m1am1-4': 'crown', 'cmv3m1am1-6/pmv3m1am1-2': 'chin', 'cmv3m1am1-6/pmv3m1am1-1': 'nearRoot',
       'pmv3m1am1-1': 'zyg', 'pm03-skf': 'temple',
       'pmv6kklw1-11': 'crown', 'pmv6kklw1-2': 'chin', 'pmv6kklw1-3': 'lipLow', 'pmv6kklw1-5': 'lipUp', 'pmv6kklw1-7': 'noseTip', 'pmv6kklw1-9': 'brow'}
@@ -47,6 +48,9 @@ model = {
     'fakePush': {'value': 0.4, 'source': '假线 ear root slides out by 0.4 × the far 颧骨点 move — a little far ear at 30°, gone at 32° (bowen 1792846244; dot pictures 25–30°)'},
   },
   'refs': refs,
+  # 俯仰 (bowen 1793026490): his keys at yaw 0 (pitch +45 = 仰), outline + ear points and handles, and the shared eye sphere
+  # (sources/pitch-keys.json, from bench-tasks/俯仰-2026-10-25/export-pitch-keys.py)
+  'pitch': {k: PK[k] for k in ('keys', 'eyes')},
 }
 json.dump(model, open(OUT + 'model.json', 'w'), ensure_ascii=False, indent=1)
 print('ok', len(keys), len(sideLines), os.path.getsize(OUT + 'model.json'))

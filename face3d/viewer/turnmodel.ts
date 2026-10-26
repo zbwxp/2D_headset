@@ -6,7 +6,10 @@ import { evaluate, params, along, ModelRefusal, type ModelData, type Frame, type
 import model from '../../bench-tasks/转头模型/model.json'
 const PICS = import.meta.glob('../../bench-tasks/转头模型/ref-*.png', { eager: true, query: '?url', import: 'default' }) as Record<string, string>
 const M = model as unknown as ModelData & { refs: { yaw: number; file: string; x: number; y: number; w: number; h: number }[] }
-const imgs = await Promise.all(M.refs.map(r => new Promise<HTMLImageElement>(res => { const i = new Image(); i.onload = () => res(i); i.src = PICS['../../bench-tasks/转头模型/' + r.file]! })))
+const load = (file: string) => new Promise<HTMLImageElement>(res => { const i = new Image(); i.onload = () => res(i); i.src = PICS['../../bench-tasks/转头模型/' + file]! })
+const imgs = await Promise.all(M.refs.map(r => load(r.file)))
+// the pitch keys' pictures (dot's, placed as in bowen's ±45 files; yaw 0 only)
+const PREF = M.pitch.keys.filter(k => k.ref).map(k => ({ pitch: k.pitch, ...k.ref! })), pimgs = await Promise.all(PREF.map(r => load(r.file)))
 const cv = document.getElementById('c') as HTMLCanvasElement, g = cv.getContext('2d')!
 const Z = 3.4, OX = cv.width / 2, OY = cv.height * 0.55, P = (p: V): V => [OX + p[0] * Z, OY + p[1] * Z]
 const $ = (id: string) => document.getElementById(id) as HTMLInputElement
@@ -36,11 +39,11 @@ function stroke(p: Path2D, show: Show, R: Record<string, Path2D | null>, colour:
 }
 
 function draw() {
-  const yaw = +$('yaw').value, ay = Math.abs(yaw), flip = yaw < 0
+  const yaw = +$('yaw').value, ay = Math.abs(yaw), flip = yaw < 0, pitch = +$('pitch').value
   // an empty box is no value (dot 1792856126), not 0: refused like any other value with no answer
   const p = Object.fromEntries((Object.keys(P0) as (keyof Params)[]).map(k => [k, $('p-' + k).value.trim() === '' ? NaN : +$('p-' + k).value])) as unknown as Params
   let f: Frame
-  try { f = evaluate(M, yaw, p) } catch (e) {
+  try { f = evaluate(M, yaw, p, pitch) } catch (e) {
     // a parameter with no solution is refused (dot 1792855783): the last good view stays, the reason is shown
     if (!(e instanceof ModelRefusal)) throw e
     document.getElementById('info')!.textContent = '✗ 参数无解：' + e.message; document.getElementById('info')!.style.color = '#c00'; return }
@@ -48,7 +51,11 @@ function draw() {
   g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height)
   if ($('ref').checked) {
     const i = Math.max(0, Math.min(M.refs.length - 2, M.refs.findIndex(r => r.yaw >= ay) - 1)), A = M.refs[i]!, B = M.refs[i + 1]!, t = (ay - A.yaw) / (B.yaw - A.yaw)
-    for (const [k, a] of [[i, 1 - t], [i + 1, t]] as const) { if (a < 0.02) continue
+    const v = Math.abs(pitch) / 45, pr = PREF.findIndex(r => Math.sign(r.pitch) === Math.sign(pitch))
+    // yaw pictures fade out as the head pitches; the pitch picture (drawn at yaw 0) fades in
+    if (pr >= 0 && v > 0.02) { const r = PREF[pr]!; g.save(); g.globalAlpha = 0.5 * v * (1 - ay / 90); g.translate(OX + (flip ? -r.x : r.x) * Z, OY + r.y * Z); if (flip) g.scale(-1, 1)
+      g.drawImage(pimgs[pr]!, (-r.w / 2) * Z, (-r.h / 2) * Z, r.w * Z, r.h * Z); g.restore() }
+    for (const [k, a0] of [[i, 1 - t], [i + 1, t]] as const) { const a = a0 * (1 - v); if (a < 0.02) continue
       const r = M.refs[k]!; g.save(); g.globalAlpha = 0.5 * a; g.translate(OX + (flip ? -r.x : r.x) * Z, OY + r.y * Z); if (flip) g.scale(-1, 1)
       g.drawImage(imgs[k]!, (-r.w / 2) * Z, (-r.h / 2) * Z, r.w * Z, r.h * Z); g.restore() }
   }
@@ -67,13 +74,27 @@ function draw() {
     const MARK: [string, string, string][] = [['crown', '#7a00ff', '颅顶'], ['chin', '#00a651', '下巴'], ['nearRoot', '#e00078', '耳根'], ['zyg', '#333', '颧骨点'], ['temple', '#3a7bd5', '太阳穴点']]
     for (const [id, c, lab] of MARK) { const q = f.points[id]; if (!q) continue; const [x, y] = P(q); g.fillStyle = c; g.beginPath(); g.arc(x, y, 4.5, 0, 7); g.fill(); g.font = '12px system-ui'; g.fillText(lab, x + 7, y - 6) }
   }
-  $('yv').textContent = `${yaw}°`
-  document.getElementById('info')!.textContent = `侧脸片 走到 ${(along(M.sheet.speed, ay) * 100).toFixed(0)}%（快慢曲线 5 个数）${flip ? ' · 镜像' : ''} · 关键帧 0 / 45 / 90°（你画的）`
+  $('yv').textContent = `${yaw}°`; $('pv').textContent = pitch > 0 ? `仰 ${pitch}°` : pitch < 0 ? `俯 ${-pitch}°` : '0°'
+  document.getElementById('info')!.textContent = `侧脸片 走到 ${(along(M.sheet.speed, ay) * 100).toFixed(0)}%（快慢曲线 5 个数）${flip ? ' · 镜像' : ''} · 关键帧：转头 0 / 45 / 90°，俯仰 0 / ±45°（你画的）`
+    + (pitch ? ' · 俯仰：轮廓和耳朵 = 你的关键帧的变化量叠加；眼睛 = 共用球面框；侧脸俯仰未建模（只有颅顶、下巴跟着轮廓）' : '')
 }
 $('yaw').oninput = draw
 for (const id of ['ref', 'marks', 'fake', 'hidden']) $(id).onchange = draw
 for (const k of Object.keys(P0)) $('p-' + k).oninput = draw
 $('reset').onclick = () => { for (const [k, v] of Object.entries(P0)) $('p-' + k).value = String(v); draw() }
 for (const b of document.querySelectorAll<HTMLButtonElement>('button[data-k]')) b.onclick = () => { $('yaw').value = b.dataset.k!; draw() }
-;(window as unknown as { __frame: () => Frame }).__frame = () => evaluate(M, +$('yaw').value)
+$('pitch').oninput = draw
+for (const b of document.querySelectorAll<HTMLButtonElement>('button[data-p]')) b.onclick = () => { $('pitch').value = b.dataset.p!; draw() }
+// drag on the canvas: left / right turns, up / down pitches (dragging up = 仰), half a degree per pixel
+let drag: { x: number; y: number; yaw: number; pitch: number } | null = null
+cv.onpointerdown = e => { drag = { x: e.clientX, y: e.clientY, yaw: +$('yaw').value, pitch: +$('pitch').value }; cv.setPointerCapture(e.pointerId); cv.style.cursor = 'grabbing' }
+cv.onpointermove = e => {
+  if (!drag) return
+  const q = (v: number) => Math.round(v * 2) / 2
+  $('yaw').value = String(Math.max(-90, Math.min(90, q(drag.yaw + (e.clientX - drag.x) * 0.5))))
+  $('pitch').value = String(Math.max(-45, Math.min(45, q(drag.pitch - (e.clientY - drag.y) * 0.5))))
+  draw()
+}
+cv.onpointerup = cv.onpointercancel = () => { drag = null; cv.style.cursor = 'grab' }
+;(window as unknown as { __frame: () => Frame }).__frame = () => evaluate(M, +$('yaw').value, undefined, +$('pitch').value)
 draw()

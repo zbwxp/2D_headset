@@ -15,6 +15,8 @@ export interface EyeLine { name: string; pts: V[]; seen: boolean[]; show: Show }
 
 export interface Frame {
   yaw: number
+  /** head pitch, −45 … 45, positive = 仰 (looking up) */
+  pitch: number
   /** the face outline: near two lines (nearJaw, nearSkull), far three (farJaw, farCheek, farSkull); drawn outside the side face */
   outline: Line[]
   /** the side face (脸片: keyframes 0° and 90° with one speed curve); drawn outside the face outline */
@@ -32,11 +34,15 @@ export interface ModelData {
   eyes: { base: Cubic[]; anchor: V; z: number; r: number }
   ear: { up: V; tip: V; low: V; upLine: { ha: V; hb: V }; lowLine: { ha: V; hb: V } }
   params: Record<keyof Params, { value: number; source: string }>
+  /** 俯仰 (bowen 1793026490): bowen's keys at yaw 0 (−45 俯, 0, +45 仰) and the eyes' shared sphere */
+  pitch: { keys: PitchKey[]; eyes: { anchorY: number; r: number; keys: { pitch: number; bend: number; s: number; oy: number }[] } }
 }
+export interface PitchKey { pitch: number; pts: Record<string, V>; handles: Record<string, { ha: V; hb: V }>; ref?: { file: string; x: number; y: number; w: number; h: number } }
 export interface Params { eyeAlpha: number; eyeRate: number; eyeKappa: number; earFacing0: number; earUp: number; earLow: number; fakePush: number }
 
 const rad = (d: number) => (d * Math.PI) / 180
 const add = (a: V, b: V): V => [a[0] + b[0], a[1] + b[1]]
+const sub = (a: V, b: V): V => [a[0] - b[0], a[1] - b[1]]
 export const bez = (c: Cubic, t: number): V => { const u = 1 - t; return [u * u * u * c[0][0] + 3 * u * u * t * c[1][0] + 3 * u * t * t * c[2][0] + t * t * t * c[3][0], u * u * u * c[0][1] + 3 * u * u * t * c[1][1] + 3 * u * t * t * c[2][1] + t * t * t * c[3][1]] }
 const cubic = (a: V, ha: V, hb: V, b: V): Cubic => [a, add(a, ha), add(b, hb), b]
 
@@ -77,20 +83,36 @@ export function atHeight(c: Cubic, y: number, what = 'a point'): V {
 
 export const params = (m: ModelData): Params => Object.fromEntries(Object.entries(m.params).map(([k, v]) => [k, v.value])) as unknown as Params
 
-/** The view at `yaw` (−90 … 90; a turn to the other side is the mirror of the same turn, bowen 1792603165). */
-export function evaluate(m: ModelData, yaw: number, p: Params = params(m)): Frame {
+/**
+ * The view at `yaw` (−90 … 90; a turn to the other side is the mirror of the same turn, bowen 1792603165) and `pitch`
+ * (−45 … 45, positive = 仰; bowen 1793026490). Pitch 0 is the turning head exactly.
+ */
+export function evaluate(m: ModelData, yaw: number, p: Params = params(m), pitch = 0): Frame {
   // every input a finite number (dot 1792856126): NaN or Infinity would give non-finite lines that look like a view
   if (!Number.isFinite(yaw)) throw new ModelRefusal(`yaw ${yaw} is not a finite number`)
+  if (!Number.isFinite(pitch)) throw new ModelRefusal(`pitch ${pitch} is not a finite number`)
+  if (Math.abs(pitch) > 45) throw new ModelRefusal(`pitch ${pitch}: only −45 … 45 has keys`)
   for (const [k, v] of Object.entries(p)) if (!Number.isFinite(v)) throw new ModelRefusal(`${k} ${v} is not a finite number`)
-  const f = evaluateRight(m, Math.min(90, Math.abs(yaw)), p)
+  const f = evaluateRight(m, Math.min(90, Math.abs(yaw)), p, pitch)
   if (yaw >= 0) return f
   const mx = (v: V): V => [-v[0], v[1]], mc = (c: Cubic): Cubic => c.map(mx) as Cubic
   const ml = (l: Line): Line => ({ ...l, c: mc(l.c) }), me = (e: EyeLine): EyeLine => ({ ...e, pts: e.pts.map(mx) })
-  return { yaw, outline: f.outline.map(ml), side: f.side.map(ml), eyes: { near: f.eyes.near.map(me), far: f.eyes.far.map(me) },
+  return { yaw, pitch, outline: f.outline.map(ml), side: f.side.map(ml), eyes: { near: f.eyes.near.map(me), far: f.eyes.far.map(me) },
     ears: { near: f.ears.near.map(ml), far: f.ears.far.map(ml), fake: f.ears.fake.map(ml) }, points: Object.fromEntries(Object.entries(f.points).map(([k, v]) => [k, mx(v)])) }
 }
 
-function evaluateRight(m: ModelData, ay: number, p: Params): Frame {
+/**
+ * 俯仰 as a change (bowen 1793025770 方案 a): bowen's keys at yaw 0 eased through −45 / 0 / 45 like the outline's, minus his
+ * pitch-0 key — the change pitch makes, added on top of the turn at any yaw. Zero at pitch 0.
+ */
+function pitchChange(m: ModelData, pitch: number) {
+  const K = m.pitch.keys, xs = K.map(k => k.pitch), k0 = K.find(k => k.pitch === 0)!
+  const d = (get: (k: PitchKey) => V): V => (pitch === 0 ? [0, 0] : sub(smoothV(xs, K.map(get), pitch), get(k0)))
+  return { pt: (n: string) => d(k => k.pts[n]!), ha: (n: string) => d(k => k.handles[n]!.ha), hb: (n: string) => d(k => k.handles[n]!.hb) }
+}
+
+function evaluateRight(m: ModelData, ay: number, p: Params, pitch: number): Frame {
+  const D = pitchChange(m, pitch)
   const K = m.outline.keys, ys = K.map(k => k.yaw), k0 = K[0]!, k90 = K[K.length - 1]!
   // 脸片 (bowen 1792762758 rigid sheet → 1793026252 keyframes + a speed curve, 5 numbers): two keyframes, 0° = every point on the
   // midline, 90° = bowen's side face (a point's 90° x and height); between them one speed curve for the whole part says how far
@@ -102,11 +124,14 @@ function evaluateRight(m: ModelData, ay: number, p: Params): Frame {
   // the outline's own points (near ear root, far 颧骨点 and 太阳穴点: heights fixed, only sideways) and every outline handle
   // eased through bowen's 0 / 45 / 90° keyframes
   for (const id of Object.keys(k0.pts)) pts[id] = smoothV(ys, K.map(k => k.pts[id]!), ay)
+  // pitch: the outline's points (crown and chin too, which the side face shares) and handles move by bowen's pitch change.
+  // The side face's other points have no pitch rule yet (未建模)
+  for (const id of ['crown', 'chin', 'nearRoot', 'zyg', 'temple']) pts[id] = add(pts[id]!, D.pt(id))
   const outline: Line[] = m.outline.lines.map(l => ({ name: l.name, show: { outside: ['side'] },
-    c: cubic(pts[l.a]!, smoothV(ys, K.map(k => k.handles[l.name]!.ha), ay), smoothV(ys, K.map(k => k.handles[l.name]!.hb), ay), pts[l.b]!) }))
+    c: cubic(pts[l.a]!, add(smoothV(ys, K.map(k => k.handles[l.name]!.ha), ay), D.ha(l.name)), add(smoothV(ys, K.map(k => k.handles[l.name]!.hb), ay), D.hb(l.name)), pts[l.b]!) }))
   const side: Line[] = S.lines.map(l => ({ name: l.name, show: { outside: ['face'] }, c: cubic(pts[l.a]!, sq(l.ha), sq(l.hb), pts[l.b]!) }))
   const line = (n: string) => outline.find(l => l.name === n)!.c
-  return { yaw: ay, outline, side, eyes: eyes(m, ay, p), ears: ears(m, ay, p, pts, line, k0, k90), points: pts }
+  return { yaw: ay, pitch, outline, side, eyes: pitchEyes(m, eyes(m, ay, p), pitch), ears: ears(m, ay, p, pts, line, k0, k90, D), points: pts }
 }
 
 /**
@@ -143,6 +168,26 @@ function eyes(m: ModelData, ay: number, p: Params): Frame['eyes'] {
 }
 
 /**
+ * 俯仰的眼睛 (bowen 1792860996 「两眼共用一个球面框向上向下弯折」, 1793021900): both eyes on one sphere (centre height and radius
+ * fitted to bowen's ±45 eye bones), turned about the horizontal axis by an angle eased through his keys, then scaled and
+ * moved up or down: the sphere frame at yaw 0, roll 0 — q = p − A, out = A + (0, oy) + s·(qx, cos b·qy + sin b·(r − √(r² − |q|²))).
+ * A sits between the eyes. A point beyond the sphere is refused.
+ */
+function pitchEyes(m: ModelData, e: Frame['eyes'], pitch: number): Frame['eyes'] {
+  if (pitch === 0) return e
+  const P = m.pitch.eyes, K = P.keys, xs = K.map(k => k.pitch), R = P.r
+  const b = rad(smoothAt(xs, K.map(k => k.bend), pitch)), s = smoothAt(xs, K.map(k => k.s), pitch), oy = smoothAt(xs, K.map(k => k.oy), pitch)
+  const all = [...e.near, ...e.far].flatMap(l => l.pts), ax = all.reduce((a, q) => a + q[0], 0) / all.length
+  const map = (q: V): V => {
+    const qx = q[0] - ax, qy = q[1] - P.anchorY, z2 = R * R - qx * qx - qy * qy
+    if (!(z2 > 0)) throw new ModelRefusal(`pitch eyes: a point is beyond the sphere (r ${R})`)
+    return [ax + s * qx, P.anchorY + oy + s * (Math.cos(b) * qy + Math.sin(b) * (R - Math.sqrt(z2)))]
+  }
+  const ml = (l: EyeLine): EyeLine => ({ ...l, pts: l.pts.map(map) })
+  return { near: e.near.map(ml), far: e.far.map(ml) }
+}
+
+/**
  * 耳朵 (bowen 1792813942 / 1792814749 / 1792846244). The ear is bowen's 90° ear (a plate facing the camera at 90°), hung on
  * its upper point; sideways offsets × cos(facing), heights kept.
  * Near ear: 上耳点 / 下耳点 on the near outline (nearSkull / nearJaw) at fixed heights; facing φ0·(1 − yaw / 90).
@@ -150,20 +195,27 @@ function eyes(m: ModelData, ay: number, p: Params): Frame['eyes'] {
  * chin the sheet's), its ear root the near one's mirror turned rigidly plus push × how far the far 颧骨点 moved out since 0°;
  * its handles the near ones' mirrors turned the same way. Facing φ0·(1 + yaw / 90). Seen outside the face and the side face.
  */
-function ears(m: ModelData, ay: number, p: Params, pts: Record<string, V>, line: (n: string) => Cubic, k0: ModelData['outline']['keys'][0], k90: ModelData['outline']['keys'][0]): Frame['ears'] {
+function ears(m: ModelData, ay: number, p: Params, pts: Record<string, V>, line: (n: string) => Cubic, k0: ModelData['outline']['keys'][0], k90: ModelData['outline']['keys'][0], D: ReturnType<typeof pitchChange>): Frame['ears'] {
+  // pitch (bowen 1793024823: the ear's hold on the outline slides with pitch): the two ear points' heights change by bowen's
+  // pitch change and stay on the outline; the tip (from the upper point) and the handles change by his too, mirrored on the far side
+  const up = p.earUp + D.pt('earUp')[1], lowH = p.earLow + D.pt('earLow')[1], dTip = sub(D.pt('earTip'), D.pt('earUp'))
   const A = m.ear, plate = (up: V, low: V, k: number, mirror: boolean): Line[] => {
-    const sx = (v: V): V => [(mirror ? -1 : 1) * v[0] * k, v[1]], tip: V = [up[0] + sx([A.tip[0] - A.up[0], 0])[0], up[1] + A.tip[1] - A.up[1]]
+    const mx = (v: V): V => [(mirror ? -1 : 1) * v[0], v[1]], sx = (v: V): V => [(mirror ? -1 : 1) * v[0] * k, v[1]]
+    const tip: V = add([up[0] + sx([A.tip[0] - A.up[0], 0])[0], up[1] + A.tip[1] - A.up[1]], mx(dTip))
     pts[mirror ? 'farEarUp' : 'nearEarUp'] = up; pts[mirror ? 'farEarLow' : 'nearEarLow'] = low; pts[mirror ? 'farEarTip' : 'nearEarTip'] = tip
     const show: Show = mirror ? { outside: ['face', 'side'] } : {}
-    return [{ name: 'upper', show, c: cubic(up, sx(A.upLine.ha), sx(A.upLine.hb), tip) }, { name: 'lower', show, c: cubic(tip, sx(A.lowLine.ha), sx(A.lowLine.hb), low) }]
+    return [{ name: 'upper', show, c: cubic(up, add(sx(A.upLine.ha), mx(D.ha('earUpper'))), add(sx(A.upLine.hb), mx(D.hb('earUpper'))), tip) },
+      { name: 'lower', show, c: cubic(tip, add(sx(A.lowLine.ha), mx(D.ha('earLower'))), add(sx(A.lowLine.hb), mx(D.hb('earLower'))), low) }]
   }
-  const near = plate(atHeight(line('nearSkull'), p.earUp, '上耳点 (nearSkull)'), atHeight(line('nearJaw'), p.earLow, '下耳点 (nearJaw)'), Math.cos(rad(p.earFacing0 * (1 - ay / 90))), false)
+  const near = plate(atHeight(line('nearSkull'), up, '上耳点 (nearSkull)'), atHeight(line('nearJaw'), lowH, '下耳点 (nearJaw)'), Math.cos(rad(p.earFacing0 * (1 - ay / 90))), false)
   const ps = rad(ay), cs = Math.cos(ps), sn = Math.sin(ps)
   const turn = (h0: V, h90: V): V => [-h0[0] * cs + h90[0] * sn, h0[1] * cs * cs + h90[1] * sn * sn]
-  const root: V = [-k0.pts.nearRoot![0] * cs + k90.pts.nearRoot![0] * sn + p.fakePush * (pts.zyg![0] - k0.pts.zyg![0]), k0.pts.nearRoot![1]]
+  // the 假线 follows pitch like the near outline it mirrors: its root and handles change by the near side's pitch change, mirrored
+  const mD = (v: V): V => [-v[0], v[1]], dz = D.pt('zyg'), dr = D.pt('nearRoot')
+  const root: V = add([-k0.pts.nearRoot![0] * cs + k90.pts.nearRoot![0] * sn + p.fakePush * (pts.zyg![0] - dz[0] - k0.pts.zyg![0]), k0.pts.nearRoot![1]], mD(dr))
   const fake: Line[] = (['nearSkull', 'nearJaw'] as const).map(n => ({ name: n === 'nearSkull' ? 'fakeSkull' : 'fakeJaw', show: {},
-    c: cubic(root, turn(k0.handles[n]!.ha, k90.handles[n]!.ha), turn(k0.handles[n]!.hb, k90.handles[n]!.hb), pts[n === 'nearSkull' ? 'crown' : 'chin']!) }))
+    c: cubic(root, add(turn(k0.handles[n]!.ha, k90.handles[n]!.ha), mD(D.ha(n))), add(turn(k0.handles[n]!.hb, k90.handles[n]!.hb), mD(D.hb(n))), pts[n === 'nearSkull' ? 'crown' : 'chin']!) }))
   pts.fakeRoot = root
-  const far = plate(atHeight(fake[0]!.c, p.earUp, '远侧上耳点 (假线)'), atHeight(fake[1]!.c, p.earLow, '远侧下耳点 (假线)'), Math.cos(rad(p.earFacing0 * (1 + ay / 90))), true)
+  const far = plate(atHeight(fake[0]!.c, up, '远侧上耳点 (假线)'), atHeight(fake[1]!.c, lowH, '远侧下耳点 (假线)'), Math.cos(rad(p.earFacing0 * (1 + ay / 90))), true)
   return { near, far, fake }
 }
