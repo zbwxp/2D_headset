@@ -23,12 +23,18 @@ k90 = K[-1]
 sheetPts = {ID[p]: r(v) for p, v in SH['pts'].items()}
 sheetPts['crown'] = r(k90['pts']['pmv6kklw1-11']); sheetPts['chin'] = r(k90['pts']['pmv6kklw1-2'])
 sideLines = [{'name': 'side' + str(i + 1), 'label': l['name'], 'a': ID[l['a']], 'b': ID[l['b']], 'ha': r(l['ha']), 'hb': r(l['hb'])} for i, l in enumerate(x for x in k90['lines'] if x.get('side'))]
+# 脸片 = keyframes 0° (pressed onto the midline) and 90° (bowen's side face) with one speed curve (bowen 1793026252: 5 numbers):
+# how far between the two at 15 / 30 / 45 / 60 / 75°, linear in between. The numbers are the old rigid sheet's sin θ, θ 0 → θ45 → 90
+# piecewise linear, θ45 from his 45° side face; at most 0.84 off it (nose tip), 0 at the knots.
+import math
+th = lambda a: a * SH['theta45'] / 45 if a <= 45 else SH['theta45'] + (a - 45) * (90 - SH['theta45']) / 45
+sheetSpeed = [[0, 0]] + [[a, round(math.sin(math.radians(th(a))), 6)] for a in (15, 30, 45, 60, 75)] + [[90, 1]]
 refs = [{'yaw': k['yaw'], 'file': k['ref']['src'], **{q: round(k['ref'][q], 4) for q in ('x', 'y', 'w', 'h')}} for k in K]
 e90 = EAR['90']
 model = {
   'note': '转头模型 — the final turning-head model (bowen 1792849247). Build: bench-tasks/转头模型/build.py. Rules: face3d/turnmodel/README.md',
   'outline': {'lines': outlineLines, 'keys': keys},
-  'sheet': {'theta45': SH['theta45'], 'pts': sheetPts, 'lines': sideLines},
+  'sheet': {'speed': sheetSpeed, 'pts': sheetPts, 'lines': sideLines},
   'eyes': {'base': [[r(p) for p in c] for c in E['base']], 'anchor': r(E['anchor']), 'z': E['z'], 'r': E['r']},
   'ear': {'up': r(e90['up']), 'tip': r(e90['tip']), 'low': r(e90['low']), 'upLine': {k: r(v) for k, v in e90['upLine'].items()}, 'lowLine': {k: r(v) for k, v in e90['lowLine'].items()}},
   'params': {

@@ -15,7 +15,7 @@ Yaw runs −90 … 90. A turn to the other side is the mirror of the same turn (
 | Data | What | Source |
 |---|---|---|
 | outline keyframes 0 / 45 / 90° | the near ear root, far 颧骨点 and 太阳穴点 (heights fixed, only sideways) and the five outline lines' handles | bowen's hand-tuned files; 90° far face pulled in 5 (1792811015), chin handle (1792764100) |
-| side sheet | each sheet point's 90° x (its depth) and height; the six side lines' 90° handles; θ at 45° (43.58°) | bowen's 侧脸 files (1792674653) |
+| side face (脸片) | each point's 90° x and height; the six side lines' 90° handles; the speed curve's 5 numbers (from the old rigid sheet, θ 43.58° at 45°) | bowen's 侧脸 files (1792674653); 5 numbers bowen 1793026252 |
 | eye | bowen's 0° near eye (three lines), its track centre and depth (z 65.34), sphere radius 40 | 眼睛骨线 files (1792675801) |
 | ear | bowen's hand-tuned near ear at 90° (two lines) | 耳朵骨线 files (1792813942) |
 
@@ -23,9 +23,11 @@ Yaw runs −90 … 90. A turn to the other side is the mirror of the same turn (
 
 1. **Outline.** Near two lines (nearJaw, nearSkull), far three (farJaw, farCheek, farSkull). Points and handles go through the
    0 / 45 / 90° keyframes with a smooth cubic whose speed is continuous (平滑插值, bowen 1792762034). Shown outside the side face.
-2. **Side face** — one rigid sheet through the turning axis (bowen 1792762758): a sheet point sits at x = d·sin θ, its height
-   kept; θ goes 0 → θ45 → 90 piecewise linearly. The crown and the chin are sheet points that the outline shares. Shown outside
-   the face outline.
+2. **Side face (脸片)** — keyframes like the outline (bowen 1793026252): 0° = every point on the midline, 90° = bowen's side face.
+   One speed curve for the whole part says how far between the two the turn has got: about 0.251 / 0.486 / 0.689 / 0.858 / 0.964 at
+   15 / 30 / 45 / 60 / 75°, linear in between. Heights are kept; handles are squeezed the same way. The numbers are the old rigid
+   sheet's (x = d·sin θ, bowen 1792762758); the curve is at most 0.84 off it (nose tip), 0 at the knots. The crown and the chin are
+   side-face points that the outline shares. Shown outside the face outline.
 3. **Eyes — 朝向 + 远近** (bowen 1792769914, final 1792811289):
    - the centre turns with the head on its track, x = x0·cos ψ + z·sin ψ;
    - the sphere frame counts from the eye facing the camera: bowen's 0° eye already faces α away, so the near eye turns

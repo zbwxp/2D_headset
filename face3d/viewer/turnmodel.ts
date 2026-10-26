@@ -1,6 +1,6 @@
 // 转头模型 viewer (bowen 1792849247): draws face3d/turnmodel at a yaw — nothing is computed here. Reference pictures
 // cross-fade between the neighbouring keyframes (only a comparison); the parameters can be tried in the boxes (not saved).
-import { evaluate, params, ModelRefusal, type ModelData, type Frame, type Cubic, type V, type Show, type Params } from '../turnmodel'
+import { evaluate, params, along, ModelRefusal, type ModelData, type Frame, type Cubic, type V, type Show, type Params } from '../turnmodel'
 
 // the data and pictures by paths relative to this file (dot 1792856044: no machine path), resolved by the dev server
 import model from '../../bench-tasks/转头模型/model.json'
@@ -68,8 +68,7 @@ function draw() {
     for (const [id, c, lab] of MARK) { const q = f.points[id]; if (!q) continue; const [x, y] = P(q); g.fillStyle = c; g.beginPath(); g.arc(x, y, 4.5, 0, 7); g.fill(); g.font = '12px system-ui'; g.fillText(lab, x + 7, y - 6) }
   }
   $('yv').textContent = `${yaw}°`
-  const sheetDeg = ay <= 45 ? (ay * M.sheet.theta45) / 45 : M.sheet.theta45 + ((ay - 45) * (90 - M.sheet.theta45)) / 45
-  document.getElementById('info')!.textContent = `侧脸平片 θ ${sheetDeg.toFixed(1)}°${flip ? ' · 镜像' : ''} · 关键帧 0 / 45 / 90°（你画的）`
+  document.getElementById('info')!.textContent = `侧脸片 走到 ${(along(M.sheet.speed, ay) * 100).toFixed(0)}%（快慢曲线 5 个数）${flip ? ' · 镜像' : ''} · 关键帧 0 / 45 / 90°（你画的）`
 }
 $('yaw').oninput = draw
 for (const id of ['ref', 'marks', 'fake', 'hidden']) $(id).onchange = draw

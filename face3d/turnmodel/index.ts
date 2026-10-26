@@ -17,7 +17,7 @@ export interface Frame {
   yaw: number
   /** the face outline: near two lines (nearJaw, nearSkull), far three (farJaw, farCheek, farSkull); drawn outside the side face */
   outline: Line[]
-  /** the side face (a rigid sheet through the turning axis); drawn outside the face outline */
+  /** the side face (脸片: keyframes 0° and 90° with one speed curve); drawn outside the face outline */
   side: Line[]
   eyes: { near: EyeLine[]; far: EyeLine[] }
   ears: { near: Line[]; far: Line[]; fake: Line[] }
@@ -27,7 +27,8 @@ export interface Frame {
 
 export interface ModelData {
   outline: { lines: { name: string; a: string; b: string }[]; keys: { yaw: number; pts: Record<string, V>; handles: Record<string, { ha: V; hb: V }> }[] }
-  sheet: { theta45: number; pts: Record<string, V>; lines: { name: string; a: string; b: string; ha: V; hb: V }[] }
+  /** speed: [yaw, how far from the 0° keyframe to the 90° one], from [0, 0] to [90, 1], linear in between */
+  sheet: { speed: [number, number][]; pts: Record<string, V>; lines: { name: string; a: string; b: string; ha: V; hb: V }[] }
   eyes: { base: Cubic[]; anchor: V; z: number; r: number }
   ear: { up: V; tip: V; low: V; upLine: { ha: V; hb: V }; lowLine: { ha: V; hb: V } }
   params: Record<keyof Params, { value: number; source: string }>
@@ -53,6 +54,11 @@ export function smoothAt(ys: readonly number[], vs: readonly number[], x: number
   m[0] = s[0] === 0 ? 0 : Math.min(3 * Math.abs(s[0]!), Math.max(0, (2 * s[0]! - m[1]!) * Math.sign(s[0]!))) * Math.sign(s[0]!)
   const i = Math.max(0, Math.min(n - 2, ys.findIndex(y => y >= x) - 1)), t = (x - ys[i]!) / h[i]!, t2 = t * t, t3 = t2 * t
   return (2 * t3 - 3 * t2 + 1) * vs[i]! + (t3 - 2 * t2 + t) * h[i]! * m[i]! + (-2 * t3 + 3 * t2) * vs[i + 1]! + (t3 - t2) * h[i]! * m[i + 1]!
+}
+/** A speed curve's value at x: linear between its knots [x, value] (sorted by x). */
+export function along(knots: readonly (readonly [number, number])[], x: number): number {
+  for (let i = 1; i < knots.length; i++) { const [x0, v0] = knots[i - 1]!, [x1, v1] = knots[i]!; if (x <= x1) return v0 + ((v1 - v0) * (x - x0)) / (x1 - x0) }
+  return knots[knots.length - 1]![1]
 }
 const smoothV = (ys: number[], vs: V[], x: number): V => [smoothAt(ys, vs.map(v => v[0]), x), smoothAt(ys, vs.map(v => v[1]), x)]
 
@@ -86,10 +92,11 @@ export function evaluate(m: ModelData, yaw: number, p: Params = params(m)): Fram
 
 function evaluateRight(m: ModelData, ay: number, p: Params): Frame {
   const K = m.outline.keys, ys = K.map(k => k.yaw), k0 = K[0]!, k90 = K[K.length - 1]!
-  // 刚性平片 (bowen 1792762758): the side face is one rigid sheet through the turning axis — a sheet point is its 90° x (depth
-  // d) and height; at yaw it is at x = d·sin θ, θ the sheet's angle, 0 → θ45 → 90 piecewise linear (θ45 from bowen's 45°);
-  // its handles are the 90° ones squeezed the same way. Crown and chin are sheet points the outline shares
-  const S = m.sheet, th = rad(ay <= 45 ? (ay * S.theta45) / 45 : S.theta45 + ((ay - 45) * (90 - S.theta45)) / 45), sq = (v: V): V => [v[0] * Math.sin(th), v[1]]
+  // 脸片 (bowen 1792762758 rigid sheet → 1793026252 keyframes + a speed curve, 5 numbers): two keyframes, 0° = every point on the
+  // midline, 90° = bowen's side face (a point's 90° x and height); between them one speed curve for the whole part says how far
+  // the turn has got (S.speed, knots at 15 / 30 / 45 / 60 / 75°, linear in between). Heights kept; handles squeezed the same way.
+  // Crown and chin are sheet points the outline shares
+  const S = m.sheet, w = along(S.speed, ay), sq = (v: V): V => [v[0] * w, v[1]]
   const pts: Record<string, V> = {}
   for (const [id, v] of Object.entries(S.pts)) pts[id] = sq(v)
   // the outline's own points (near ear root, far 颧骨点 and 太阳穴点: heights fixed, only sideways) and every outline handle

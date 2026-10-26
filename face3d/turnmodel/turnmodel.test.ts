@@ -1,7 +1,7 @@
 // 转头模型: the rules hold at their corners. In the project run (vitest.config.ts)
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { evaluate, params, bez, atHeight, smoothAt, ModelRefusal, type ModelData, type Cubic, type V } from './index'
+import { evaluate, params, bez, atHeight, smoothAt, along, ModelRefusal, type ModelData, type Cubic, type V } from './index'
 
 const M = JSON.parse(readFileSync(new URL('../../bench-tasks/转头模型/model.json', import.meta.url), 'utf8')) as ModelData
 const dist = (a: V, b: V) => Math.hypot(a[0] - b[0], a[1] - b[1])
@@ -22,11 +22,19 @@ describe('outline and side face', () => {
       for (const l of f.outline) { const h = k.handles[l.name]!; expect(dist(l.c[1], [l.c[0][0] + h.ha[0], l.c[0][1] + h.ha[1]])).toBeLessThan(1e-9); expect(dist(l.c[2], [l.c[3][0] + h.hb[0], l.c[3][1] + h.hb[1]])).toBeLessThan(1e-9) }
     }
   })
-  it('the side face is rigid: every sheet point at x = d·sin θ, height kept; crown and chin shared with the outline', () => {
-    const f = evaluate(M, 30), th = (30 * M.sheet.theta45) / 45
-    for (const [id, [d, y]] of Object.entries(M.sheet.pts)) { expect(f.points[id]![0]).toBeCloseTo(d * Math.sin((th * Math.PI) / 180), 9); expect(f.points[id]![1]).toBe(y) }
-    const skull = f.outline.find(l => l.name === 'nearSkull')!.c, jaw = f.outline.find(l => l.name === 'nearJaw')!.c
-    expect(skull[3]).toEqual(f.points.crown); expect(jaw[3]).toEqual(f.points.chin)
+  it('the side face (脸片) is two keyframes and one speed curve: x = 90° x × the curve, height kept; crown and chin shared with the outline', () => {
+    for (const y of [15, 30, 52, 75]) {
+      const f = evaluate(M, y), w = along(M.sheet.speed, y)
+      for (const [id, [d, h]] of Object.entries(M.sheet.pts)) { expect(f.points[id]![0]).toBeCloseTo(d * w, 9); expect(f.points[id]![1]).toBe(h) }
+    }
+    expect(along(M.sheet.speed, 0)).toBe(0); expect(along(M.sheet.speed, 90)).toBe(1)
+  })
+  it('the speed curve is 5 numbers (15 / 30 / 45 / 60 / 75°) and stays within 0.84 of the old rigid sheet (nose tip)', () => {
+    expect(M.sheet.speed.map(k => k[0])).toEqual([0, 15, 30, 45, 60, 75, 90])
+    const t45 = 43.579, rigid = (a: number) => Math.sin(((a <= 45 ? (a * t45) / 45 : t45 + ((a - 45) * (90 - t45)) / 45) * Math.PI) / 180)
+    let worst = 0
+    for (let a = 0; a <= 90; a += 0.5) for (const [d] of Object.values(M.sheet.pts)) worst = Math.max(worst, Math.abs(d * (along(M.sheet.speed, a) - rigid(a))))
+    expect(worst).toBeLessThan(0.85)
   })
   it('0° is left-right symmetric', () => {
     const f = evaluate(M, 0), sk = f.outline.find(l => l.name === 'nearSkull')!.c, jaw = f.outline.find(l => l.name === 'nearJaw')!.c
@@ -97,7 +105,10 @@ describe('the same as the old turncheck (its output at nine yaws, fixtures/old-t
   const OLD = JSON.parse(readFileSync(new URL('./fixtures/old-turncheck.json', import.meta.url), 'utf8')) as Record<string, { bz: { side: boolean; c: V[] }[]; eyes: { near: V[]; far: V[] } }>
   for (const a of Object.keys(OLD).filter(k => !k.startsWith('_'))) it(`${a}°: every outline and side line, the eye corners`, () => {
     const f = evaluate(M, +a), lines = [...f.outline, ...f.side], o = OLD[a]!
-    for (const q of o.bz) expect(Math.min(...lines.map(l => Math.max(...[0, 1, 2, 3].map(i => dist(l.c[i]!, q.c[i]!)))))).toBeLessThan(2e-4)
+    // the side face moved from the rigid sheet to keyframes + a 5-number speed curve (bowen 1793026252): exact at the curve's
+    // knots, within its stated 0.84 between them (52°); the outline shares crown and chin with it
+    const tol = M.sheet.speed.some(k => k[0] === Math.abs(+a)) ? 2e-4 : 0.85
+    for (const q of o.bz) expect(Math.min(...lines.map(l => Math.max(...[0, 1, 2, 3].map(i => dist(l.c[i]!, q.c[i]!)))))).toBeLessThan(tol)
     const s = +a < 0 ? -1 : 1, mx = (p: V): V => [s * p[0], p[1]], n = f.eyes.near[0]!.pts, fr = f.eyes.far[0]!.pts
     expect(dist(n[0]!, mx(o.eyes.near[0]!))).toBeLessThan(2e-4); expect(dist(n[30]!, mx(o.eyes.near[1]!))).toBeLessThan(2e-4)
     expect(dist(fr[0]!, mx(o.eyes.far[0]!))).toBeLessThan(2e-4); expect(dist(fr[30]!, mx(o.eyes.far[1]!))).toBeLessThan(2e-4)
