@@ -35,7 +35,8 @@ const P = (n: string) => { const p = doc.points.find(q => q.name === n); if (!p)
 const lineOf = (n: string) => { const l = doc.lines.find(k => k.name === n); if (!l) throw Error(`no line ${n}`); return l }
 const idOf = (n: string) => doc.points.find(q => q.name === n)!.id
 /** a line as a cubic running from point `from` to its other end */
-const run = (n: string, from: string): P3[] => { const l = lineOf(n), f = idOf(from); if (l.a === f) return l.c; if (l.b === f) return [...l.c].reverse(); throw Error(`${n} does not start at ${from}`) }
+const USED = new Set<string>()
+const run = (n: string, from: string): P3[] => { USED.add(n); const l = lineOf(n), f = idOf(from); if (l.a === f) return l.c; if (l.b === f) return [...l.c].reverse(); throw Error(`${n} does not start at ${from}`) }
 
 // ---- the shell, for the automatic links: pressed onto the outermost skin (from the head's centre; on the neck, straight out
 // from its axis), the ears left out (a link behind the ear must not climb over it) ----
@@ -84,13 +85,15 @@ function at(c: Chain, u: number): P3 { const L = lens(c), s = u * L[L.length - 1
 const nearestIdx = (c: Chain, q: P3) => c.reduce((m, p, i) => (len(sub(p, q)) < len(sub(c[m]!, q)) ? i : m), 0)
 
 // ---- the nets ----
-interface Net { name: string; edge: 1 | -1; top?: P3; bottom?: P3; cols: (Chain | null)[][]; rails: { name: string; pieces: { c: Chain; from: number }[] }[] }
+interface Net { name: string; edge: 1 | -1; top?: P3; bottom?: P3 | 'free'; cols: (Chain | null)[][]; rails: { name: string; pieces: { c: Chain; from: number }[] }[] }
 const autos: { name: string; c: Chain }[] = []
 const auto = (name: string, c: Chain) => { autos.push({ name, c }); return c }
-const profile = join(sample(run('眉心—颅顶', '颅顶')), sample(run('鼻尖—眉心', '眉心')), sample(run('上唇—鼻尖', '鼻尖')), sample(run('下唇—上唇', '上唇')), sample(run('下巴—下唇', '下唇')))
+const profile = join(sample(run('眉心—颅顶', '颅顶')), sample(run('鼻尖—眉心', '眉心')), sample(run('上唇—鼻尖', '鼻尖')), sample(run('下唇—上唇', '上唇')), sample(run('下巴—下唇', '下唇')), sample(run('下巴底拐点—下巴', '下巴')))
+// (the side-face line runs on under the chin to 下巴底拐点: turned side-on the outline follows it there; the other columns end at
+// 下巴, so the outline's lower end is left where the columns put it)
 const atHeight = (y: number) => { let bi = 0, bz = -Infinity; for (let i = 1; i < profile.length; i++) { const a = profile[i - 1]!, c = profile[i]!; if ((a[1] - y) * (c[1] - y) <= 0 && Math.max(a[2], c[2]) > bz) { bz = Math.max(a[2], c[2]); bi = i } } return bi }
 const iF = nearestIdx(profile, P('额前')), i2 = atHeight(P('右太阳穴')[1]), i3 = atHeight(P('右颧骨')[1])
-const face: Net = { name: '脸那一侧', edge: 1, top: P('颅顶'), bottom: P('下巴'),
+const face: Net = { name: '脸那一侧', edge: 1, top: P('颅顶'), bottom: 'free',
   cols: [[profile.slice(0, iF + 1), profile.slice(iF, i2 + 1), profile.slice(i2, i3 + 1), profile.slice(i3)],
     [sample(run('右线2前', '颅顶')), sample(run('右线2后', '右交点1')), sample(run('右线1', '右太阳穴')), sample(run('右线3', '右颧骨'))],
     [sample(run('右线5后', '颅顶')), sample(run('右线5前', '右交点2')), sample(run('右线2', '右上耳根')), sample(run('右线4', '右下耳根'))],
@@ -127,7 +130,7 @@ const neck: Net = { name: '颈前那一侧', edge: 1,
 // every net on both sides (bowen 1793114494: at 0° the two sides came out different — the right had only the face's net, the
 // left only the back's): each mirrored across the midline, outlining the other screen side; each screen side shows the outer
 const mirrorNet = (n: Net): Net => { const m = (c: Chain): Chain => c.map(p => [-p[0], p[1], p[2]] as P3)
-  return { ...n, name: n.name, edge: (-n.edge) as 1 | -1, top: n.top && [-n.top[0], n.top[1], n.top[2]], bottom: n.bottom && [-n.bottom[0], n.bottom[1], n.bottom[2]],
+  return { ...n, name: n.name, edge: (-n.edge) as 1 | -1, top: n.top && [-n.top[0], n.top[1], n.top[2]], bottom: n.bottom === 'free' ? 'free' : n.bottom && [-n.bottom[0], n.bottom[1], n.bottom[2]],
     cols: n.cols.map(cs => cs.map(c => c && m(c))), rails: n.rails.map(r => ({ ...r, pieces: r.pieces.map(pc => ({ ...pc, c: m(pc.c) })) })) } }
 // and each net outlines whichever screen side it comes to: both edges (bowen 1793114547: turned to the back, a net fixed to
 // one screen side outlined the wrong one); a line inside the head on a side is never the outer one there
@@ -157,13 +160,13 @@ function outlines(net: Net, yaw: number, pitch = 0) {
   const n = Math.max(...tan.map(t => t.length)), lines: { tan: { p: P3; g: number }[]; pts: P3[] }[] = []
   for (let bI = 0; bI < n; bI++) {
     const pick = tan.map(t => t[Math.min(bI, t.length - 1)]!)
-    const ends = [...(net.top ? [{ p: net.top, g: pick[0]!.g }] : []), ...pick, ...(net.bottom ? [{ p: net.bottom, g: pick[pick.length - 1]!.g }] : [])]
+    const ends: { p: P3 | null; g: number }[] = [...(net.top ? [{ p: net.top, g: pick[0]!.g }] : []), ...pick, ...(net.bottom ? [{ p: net.bottom === 'free' ? null : net.bottom, g: pick[pick.length - 1]!.g }] : [])]
     const pts: P3[] = []
     for (let k = 0; k < ends.length - 1; k++) {
       const top = ends[k]!, bot = ends[k + 1]!, have = net.cols.map((c, i) => (c[k] ? i : -1)).filter(i => i >= 0), lo = Math.min(...have), hi = Math.max(...have)
       const base = (u: number) => { const g = Math.max(lo, Math.min(hi, top.g + (bot.g - top.g) * u)), i = Math.max(lo, Math.min(hi - 1, Math.floor(g))), w = hi === lo ? 0 : g - i
         return w <= 0 ? at(net.cols[i]![k]!, u) : mix(at(net.cols[i]![k]!, u), at(net.cols[i + 1]![k]!, u), w) }
-      const dTop = sub(top.p, base(0)), dBot = sub(bot.p, base(1))
+      const dTop = top.p ? sub(top.p, base(0)) : [0, 0, 0] as P3, dBot = bot.p ? sub(bot.p, base(1)) : [0, 0, 0] as P3
       for (let j = k ? 1 : 0; j <= 60; j++) { const u = j / 60; pts.push(add(base(u), add(mix([0, 0, 0], dTop, 1 - u), mix([0, 0, 0], dBot, u)))) }
     }
     lines.push({ tan: pick, pts })
@@ -238,3 +241,8 @@ writeFileSync(`face3d/viewer/ref-shell/outline-${base}.json`, JSON.stringify({ n
 if (process.env.SWEEP) for (const net of NETS) { const counts: string[] = []
   for (let yaw = 0; yaw <= 120; yaw += 3) counts.push(`${yaw}:${outlines(net, yaw).length}`)
   console.log(net.name, '轮廓线条数', counts.join(' ')) }
+if (process.env.USED) { for (const l of DETAIL) USED.add(l.name)
+  const mirrorOf = (n: string) => (n.includes('左') ? n.replace(/左/g, '右') : n.startsWith('右') ? n.slice(1) : n.includes('右') ? n.replace(/右/g, '左') : `右${n}`)
+  const used = (n: string) => USED.has(n) || USED.has(mirrorOf(n)) // a net is used on both sides (mirrored)
+  console.log('unused lines:', doc.lines.filter(l => !used(l.name)).map(l => l.name).join(' '))
+  console.log('used lines:', doc.lines.filter(l => used(l.name)).length, '/', doc.lines.length) }
