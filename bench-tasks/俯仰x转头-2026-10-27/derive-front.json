@@ -1,0 +1,41 @@
+{
+ "note": "front ±45 heights derived from the side view turned 45° about the near ear, eye corners at their 0° height (bowen 1793074250)",
+ "heights": {
+  "仰45": {
+   "top": -50.84,
+   "crown": -33.5,
+   "brow": -16.52,
+   "eyeIn": -6.15,
+   "eyeOut": 8.24,
+   "eyeMid": 7.29,
+   "nose": -7.24,
+   "lipUp": 8.95,
+   "lipLow": 18.42,
+   "chin": 36.43,
+   "earUp": 36.25,
+   "earTip": 50.35,
+   "earLow": 53.57,
+   "nearRoot": 50.74,
+   "zyg": 6.28,
+   "temple": -12.95
+  },
+  "俯45": {
+   "top": -84.99,
+   "crown": -82.55,
+   "brow": 8.7,
+   "eyeIn": 7.44,
+   "eyeOut": -5.35,
+   "eyeMid": 11.57,
+   "nose": 35.6,
+   "lipUp": 42.44,
+   "lipLow": 45.21,
+   "chin": 51.88,
+   "earUp": -33.79,
+   "earTip": -49.26,
+   "earLow": -10.66,
+   "nearRoot": -15.19,
+   "zyg": 29.27,
+   "temple": 5.13
+  }
+ }
+}
