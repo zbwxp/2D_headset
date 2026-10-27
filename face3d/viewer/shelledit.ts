@@ -20,7 +20,11 @@ gl.getExtension('OES_element_index_uint')
 const KEY = 'shelledit-doc-v1'
 const stored = load()
 let doc: Doc = stored ?? { version: 1, next: 1, points: [], lines: [] }
-let sel: { points: number[]; line: number | null } = { points: [], line: null }
+/** line = the line last picked (its handles show); more = other lines picked with Shift */
+let sel: { points: number[]; line: number | null; more?: number[] } = { points: [], line: null }
+const pickedLines = () => [...(sel.more ?? []), ...(sel.line === null ? [] : [sel.line])]
+/** pick a line; with Shift, add it to the lines already picked */
+function pickLine(id: number, add: boolean) { const keep = add ? pickedLines().filter(k => k !== id) : []; sel = { points: [], line: id, more: keep } }
 const undo: string[] = []
 let yaw = 35, pitch = 10, zoom = 1, panX = 0, panY = 0 // pan: the camera point at the canvas centre
 
@@ -172,7 +176,7 @@ function draw() {
     for (const k of ['meridian', 'latitude', 'ear', 'eyes']) for (const c of W2[k]!.curves) for (let i = 0; i < 32; i++) P.push(...cubic(c, i / 32), ...cubic(c, (i + 1) / 32))
     put(P, P.map((_, i) => (i % 3 === 2 ? 0.75 : 0.6)), gl.LINES) }
   for (const l of doc.lines) { const P: number[] = []; for (let i = 0; i < 48; i++) P.push(...cubic(l.c, i / 48), ...cubic(l.c, (i + 1) / 48))
-    const k = sel.line === l.id ? [0.1, 0.45, 1] : [0.85, 0.15, 0.2]; put(P, P.map((_, i) => k[i % 3]!), gl.LINES) }
+    const k = pickedLines().includes(l.id) ? [0.1, 0.45, 1] : [0.85, 0.15, 0.2]; put(P, P.map((_, i) => k[i % 3]!), gl.LINES) }
   for (const p of doc.points) { const k = sel.points.includes(p.id) ? [0.1, 0.45, 1] : [0.05, 0.05, 0.05]; put([...p.p], k, gl.POINTS, sel.points.includes(p.id) ? 11 : 8) }
   // the selected line's two handles (drawn over everything, so they can be reached behind the shell too)
   const L = doc.lines.find(l => l.id === sel.line)
@@ -186,7 +190,7 @@ function labels() {
   const L = $('labels'); L.innerHTML = ''; const xray = $<HTMLInputElement>('xray').checked
   const add = (p: P3, name: string) => { const back = hidden(p); if (back && !xray) return; const [x, y] = toScreen(cam(p)), d = document.createElement('div'); d.textContent = name; d.style.left = `${x + 7}px`; d.style.top = `${y - 9}px`; if (back) d.className = 'back'; L.appendChild(d) }
   for (const p of doc.points) add(p.p, p.name)
-  for (const l of doc.lines) if (sel.line === l.id || $<HTMLInputElement>('lnames').checked) add(cubic(l.c, 0.5), l.name)
+  for (const l of doc.lines) if (pickedLines().includes(l.id) || $<HTMLInputElement>('lnames').checked) add(cubic(l.c, 0.5), l.name)
 }
 
 // ---- the list ----
@@ -203,7 +207,7 @@ function list() {
     r.onclick = e => { if (e.target === r || e.target === s) pick(e) }; r.append(i, s, x); box.appendChild(r)
   }
   for (const p of doc.points) row(P, sel.points.includes(p.id), p.name, s => { p.name = s }, () => removePoints([p.id]), e => { selectPoint(p.id, e.shiftKey); draw(); if (e.isTrusted) list() })
-  for (const l of doc.lines) row(Lw, sel.line === l.id, l.name, s => { l.name = s }, () => { doc.lines = doc.lines.filter(k => k !== l) }, e => { sel = { points: [], line: l.id }; draw(); if (e.isTrusted) list() }, `${pt(l.a)?.name} → ${pt(l.b)?.name}`)
+  for (const l of doc.lines) row(Lw, pickedLines().includes(l.id), l.name, s => { l.name = s }, () => { doc.lines = doc.lines.filter(k => k !== l) }, e => { pickLine(l.id, e.shiftKey); draw(); if (e.isTrusted) list() }, `${pt(l.a)?.name} → ${pt(l.b)?.name}`)
   $('status').textContent = `${doc.points.length} 个点 · ${doc.lines.length} 条线`
 }
 function selectPoint(id: number, add: boolean) { sel.line = null; if (add) { if (!sel.points.includes(id)) sel.points.push(id) } else sel.points = [id] }
@@ -214,9 +218,13 @@ function uniqueName(base: string, taken: string[]) { let i = 1; while (taken.inc
 const nearPoint = (x: number, y: number) => { let best: Pt | null = null, bd = 10; const xray = $<HTMLInputElement>('xray').checked
   for (const p of doc.points) { const [sx, sy] = toScreen(cam(p.p)), d = Math.hypot(sx - x, sy - y); if (d < bd && (xray || !hidden(p.p))) { bd = d; best = p } }
   return best }
-const nearLine = (x: number, y: number) => { let best: Ln | null = null, bd = 7
-  for (const l of doc.lines) for (let i = 0; i <= 48; i++) { const [sx, sy] = toScreen(cam(cubic(l.c, i / 48))), d = Math.hypot(sx - x, sy - y); if (d < bd) { bd = d; best = l } }
-  return best }
+/** the line under the cursor: the nearest within 7 px whose place there is not behind the shell (unless seeing through) */
+const nearLine = (x: number, y: number) => { const near: { l: Ln; q: P3; d: number }[] = [], xray = $<HTMLInputElement>('xray').checked
+  for (const l of doc.lines) { let b: { q: P3; d: number } | null = null
+    for (let i = 0; i <= 48; i++) { const q = cubic(l.c, i / 48), [sx, sy] = toScreen(cam(q)), d = Math.hypot(sx - x, sy - y); if (d < 7 && (!b || d < b.d)) b = { q, d } }
+    if (b) near.push({ l, ...b }) }
+  near.sort((u, v) => u.d - v.d)
+  return near.find(n => xray || !hidden(n.q))?.l ?? null }
 const local = (e: PointerEvent | MouseEvent) => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top] as const }
 let drag: { kind: 'turn'; x: number; y: number; yaw: number; pitch: number; moved: boolean } | { kind: 'point'; id: number; sx: number; sy: number; moved: boolean } | { kind: 'handle'; line: number; k: 1 | 2; moved: boolean; n?: P3 } | { kind: 'zoom' | 'pan'; x: number; y: number; sx: number; sy: number; zoom: number; panX: number; panY: number; moved: boolean } | null = null
 /** a handle of the selected line under the cursor */
@@ -285,7 +293,7 @@ cv.onpointerup = e => {
     lastTap = { id, t: now } }
   if (drag?.kind === 'point' && drag.moved) { refit(new Set([drag.id])); changed() }
   else if (drag?.kind === 'handle' && drag.moved) changed()
-  else if (drag?.kind === 'turn' && !drag.moved) { const [x, y] = local(e), l = nearLine(x, y); sel = l ? { points: [], line: l.id } : { points: [], line: null }; list(); draw() }
+  else if (drag?.kind === 'turn' && !drag.moved) { const [x, y] = local(e), l = nearLine(x, y); if (l) pickLine(l.id, e.shiftKey); else if (!e.shiftKey) sel = { points: [], line: null }; list(); draw() }
   drag = null; cursor()
 }
 cv.ondblclick = e => {
@@ -321,6 +329,49 @@ function snug(L: Ln, rounds = 3) {
   if (mean(c) < mean(L.c)) { L.c = c; L.own = true }
 }
 $('snug').onclick = () => { const L = doc.lines.find(l => l.id === sel.line); if (!L) { alert('先点一条线'); return } snapshot(); snug(L); changed() }
+/** a cubic split at t (de Casteljau): the two halves */
+function split(c: P3[], t: number): [P3[], P3[]] {
+  const L = (a: P3, b: P3): P3 => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
+  const a = L(c[0]!, c[1]!), b = L(c[1]!, c[2]!), d = L(c[2]!, c[3]!), e = L(a, b), f = L(b, d), g = L(e, f)
+  return [[c[0]!, a, e, g], [g, f, d, c[3]!]]
+}
+/** where two lines come nearest: their parameters (samples, then finer round the best pair) */
+function closestPair(c1: P3[], c2: P3[]) {
+  const d = (s: number, t: number) => { const p = cubic(c1, s), q = cubic(c2, t); return Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]) }
+  let bs = 0, bt = 0, bd = Infinity
+  for (let i = 0; i <= 200; i++) for (let j = 0; j <= 200; j++) { const v = d(i / 200, j / 200); if (v < bd) { bd = v; bs = i / 200; bt = j / 200 } }
+  for (let h = 1 / 200; h > 1e-6; h /= 2) for (let moved = true; moved;) { moved = false
+    for (const [ds, dt] of [[h, 0], [-h, 0], [0, h], [0, -h]] as const) { const s = Math.min(1, Math.max(0, bs + ds)), t = Math.min(1, Math.max(0, bt + dt)), v = d(s, t); if (v < bd - 1e-12) { bd = v; bs = s; bt = t; moved = true } } }
+  return { s: bs, t: bt, d: bd }
+}
+/** 使相交 (bowen 1793110671): two picked lines meet — their nearest two places become one new end, on the shell between them;
+ * each line is cut there into two (halves exactly the old curve, their cut ends moved onto the new point with their
+ * handles). A place at a line's end uses that end's point instead of cutting; two ends = the two points become one */
+function intersect(i1: number, i2: number) {
+  const A = doc.lines.find(l => l.id === i1), B = doc.lines.find(l => l.id === i2); if (!A || !B) return '找不到线'
+  const { s, t, d } = closestPair(A.c, B.c), END = 0.02
+  if (d > 0.15) return `这两条线最近也隔着 ${d.toFixed(2)}（头半径 = 1），不像是交叉的线，没有合`
+  const pa = cubic(A.c, s), pb = cubic(B.c, t), at = nearestOnSkin([(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2, (pa[2] + pb[2]) / 2])
+  const endOf = (l: Ln, u: number) => (u < END ? l.a : u > 1 - END ? l.b : null), ea = endOf(A, s), eb = endOf(B, t)
+  if (ea !== null && eb !== null) { // two ends: one point
+    if (ea === eb) return '它们已经接在同一个点上'
+    const keep = pt(ea)!; moveTo(keep, at); const gone = pt(eb)!; moveTo(gone, at)
+    for (const l of doc.lines) { if (l.a === eb) l.a = ea; if (l.b === eb) l.b = ea }
+    doc.points = doc.points.filter(p => p.id !== eb); doc.lines = doc.lines.filter(l => l.a !== l.b); sel = { points: [ea], line: null }; return null
+  }
+  const P = ea ?? eb ?? (() => { const id = doc.next++; doc.points.push({ id, name: uniqueName('交点', doc.points.map(p => p.name)), p: at }); return id })()
+  const meet = pt(P)!; if (ea !== null || eb !== null) moveTo(meet, at)
+  const cut = (l: Ln, u: number) => { // the line in two at u, both halves ending on the meeting point
+    const [h1, h2] = split(l.c, u), m = h1[3]!, dv = [0, 1, 2].map(k => meet.p[k]! - m[k]!)
+    h1[3] = meet.p; h1[2] = h1[2]!.map((v, k) => v + dv[k]!) as P3; h2[0] = meet.p; h2[1] = h2[1]!.map((v, k) => v + dv[k]!) as P3
+    const taken = doc.lines.map(k => k.name), n1 = uniqueName(`${l.name}前`, taken).replace(/1$/, ''), n2 = uniqueName(`${l.name}后`, [...taken, n1]).replace(/1$/, '')
+    const i = doc.lines.indexOf(l); doc.lines.splice(i, 1, { id: doc.next++, name: n1, a: l.a, b: P, c: h1, own: true }, { id: doc.next++, name: n2, a: P, b: l.b, c: h2, own: true })
+  }
+  if (ea === null) cut(A, s); if (eb === null) cut(B, t)
+  sel = { points: [P], line: null }; return null
+}
+$('meet').onclick = () => { const ls = pickedLines(); if (ls.length !== 2) { alert('先选两条线：点一条，再按住 Shift 点另一条'); return }
+  snapshot(); const err = intersect(ls[0]!, ls[1]!); if (err) { undo.pop(); alert(err); return } changed() }
 $('link').onclick = () => {
   if (sel.points.length !== 2) { alert('先选两个点：点一个，再按住 Shift 点另一个'); return }
   const [a, b] = sel.points as [number, number], A = pt(a)!, B = pt(b)!
@@ -360,7 +411,7 @@ window.addEventListener('keydown', e => {
   const ARROW: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }
   if (ARROW[e.key]) { const step = e.shiftKey ? 10 : e.altKey ? 0.25 : 2, [dx, dy] = ARROW[e.key]!; if (nudge(dx * step, dy * step)) e.preventDefault(); return }
   if (e.key === 'Delete' || e.key === 'Backspace') { if (!sel.points.length && sel.line === null) return; snapshot()
-    if (sel.points.length) removePoints(sel.points); else { doc.lines = doc.lines.filter(l => l.id !== sel.line); sel.line = null } changed() }
+    if (sel.points.length) removePoints(sel.points); else { const gone = pickedLines(); doc.lines = doc.lines.filter(l => !gone.includes(l.id)); sel = { points: [], line: null } } changed() }
 })
 for (const b of document.querySelectorAll<HTMLButtonElement>('button[data-v]')) b.onclick = () => { [yaw, pitch] = b.dataset.v!.split(',').map(Number) as [number, number]; draw() }
 $('home').onclick = () => { zoom = 1; panX = 0; panY = 0; draw() }
