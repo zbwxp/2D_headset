@@ -21,7 +21,7 @@
 //   env YAWS=0,15,… COLS=4 LEGEND=1 TAG=… SWEEP=1
 import { readFileSync, writeFileSync } from 'node:fs'
 import { loadVrmHead, rasterHead } from '../mesh/vrmhead'
-import { rotate, toCamera } from '../src/view'
+import { rotate, screenAxes, toCamera } from '../src/view'
 type P3 = [number, number, number]
 interface Ln { id: number; name: string; a: number; b: number; c: P3[] }
 interface Doc { points: { id: number; name: string; p: P3 }[]; lines: Ln[] }
@@ -102,51 +102,55 @@ const face: Net = { name: '脸那一侧', edge: 1, top: P('颅顶'), bottom: 'fr
   rails: [{ name: '额头那圈', pieces: [{ c: sample(run('纬线右半前·纬线', '额前')), from: 0 }, { c: sample(run('纬线右半后前·纬线', '右交点1')), from: 1 }, { c: sample(run('纬线右半后后·纬线', '右交点2')), from: 2 }] },
     { name: '太阳穴那层', pieces: [{ c: auto('侧脸线→右太阳穴', hugLink(profile[i2]!, P('右太阳穴'))), from: 0 }, { c: sample(run('右耳根太阳穴·纬线', '右太阳穴')), from: 1 }] },
     { name: '颧骨那层', pieces: [{ c: auto('侧脸线→右颧骨', hugLink(profile[i3]!, P('右颧骨'))), from: 0 }, { c: sample(run('右下耳根颧骨·纬线', '右颧骨')), from: 1 }] }] }
-const baseY = (P('后颈')[1] + P('颈前')[1]) / 2, nsL = neckSide(baseY, -1), nsR = neckSide(baseY, 1)
 /** a chain cut where it first crosses height y */
 const cutY = (c: Chain, y: number): [Chain, Chain] => { const i = c.findIndex((p, k) => k > 0 && (c[k - 1]![1] - y) * (p[1] - y) <= 0); return i < 0 ? [c, [c[c.length - 1]!]] : [c.slice(0, i + 1), c.slice(i)] }
-// behind the ear the back of the skull bulges between the forehead ring and 线8 with no line across it: an automatic one at
-// the ear's height (上耳根), from behind the ear to the back midline
-const behindEar = auto('交点2→耳后根（耳朵后面）', hugLink(P('交点2'), P('耳后根'))), backMid = sample(run('头颈交界耳后根·纬线', '后脑')), yEar = P('左上耳根')[1]
-const [be1, be2] = cutY(behindEar, yEar), [bm1, bm2] = cutY(backMid, yEar)
-// the back of the skull between the ear and the back midline has no line running down it (bowen 1793114522 「转30度 45度后脑
-// 为什么感觉缺了一块」: the outline there could only mix the face contour and the back midline, both inside it): an automatic
-// one through the middle of each rail, like 线2 / 线5 on the face side
-const half = (c: Chain): [Chain, Chain] => { const L = lens(c), h = L[L.length - 1]! / 2, i = L.findIndex(l => l >= h); return [c.slice(0, i + 1), c.slice(i)] }
-const r1b = half(sample(run('纬线左半后后·纬线', '交点2'))), rEar = half(auto('耳后→后脑中线（耳朵高度）', hugLink(be1[be1.length - 1]!, bm1[bm1.length - 1]!)))
-const r8 = half(sample(run('线8', '耳后根'))), rBase = half(auto('颈侧底→后颈', hugLink(nsL, P('后颈'))))
-const mids = [r1b[0], rEar[0], r8[0], rBase[0]].map(c => c[c.length - 1]!)
-const backSide = [auto('颅顶→后脑侧（后脑侧竖线）', hugLink(P('颅顶'), mids[0]!)), ...[0, 1, 2].map(k => auto(`后脑侧竖线 ${k + 2}`, hugLink(mids[k]!, mids[k + 1]!)))]
-const back: Net = { name: '后脑那一侧', edge: -1, top: P('颅顶'),
-  cols: [[sample(run('线5后', '颅顶')), be1, be2, auto('耳后根→颈侧底', hugLink(P('耳后根'), nsL))], backSide,
-    [sample(run('颅顶—后脑', '颅顶')), bm1, bm2, sample(run('线7', '头颈交界点'))]],
-  rails: [{ name: '额头那圈后段', pieces: [{ c: r1b[0], from: 0 }, { c: r1b[1], from: 1 }] },
-    { name: '耳朵高度（后脑）', pieces: [{ c: rEar[0], from: 0 }, { c: rEar[1], from: 1 }] },
-    { name: '线8 耳后根→头颈交界点', pieces: [{ c: r8[0], from: 0 }, { c: r8[1], from: 1 }] },
-    { name: '颈根（后）', pieces: [{ c: rBase[0], from: 0 }, { c: rBase[1], from: 1 }] }] }
-const neck: Net = { name: '颈前那一侧', edge: 1,
-  cols: [[sample(run('颈前—下巴底拐点', '下巴底拐点'))], [auto('右耳后根→颈侧底', hugLink(P('右耳后根'), nsR))]],
-  rails: [{ name: '下颌底', pieces: [{ c: auto('下巴底拐点→右耳后根（下颌底）', hugLink(P('下巴底拐点'), P('右耳后根'), 30, nearestV)), from: 0 }] },
-    { name: '颈根（前）', pieces: [{ c: auto('颈前→颈侧底', hugLink(P('颈前'), nsR)), from: 0 }] }] }
-// a ring round the top of the head (bowen 1793117292 「头顶先补一圈，让bezier曲线扭转尽量简单，尽量水平的圈」): level at
-// height Y_TOP (halfway between the crown and the forehead ring), one cubic between each two columns, every point at that
-// height (pressed straight out from the head's upright axis), so the pieces lie flat and do not twist
+const still = (p: P3): Chain => [p, p] // a column that does not move over a stretch (its rails meet at one point there)
+const joinRun = (...ns: [string, string][]) => join(...ns.map(([n, from]) => sample(run(n, from))))
+// the back and the neck from bowen's own lines (bowen 1793118841 「我在下颌和颈部增添了很多线」), each patch of his net one net
+// here (left side, x < 0; mirrored for the right):
+// - the back of the skull: 线5后 / 线10 and the back midline, the forehead ring's back piece across, down to 头颈交界点;
+const back: Net = { name: '后脑那一侧', edge: -1, top: P('颅顶'), bottom: P('头颈交界点'),
+  cols: [[sample(run('线5后', '颅顶')), sample(run('线10', '交点2'))], [sample(run('颅顶—后脑', '颅顶')), sample(run('头颈交界耳后根·纬线', '后脑'))]],
+  rails: [{ name: '额头那圈后段', pieces: [{ c: sample(run('纬线左半后后·纬线', '交点2')), from: 0 }] }] }
+// - behind the ear: from 交点2 down the face contour (上耳根 → 下耳根) and down 线10, 线6 across at the bottom;
+const behindEar: Net = { name: '耳后', edge: -1, top: P('交点2'),
+  cols: [[joinRun(['线5前', '交点2'], ['线2', '左上耳根'])], [sample(run('线10', '交点2'))]],
+  rails: [{ name: '线6', pieces: [{ c: sample(run('线6', '左下耳根')), from: 0 }] }] }
+// - under the jaw: from 下耳根 along 线4 (to 下巴) and 线9 (to 下巴底拐点), the midline across;
+const underJaw: Net = { name: '下颌底', edge: -1, top: P('左下耳根'),
+  cols: [[sample(run('线4', '左下耳根'))], [sample(run('线9', '左下耳根'))]],
+  rails: [{ name: '下巴→下巴底拐点', pieces: [{ c: sample(run('下巴底拐点—下巴', '下巴')), from: 0 }] }] }
+// - the neck's front: the front midline and the neck's side (下耳根 → 交点4 → 交点3), 线9 / 线12前 / 线11后 across;
+const neck: Net = { name: '颈前那一侧', edge: -1,
+  cols: [[still(P('下巴底拐点')), sample(run('颈前—下巴底拐点', '下巴底拐点'))], [sample(run('线8后后', '左下耳根')), sample(run('线8后前', '交点4'))]],
+  rails: [{ name: '线9', pieces: [{ c: sample(run('线9', '下巴底拐点')), from: 0 }] }, { name: '线12前', pieces: [{ c: sample(run('线12前', '下巴底拐点')), from: 0 }] },
+    { name: '线11后', pieces: [{ c: sample(run('线11后', '颈前')), from: 0 }] }] }
+// - the neck's back: the back midline (头颈交界点 → 后颈) and the neck's side, 线6 / 线12后 / 线11前 across
+const nape: Net = { name: '颈后', edge: -1,
+  cols: [[still(P('头颈交界点')), sample(run('线7', '头颈交界点'))], [sample(run('线8后后', '左下耳根')), sample(run('线8后前', '交点4'))]],
+  rails: [{ name: '线6', pieces: [{ c: sample(run('线6', '头颈交界点')), from: 0 }] }, { name: '线12后', pieces: [{ c: sample(run('线12后', '头颈交界点')), from: 0 }] },
+    { name: '线11前', pieces: [{ c: sample(run('线11前', '后颈')), from: 0 }] }] }
+// a ring round the top of the head (bowen 1793117292 「头顶先补一圈，让bezier曲线扭转尽量简单，尽量水平的圈」; 1793118922 「你补的线
+// …都应该是bezier曲线…一长段bezier曲线能大致拟合很多交点的就都用一条线拟合」): level at height Y_TOP (halfway between the crown and
+// the forehead ring), one cubic for each half from the front midline to the back (every point of its path at that height,
+// pressed straight out from the head's upright axis); the columns are cut where they meet it
 const Y_TOP = (P('颅顶')[1] + P('额前')[1]) / 2
-function ringPiece(a: P3, b2: P3, y: number, n = 24): Chain {
-  const c: P3 = [0, y, -0.05], ang = (p: P3) => Math.atan2(p[0] - c[0], p[2] - c[2]), a0 = ang(a); let da = ang(b2) - a0; if (da > Math.PI) da -= 2 * Math.PI; if (da < -Math.PI) da += 2 * Math.PI
-  const path = Array.from({ length: n + 1 }, (_, i) => (i === 0 ? a : i === n ? b2 : (farHit(c, [Math.sin(a0 + (da * i) / n), 0, Math.cos(a0 + (da * i) / n)]) ?? mix(a, b2, i / n))))
-  return sample(fitCubic(path))
-}
-function addRing(net: Net, y: number, name: string) {
-  const cross = net.cols.map(cs => { const c0 = cs[0]; if (!c0) return null; const [up, low] = cutY(c0, y); cs.splice(0, 1, up, low); return up[up.length - 1]! })
-  // a crossing exactly at height y on each column (the sample just past it, levelled)
-  const pts = cross.map(p => (p ? ([p[0], y, p[2]] as P3) : null))
-  net.cols.forEach((cs, i) => { if (!pts[i]) cs.splice(0, 0, null); else { cs[0]![cs[0]!.length - 1] = pts[i]!; cs[1]![0] = pts[i]! } })
+const ringHalf = (() => { const c: P3 = [0, Y_TOP, -0.05], n = 48
+  const path = Array.from({ length: n + 1 }, (_, i) => { const a = (Math.PI * i) / n; return farHit(c, [Math.sin(a), 0, Math.cos(a)]) ?? c })
+  return sample(fitCubic(path), 120) })() // x > 0 half, front (z > 0) to back
+auto('头顶那圈（右半）', ringHalf); auto('头顶那圈（左半）', ringHalf.map(p => [-p[0], p[1], p[2]] as P3))
+function addRing(net: Net, name: string) {
+  const ring = net.edge > 0 || net.name === '脸那一侧' ? ringHalf : ringHalf.map(p => [-p[0], p[1], p[2]] as P3)
+  const az = (p: P3) => Math.atan2(Math.abs(p[0]), p[2])
+  const at2 = net.cols.map(cs => { const c0 = cs[0]; if (!c0) return -1; const [up] = cutY(c0, Y_TOP), q = up[up.length - 1]!
+    return ring.reduce((m, p, i) => (Math.abs(az(p) - az(q)) < Math.abs(az(ring[m]!) - az(q)) ? i : m), 0) })
+  net.cols.forEach((cs, i) => { const c0 = cs[0]; if (!c0 || at2[i]! < 0) { cs.splice(0, 0, null); return }
+    const p = ring[at2[i]!]!, [up, low] = cutY(c0, Y_TOP); up[up.length - 1] = p; low[0] = p; cs.splice(0, 1, up, low) })
   const pieces: { c: Chain; from: number }[] = []
-  for (let i = 0; i + 1 < pts.length; i++) if (pts[i] && pts[i + 1]) pieces.push({ from: i, c: auto(`${name} ${i + 1}`, ringPiece(pts[i]!, pts[i + 1]!, y)) })
+  for (let i = 0; i + 1 < at2.length; i++) if (at2[i]! >= 0 && at2[i + 1]! >= 0) { const [x, y] = [at2[i]!, at2[i + 1]!]; pieces.push({ from: i, c: x <= y ? ring.slice(x, y + 1) : ring.slice(y, x + 1).reverse() }) }
   net.rails.splice(0, 0, { name, pieces })
 }
-addRing(face, Y_TOP, '头顶那圈'); addRing(back, Y_TOP, '头顶那圈（后）')
+addRing(face, '头顶那圈'); addRing(back, '头顶那圈（后）')
 // every net on both sides (bowen 1793114494: at 0° the two sides came out different — the right had only the face's net, the
 // left only the back's): each mirrored across the midline, outlining the other screen side; each screen side shows the outer
 const mirrorNet = (n: Net): Net => { const m = (c: Chain): Chain => c.map(p => [-p[0], p[1], p[2]] as P3)
@@ -170,7 +174,8 @@ function transpose(n: Net): Net {
   const rails = n.cols.map((cs, i) => ({ name: `竖线 ${i}`, pieces: cs.map((c, k) => (c ? { c, from: k } : null)).filter(Boolean) as { c: Chain; from: number }[] })).filter(r => r.pieces.length)
   return { name: n.name, edge: n.edge, cols: newCols, rails }
 }
-const BASE = [face, back, neck], KINDS = [...BASE, ...BASE.map(mirrorNet)].map((n, i) => ({ n, kind: i % BASE.length }))
+// colour groups: 0 the face (green), 1 the back of the head (purple), 2 under the jaw and the neck (brown); 3 the ears, 4 the cap
+const BASE = [face, back, behindEar, underJaw, neck, nape], GROUP = [0, 1, 1, 2, 2, 2], KINDS = [...BASE, ...BASE.map(mirrorNet)].map((n, i) => ({ n, kind: GROUP[i % BASE.length]! }))
 const NETS = KINDS.flatMap(({ n, kind }) => ([1, -1] as const).map(edge => Object.assign({ ...n, edge }, { kind })))
 const KIND = (n: Net) => (n as Net & { kind: number }).kind
 // the inner lines drawn wherever they are not hidden
@@ -183,21 +188,22 @@ const DETAIL = doc.lines.filter(l => /耳根—耳尖|耳尖—耳垂|耳垂—�
  * (the direction swung, the distance mixed) (bowen 1793117292 follow-up: mixed straight,
  * the outline between two columns cut inside the head and ran in straight pieces near the crown) */
 function mixRound(a: P3, b2: P3, w: number): P3 {
-  // the skull only (above the cheekbones): lower down, jaw and nape are far from round about the centre and mix straight
-  if (a[1] < -0.6 || b2[1] < -0.6) return mix(a, b2, w)
-  const neckish = false, c: P3 = [0, -0.3, 0]
-  const da = neckish ? ([a[0] - c[0], 0, a[2] - c[2]] as P3) : sub(a, c), db = neckish ? ([b2[0] - c[0], 0, b2[2] - c[2]] as P3) : sub(b2, c)
+  // round on the skull, straight lower down (jaw and nape are far from round about the centre), eased between heights -0.4
+  // and -0.8 (a switch at one height left a step in the outline, bowen's viewer at yaw 45 pitch 30)
+  const lowY = Math.min(a[1], b2[1]), k = Math.max(0, Math.min(1, (lowY + 0.8) / 0.4)), straight = mix(a, b2, w)
+  if (k <= 0) return straight
+  const c: P3 = [0, -0.3, 0], da = sub(a, c), db = sub(b2, c)
   const ra = len(da), rb = len(db); if (ra < 1e-6 || rb < 1e-6) return mix(a, b2, w)
   const ua = unit(da), ub = unit(db), cos = Math.max(-1, Math.min(1, ua[0] * ub[0] + ua[1] * ub[1] + ua[2] * ub[2])), om = Math.acos(cos)
   const u: P3 = om < 1e-4 ? mix(ua, ub, w) : ([0, 1, 2].map(k => (Math.sin((1 - w) * om) * ua[k]! + Math.sin(w * om) * ub[k]!) / Math.sin(om)) as P3)
   const r = ra + (rb - ra) * w, p: P3 = add(c, [u[0] * r, u[1] * r, u[2] * r])
-  return neckish ? [p[0], a[1] + (b2[1] - a[1]) * w, p[2]] : p
+  return k >= 1 ? p : mix(straight, p, k * k * (3 - 2 * k))
 }
 /** a rail's tangent points in a view: every bulge toward the outline's side (a sample farther out than all within ±W, or an
  * end farther out than its neighbours), standing out by more than a hair from the dip to the next */
 function tangents(r: Net['rails'][number], X: (p: P3) => number) {
   const s: { p: P3; g: number; x: number }[] = []
-  for (const pc of r.pieces) { const L = lens(pc.c), tot = L[L.length - 1]!; pc.c.forEach((p, i) => { if (s.length && i === 0) return; s.push({ p, g: pc.from + L[i]! / tot, x: X(p) }) }) }
+  for (const pc of r.pieces) { const L = lens(pc.c), tot = L[L.length - 1]!; pc.c.forEach((p, i) => { if (s.length && i === 0) return; s.push({ p, g: pc.from + L[i]! / (tot || 1), x: X(p) }) }) }
   const Wn = 3, peaks = s.map((q, i) => ({ q, i })).filter(({ q, i }) => { for (let j = Math.max(0, i - Wn); j <= Math.min(s.length - 1, i + Wn); j++) if (j !== i && s[j]!.x > q.x) return false; return true })
   // drop a bulge that hardly rises above the dip between it and a taller one (noise, flat stretches)
   const keep = peaks.filter(({ q, i }) => peaks.every(o => { if (o.i === i || o.q.x <= q.x) return true; const [a, c] = o.i < i ? [o.i, i] : [i, o.i]; let dip = Infinity; for (let j = a; j <= c; j++) dip = Math.min(dip, s[j]!.x); return q.x - dip > 0.01 }))
@@ -348,7 +354,10 @@ function polar(yaw: number, pitch: number) {
   const c0 = rotate([0, -0.45, 0], v), cx = c0[0], cy = c0[1], A = 360
   // VRoid: per degree the farthest inside point along the ray (the outline), and whether it is the neck's cut (bottom rows)
   let yLow = Infinity; for (let j = W - 1; j >= 0; j--) { let any = false; for (let i = 0; i < W; i++) if (ras.zb[j * W + i]! > -Infinity) { any = true; break } if (any) { yLow = (F.cy - (j + 0.5)) / F.S; break } }
-  const truth = Array.from({ length: A }, (_, a) => { const t = (a * Math.PI) / 180, dx = Math.cos(t), dy = Math.sin(t); let r = 0; for (let s = 0; s < 3; s += 0.004) if (inside(cx + dx * s, cy + dy * s)) r = s; return { r, cut: cy + dy * r < yLow + 0.06 } })
+  // (the neck's cut is no outline: where the outline point lies on the head below the neck's base ring, 线11, it is left out)
+  const ax = screenAxes(v), fw = toCamera(v), yBase = Math.max(P('后颈')[1], P('颈前')[1]) + 0.04
+  const headY = (x: number, y: number) => { const i = Math.round(F.cx + x * F.S), j = Math.round(F.cy - y * F.S), z = ras.zb[j * W + i]!; return ax.right[1] * x + ax.up[1] * y + fw[1] * z }
+  const truth = Array.from({ length: A }, (_, a) => { const t = (a * Math.PI) / 180, dx = Math.cos(t), dy = Math.sin(t); let r = 0; for (let s = 0; s < 3; s += 0.004) if (inside(cx + dx * s, cy + dy * s)) r = s; return { r, cut: cy + dy * r < yLow + 0.06 || headY(cx + dx * r, cy + dy * r) < yBase } })
   // tangent points in eight directions (bowen 1793117729: looking down 60°, the face's lower outline runs slanting to the chin;
   // farthest out across the screen fell on 下耳根 and the outline went down the jawline, while slanting-farthest lies on the
   // cheek line 太阳穴 → 颧骨 → 下巴), each with the nets both ways (rails and crosswise)

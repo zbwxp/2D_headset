@@ -18,6 +18,15 @@ for (const l of doc.lines) {
   const a = pt(l.a), b = pt(l.b); l.c[0] = [...a.p]; l.c[3] = [...b.p]
   if (onMid(a.p) && onMid(b.p) && onMid(l.c[1]!) && onMid(l.c[2]!)) { l.c[1]![0] = 0; l.c[2]![0] = 0 }
 }
+// 1b. lines bowen let go (·俯视 / ·大角度俯仰 helpers, bowen 1793114630 「给它们删掉」)
+doc.lines = doc.lines.filter(l => !/·俯视|·大角度俯仰/.test(l.name))
+// 1c. names made twice (the editor's 使相交 named a cut 线5 again → 线5前/线5后 twice): the later lines get the next free number,
+// one per group of joined lines, keeping their 前/后 tail
+{ const seen = new Set<string>(), dup = doc.lines.filter(l => { const d = seen.has(l.name); seen.add(l.name); return d })
+  const taken = () => new Set(doc.lines.map(l => (/^线(\d+)/.exec(l.name) ?? [])[1]).filter(Boolean).map(Number))
+  const groups: Ln[][] = []; for (const l of dup) { const g = groups.find(g => g.some(o => [o.a, o.b].some(e => e === l.a || e === l.b))); if (g) g.push(l); else groups.push([l]) }
+  for (const g of groups) { const used = taken(); let n = 1; while (used.has(n)) n++
+    for (const l of g) { const old = l.name; l.name = l.name.replace(/^线\d+/, `线${n}`); console.log('renamed', old, '→', l.name, `(${pt(l.a).name} → ${pt(l.b).name})`) } } }
 // 2. the right half out: lines reaching right of the midline with nothing on the left, then the points left on their own
 const side = (l: Ln) => { const xs = [pt(l.a).p[0], pt(l.b).p[0], l.c[1]![0], l.c[2]![0]]; return xs.some(x => x < -MID) ? -1 : xs.some(x => x > MID) ? 1 : 0 }
 const dropped = doc.lines.filter(l => side(l) === 1).map(l => l.name)

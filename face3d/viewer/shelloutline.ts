@@ -30,7 +30,7 @@ function at(c: Chain, u: number): P3 { const L = lens(c), s = u * L[L.length - 1
 // ---- the outline (as in face3d/fit/shell-outline.ts) ----
 function tangents(r: NetJ['rails'][number], X: (p: P3) => number) {
   const s: { p: P3; g: number; x: number }[] = []
-  for (const pc of r.pieces) { const L = lens(pc.c), tot = L[L.length - 1]!; pc.c.forEach((p, i) => { if (s.length && i === 0) return; s.push({ p, g: pc.from + L[i]! / tot, x: X(p) }) }) }
+  for (const pc of r.pieces) { const L = lens(pc.c), tot = L[L.length - 1]!; pc.c.forEach((p, i) => { if (s.length && i === 0) return; s.push({ p, g: pc.from + L[i]! / (tot || 1), x: X(p) }) }) }
   const Wn = 3, peaks = s.map((q, i) => ({ q, i })).filter(({ q, i }) => { for (let j = Math.max(0, i - Wn); j <= Math.min(s.length - 1, i + Wn); j++) if (j !== i && s[j]!.x > q.x) return false; return true })
   const keep = peaks.filter(({ q, i }) => peaks.every(o => { if (o.i === i || o.q.x <= q.x) return true; const [a, c] = o.i < i ? [o.i, i] : [i, o.i]; let dip = Infinity; for (let j = a; j <= c; j++) dip = Math.min(dip, s[j]!.x); return q.x - dip > 0.01 }))
   return keep.filter(({ i }, k) => k === 0 || i - keep[k - 1]!.i > Wn).map(({ q }) => q)
@@ -38,11 +38,12 @@ function tangents(r: NetJ['rails'][number], X: (p: P3) => number) {
 const unit = (v: P3): P3 => { const m = len(v) || 1; return [v[0] / m, v[1] / m, v[2] / m] }
 /** two shell points mixed round the head's centre on the skull, straight lower down (as in shell-outline.ts) */
 function mixRound(a: P3, b: P3, w: number): P3 {
-  if (a[1] < -0.6 || b[1] < -0.6) return mix(a, b, w)
+  const lowY = Math.min(a[1], b[1]), k = Math.max(0, Math.min(1, (lowY + 0.8) / 0.4)), straight = mix(a, b, w) // round on the skull, straight lower, eased
+  if (k <= 0) return straight
   const c: P3 = [0, -0.3, 0], da = sub(a, c), db = sub(b, c), ra = len(da), rb = len(db); if (ra < 1e-6 || rb < 1e-6) return mix(a, b, w)
   const ua = unit(da), ub = unit(db), om = Math.acos(Math.max(-1, Math.min(1, ua[0] * ub[0] + ua[1] * ub[1] + ua[2] * ub[2])))
   const u: P3 = om < 1e-4 ? mix(ua, ub, w) : ([0, 1, 2].map(k => (Math.sin((1 - w) * om) * ua[k]! + Math.sin(w * om) * ub[k]!) / Math.sin(om)) as P3)
-  const r = ra + (rb - ra) * w; return add(c, [u[0] * r, u[1] * r, u[2] * r])
+  const r = ra + (rb - ra) * w, p = add(c, [u[0] * r, u[1] * r, u[2] * r]); return k >= 1 ? p : mix(straight, p, k * k * (3 - 2 * k))
 }
 function outlines(net: NetJ, d: readonly [number, number], v: { yaw: number; pitch: number }) {
   const X = (p: P3) => { const q = rotate(p, v); return d[0] * q[0] + d[1] * q[1] }, tan = net.rails.map(r => tangents(r, X))
@@ -149,7 +150,8 @@ function draw() {
     const v = { yaw, pitch }, all: { kind: number; pts: P3[]; scr: number[][]; tan: P3[] }[] = []
     const push = (kind: number, pts: P3[], tan: P3[]) => all.push({ kind, pts, scr: pts.map(p => rotate(p, v) as unknown as number[]), tan })
     // tangent points in eight screen directions, the nets both ways (as in shell-outline.ts)
-    for (const nets of [D.nets, D.tnets]) for (const net of nets) for (const d of DIRS) for (const l of outlines(net, d, v)) push(net.kind, l.pts, l.tan.map(t => t.p))
+    for (const [ni, nets] of [D.nets, D.tnets].entries()) for (const net of nets) for (const [di, d] of DIRS.entries()) for (const l of outlines(net, d, v)) { push(net.kind, l.pts, l.tan.map(t => t.p)); (all[all.length - 1] as unknown as { tag: string }).tag = `${ni ? '竖' : '横'} ${net.name} dir${di * 45}` }
+    ;(window as unknown as { __all: unknown }).__all = all
     if (on('cap')) for (const run of capOutline(v)) push(4, run, [])
     for (const e of EARS) push(3, e, [])
     // in every direction round the head's middle on the screen, the farthest line shows

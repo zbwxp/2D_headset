@@ -212,7 +212,9 @@ function list() {
 }
 function selectPoint(id: number, add: boolean) { sel.line = null; if (add) { if (!sel.points.includes(id)) sel.points.push(id) } else sel.points = [id] }
 function removePoints(ids: number[]) { doc.points = doc.points.filter(p => !ids.includes(p.id)); doc.lines = doc.lines.filter(l => !ids.includes(l.a) && !ids.includes(l.b)); sel = { points: [], line: null } }
-function uniqueName(base: string, taken: string[]) { let i = 1; while (taken.includes(`${base}${i}`)) i++; return `${base}${i}` }
+/** base + the first number no name uses, also not as the start of a longer name (线5 is taken while 线5前 exists: a cut keeps
+ * its line's number, bowen's file had 线5前 twice) */
+function uniqueName(base: string, taken: string[]) { const used = (n: string) => taken.some(t => t === n || (t.startsWith(n) && !/^\d/.test(t.slice(n.length)))); let i = 1; while (used(`${base}${i}`)) i++; return `${base}${i}` }
 
 // ---- interaction ----
 const nearPoint = (x: number, y: number) => { let best: Pt | null = null, bd = 10; const xray = $<HTMLInputElement>('xray').checked
@@ -364,7 +366,8 @@ function intersect(i1: number, i2: number) {
   const cut = (l: Ln, u: number) => { // the line in two at u, both halves ending on the meeting point
     const [h1, h2] = split(l.c, u), m = h1[3]!, dv = [0, 1, 2].map(k => meet.p[k]! - m[k]!)
     h1[3] = meet.p; h1[2] = h1[2]!.map((v, k) => v + dv[k]!) as P3; h2[0] = meet.p; h2[1] = h2[1]!.map((v, k) => v + dv[k]!) as P3
-    const taken = doc.lines.map(k => k.name), n1 = uniqueName(`${l.name}前`, taken).replace(/1$/, ''), n2 = uniqueName(`${l.name}后`, [...taken, n1]).replace(/1$/, '')
+    const taken = doc.lines.map(k => k.name), free = (b: string, t: string[]) => { if (!t.includes(b)) return b; let i = 2; while (t.includes(`${b}${i}`)) i++; return `${b}${i}` }
+    const n1 = free(`${l.name}前`, taken), n2 = free(`${l.name}后`, [...taken, n1])
     const i = doc.lines.indexOf(l); doc.lines.splice(i, 1, { id: doc.next++, name: n1, a: l.a, b: P, c: h1, own: true }, { id: doc.next++, name: n2, a: P, b: l.b, c: h2, own: true })
   }
   if (ea === null) cut(A, s); if (eb === null) cut(B, t)
