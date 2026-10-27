@@ -83,7 +83,7 @@ function compare(yaw: number) {
   return { yaw, o, q, wire, rows, g, built: st('built'), env: st('env') }
 }
 
-const YAWS = [0, 15, 30, 45, 60, 75, 90, 105], Pn = 400, COLS = 4, out: unknown[] = []
+const YAWS = process.env.YAWS ? process.env.YAWS.split(',').map(Number) : [0, 15, 30, 45, 60, 75, 90, 105], Pn = 400, COLS = Number(process.env.COLS ?? 4), LEGEND = !!process.env.LEGEND, out: unknown[] = []
 let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${COLS * Pn} ${COLS * Pn}" width="${COLS * Pn}" height="${COLS * Pn}" font-family="system-ui"><rect width="100%" height="100%" fill="#fff"/>`
 YAWS.forEach((yaw, k) => {
   const R = compare(yaw), ox = (k % COLS) * Pn, oy = Math.floor(k / COLS) * Pn, X = (x: number) => ox + F.cx + x * F.S, Y = (y: number) => oy + F.cy - y * F.S
@@ -94,11 +94,13 @@ YAWS.forEach((yaw, k) => {
   svg += pl(R.rows.map(r => [r.r, r.y]), 'stroke="#111" stroke-width="1"')
   svg += pl(R.g.filter(r => Number.isFinite(r.env)).map(r => [r.env, r.y]), 'stroke="#1f6fd1" stroke-width="1.2" stroke-dasharray="4 3"')
   svg += pl(R.q, 'stroke="#13a05a" stroke-width="2"')
-  for (const t of R.o.tan) { const q = rotate(t.p, { yaw, pitch: 0 }); svg += `<circle cx="${X(q[0]).toFixed(1)}" cy="${Y(q[1]).toFixed(1)}" r="4" fill="#e08a2c" stroke="#fff"/>` }
+  R.o.tan.forEach((t, i) => { const q = rotate(t.p, { yaw, pitch: 0 }); svg += `<circle cx="${X(q[0]).toFixed(1)}" cy="${Y(q[1]).toFixed(1)}" r="4" fill="#e08a2c" stroke="#fff"/>`; if (LEGEND) svg += `<text x="${(X(q[0]) + 7).toFixed(1)}" y="${(Y(q[1]) + 4).toFixed(1)}" font-size="11" fill="#b5651d">${['额头那圈上的切点', '太阳穴—上耳根上的切点', '颧骨—下耳根上的切点'][i]}</text>` })
   svg += `<text x="${ox + 8}" y="${oy + 20}" font-size="15">转 ${yaw}°</text><text x="${ox + 8}" y="${oy + Pn - 28}" font-size="12" fill="#13a05a">拼出的轮廓 vs 真轮廓：中位 ${R.built.med.toFixed(3)} · 九成 ${R.built.p90.toFixed(3)} · 最大 ${R.built.max.toFixed(3)}</text><text x="${ox + 8}" y="${oy + Pn - 10}" font-size="12" fill="#1f6fd1">外包轮廓 vs 真轮廓：中位 ${R.env.med.toFixed(3)} · 九成 ${R.env.p90.toFixed(3)} · 最大 ${R.env.max.toFixed(3)}</text>`
   out.push({ yaw, built: R.built, env: R.env, tangents: R.o.tan.map((t, i) => ({ rail: RAILS[i]!.name, between: `${t.from}-${t.to}`, f: +t.f.toFixed(3) })) })
   console.log(yaw, 'built', [R.built.med, R.built.p90, R.built.max].map(v => v.toFixed(3)).join('/'), 'env', [R.env.med, R.env.p90, R.env.max].map(v => v.toFixed(3)).join('/'), R.o.tan.map(t => `${t.from}-${t.to}@${t.f.toFixed(2)}`).join(' '))
 })
-const base = file.replace(/\.json$/, '').replace(/.*\//, '')
+if (LEGEND) { const lg: [string, string][] = [['#e9e7e3', 'VRoid 头'], ['#111', '黑线 = VRoid 真轮廓'], ['#13a05a', '绿线 = 用你的线框拼出的轮廓'], ['#e08a2c', '橙点 = 纬线上和视线相切的点（转头时沿纬线滑动）'], ['#d9a0a0', '浅红 = 你的线框']]
+  const oy = Math.ceil(YAWS.length / COLS) * Pn; lg.forEach(([c, t], i) => { svg += `<rect x="20" y="${oy + 14 + i * 22}" width="16" height="12" fill="${c}" stroke="#999" stroke-width="0.5"/><text x="44" y="${oy + 25 + i * 22}" font-size="14">${t}</text>` }) }
+const base = file.replace(/\.json$/, '').replace(/.*\//, '') + (process.env.TAG ?? '')
 writeFileSync(`face3d/viewer/ref-shell/outline-${base}.svg`, svg + '</svg>')
 writeFileSync(`face3d/viewer/ref-shell/outline-${base}.json`, JSON.stringify({ note: 'face-side outline built from tangent points on the rails + column handles (face3d/fit/shell-outline.ts)', views: out }, null, 1))
