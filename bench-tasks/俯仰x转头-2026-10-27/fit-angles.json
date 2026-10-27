@@ -1,0 +1,137 @@
+{
+ "up45-yaw0": {
+  "yaw": -1.0,
+  "pitch": 20.5,
+  "rms_px": 23.7,
+  "scale_px_per_unit": 5.5528,
+  "tx": 636.3,
+  "ty": 699.0,
+  "points": 9
+ },
+ "zero-yaw0": {
+  "yaw": -1.0,
+  "pitch": -5.5,
+  "rms_px": 11.7,
+  "scale_px_per_unit": 5.3009,
+  "tx": 620.8,
+  "ty": 672.9,
+  "points": 9
+ },
+ "down45-yaw0": {
+  "yaw": -0.5,
+  "pitch": -37.5,
+  "rms_px": 24.3,
+  "scale_px_per_unit": 4.8208,
+  "tx": 629.6,
+  "ty": 654.4,
+  "points": 9
+ },
+ "up45-yaw30": {
+  "yaw": 38.5,
+  "pitch": 13.0,
+  "rms_px": 31.5,
+  "scale_px_per_unit": 5.1579,
+  "tx": 605.2,
+  "ty": 673.2,
+  "points": 9
+ },
+ "zero-yaw30": {
+  "yaw": 24.0,
+  "pitch": -12.0,
+  "rms_px": 12.9,
+  "scale_px_per_unit": 5.1164,
+  "tx": 606.2,
+  "ty": 641.6,
+  "points": 9
+ },
+ "down45-yaw30": {
+  "yaw": 30.0,
+  "pitch": -38.5,
+  "rms_px": 22.7,
+  "scale_px_per_unit": 5.0366,
+  "tx": 617.8,
+  "ty": 652.3,
+  "points": 9
+ },
+ "up45-yaw60": {
+  "yaw": 52.5,
+  "pitch": 24.5,
+  "rms_px": 31.2,
+  "scale_px_per_unit": 5.5835,
+  "tx": 572.5,
+  "ty": 720.8,
+  "points": 8
+ },
+ "zero-yaw60": {
+  "yaw": 40.0,
+  "pitch": -5.5,
+  "rms_px": 13.9,
+  "scale_px_per_unit": 5.1221,
+  "tx": 600.9,
+  "ty": 661.8,
+  "points": 8
+ },
+ "down45-yaw60": {
+  "yaw": 41.5,
+  "pitch": -32.5,
+  "rms_px": 26.6,
+  "scale_px_per_unit": 4.7823,
+  "tx": 617.5,
+  "ty": 649.6,
+  "points": 9
+ },
+ "up45-yaw75": {
+  "yaw": 56.5,
+  "pitch": 23.0,
+  "rms_px": 38.9,
+  "scale_px_per_unit": 5.5338,
+  "tx": 560.4,
+  "ty": 707.7,
+  "points": 8
+ },
+ "zero-yaw75": {
+  "yaw": 87.0,
+  "pitch": 1.5,
+  "rms_px": 15.2,
+  "scale_px_per_unit": 5.0051,
+  "tx": 497.6,
+  "ty": 713.0,
+  "points": 6
+ },
+ "down45-yaw75": {
+  "yaw": 70.0,
+  "pitch": -28.5,
+  "rms_px": 16.9,
+  "scale_px_per_unit": 4.7072,
+  "tx": 543.7,
+  "ty": 674.7,
+  "points": 6
+ },
+ "up45-yaw90": {
+  "yaw": 70.0,
+  "pitch": 25.0,
+  "rms_px": 33.3,
+  "scale_px_per_unit": 4.7866,
+  "tx": 590.2,
+  "ty": 687.9,
+  "points": 6
+ },
+ "zero-yaw90": {
+  "yaw": 94.0,
+  "pitch": 1.0,
+  "rms_px": 16.9,
+  "scale_px_per_unit": 5.1233,
+  "tx": 498.7,
+  "ty": 706.2,
+  "points": 6
+ },
+ "down45-yaw90": {
+  "yaw": 86.5,
+  "pitch": -31.0,
+  "rms_px": 12.3,
+  "scale_px_per_unit": 5.1991,
+  "tx": 511.5,
+  "ty": 607.3,
+  "points": 6
+ }
+}
