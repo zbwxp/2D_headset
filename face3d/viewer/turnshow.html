@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><title>转头模型展示间</title>
+<style>body{margin:0;font:14px system-ui;background:#fafaf8}.bar{padding:6px 12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}canvas{display:block;margin:0 auto;background:#fff;border:1px solid #ddd}input[type=number]{width:4.5em}</style></head>
+<body>
+<div class="bar">转头 <input id="yaw" type="range" min="-90" max="90" step="0.5" value="0" style="width:420px"> <b id="yv">0°</b>
+<button data-k="-90">−90°</button><button data-k="-45">−45°</button><button data-k="0">0°</button><button data-k="45">45°</button><button data-k="90">90°</button>
+<span style="display:none">俯仰 <input id="pitch" type="range" min="0" max="0" step="0.5" value="0" style="width:200px"> <b id="pv">0°</b>
+<button data-p="45">仰 45</button><button data-p="0">0</button><button data-p="-45">俯 45</button></span>
+<label style="display:none" title="正脸 ±45 的高度由 90° 侧面整张转 45° 推出来（bowen 1793074250）；不勾 = 你画的关键帧 + 21/31"><input id="derived" type="checkbox"> 正脸±45用推导</label>
+<label><input id="ref" type="checkbox" checked> 参考图</label> <label><input id="marks" type="checkbox" checked> 标点</label> <label title="远侧耳挂的那条对称两段假线"><input id="fake" type="checkbox"> 假线</label> <label title="被挡住的部分画浅灰"><input id="hidden" type="checkbox" checked> 被挡部分</label></div>
+<div class="bar" id="params" style="color:#444"></div>
+<div class="bar" id="info" style="color:#555"></div>
+<div class="bar" style="color:#777">之前那套转头模型（只转头，不俯仰）：脸轮廓 外侧 3 条（颅顶→太阳穴点→颧骨点→下巴）+ 内侧 2 条（下巴→耳根→颅顶），你画的 0° / 45° / 90° 三个关键帧之间插值；侧脸片按快慢曲线；眼睛、耳朵各自的模型。参考图 = dot 生成的那几张。在画布上左右拖 = 转头。</div>
+<canvas id="c" width="760" height="760" style="cursor:grab;touch-action:none"></canvas><script type="module" src="./turnmodel.ts"></script></body></html>
