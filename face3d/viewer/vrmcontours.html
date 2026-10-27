@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><title>VRoid 轮廓线</title>
+<style>body{margin:0;font:14px system-ui;background:#fafaf8}.bar{padding:6px 12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}canvas{display:block;margin:0 auto;background:#fff;border:1px solid #ddd;cursor:grab;touch-action:none}#wrap{position:relative;width:820px;margin:0 auto}#labels{position:absolute;left:0;top:0;pointer-events:none}#labels div{position:absolute;font-size:12px;color:#111;background:rgba(255,255,255,.75);padding:0 2px;white-space:nowrap}.chips label{border:1px solid #ccc;border-radius:3px;padding:0 4px}</style></head>
+<body>
+<div class="bar"><b id="view">转 0° · 俯仰 0°</b> 拖动画布转头 / 俯仰，滚轮缩放
+<button data-v="0,0">正面</button><button data-v="45,0">45°</button><button data-v="90,0">侧面</button><button data-v="0,45">仰 45</button><button data-v="0,-45">俯 45</button><button data-v="35,25">斜上</button>
+颜色按 <select id="by"><option value="yaw">转头角度</option><option value="pitch">俯仰角度</option></select>
+<label><input id="outer" type="checkbox" checked> 只看最外圈（脸的外轮廓）</label> <label><input id="hidden" type="checkbox"> 背面的线也画（淡）</label> <label><input id="pts" type="checkbox" checked> 语义点</label></div>
+<div class="bar chips" id="yaws">转头：</div>
+<div class="bar chips" id="pitches">俯仰：</div>
+<div class="bar" id="status" style="color:#555"></div>
+<div id="wrap"><canvas id="c" width="820" height="820"></canvas><div id="labels"></div></div>
+<script type="module" src="./vrmcontours.ts"></script></body></html>
