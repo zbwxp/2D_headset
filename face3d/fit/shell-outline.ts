@@ -176,12 +176,12 @@ function outlines(net: Net, yaw: number, pitch = 0) {
 
 // ---- compare with VRoid's outline: each net's outer line per row, on its side, over the rows it spans ----
 const crossing = (poly: (readonly number[])[], y: number, edge: number) => { let best = -Infinity; for (let i = 0; i + 1 < poly.length; i++) { const a = poly[i]!, c = poly[i + 1]!; if ((a[1]! - y) * (c[1]! - y) > 0 || a[1] === c[1]) continue; best = Math.max(best, edge * (a[0]! + ((y - a[1]!) / (c[1]! - a[1]!)) * (c[0]! - a[0]!))) } return edge * best }
-function compare(yaw: number) {
-  const v = { yaw, pitch: 0 }, ras = rasterHead(D, v, F, new Uint8ClampedArray(W * W * 4)), on = (x: number, y: number) => ras.zb[y * W + x]! > -Infinity
+function compare(yaw: number, pitch = 0) {
+  const v = { yaw, pitch }, ras = rasterHead(D, v, F, new Uint8ClampedArray(W * W * 4)), on = (x: number, y: number) => ras.zb[y * W + x]! > -Infinity
   const rows: { y: number; l: number; r: number }[] = []
   for (let j = 0; j < W; j++) { let l = -1, r = -1; for (let i = 0; i < W; i++) if (on(i, j)) { if (l < 0) l = i; r = i } if (r >= 0) rows.push({ y: (F.cy - (j + 0.5)) / F.S, l: (l + 0.5 - F.cx) / F.S, r: (r + 0.5 - F.cx) / F.S }) }
   const yMin = rows[rows.length - 1]!.y + 0.03 // above the neck's cut
-  const res = NETS.map(net => { const ls = outlines(net, yaw).map(l => ({ ...l, q: l.pts.map(p => rotate(p, v)) })), ys = ls.flatMap(l => l.q.map(p => p[1])), top = Math.max(...ys), bot = Math.max(Math.min(...ys), yMin)
+  const res = NETS.map(net => { const ls = outlines(net, yaw, pitch).map(l => ({ ...l, q: l.pts.map(p => rotate(p, v)) })), ys = ls.flatMap(l => l.q.map(p => p[1])), top = Math.max(...ys), bot = Math.max(Math.min(...ys), yMin)
     const outer = (y: number) => net.edge * Math.max(...ls.map(l => net.edge * crossing(l.q, y, net.edge)))
     const g = rows.filter(r => r.y <= top && r.y >= bot).map(r => ({ y: r.y, true: net.edge > 0 ? r.r : r.l, built: outer(r.y) }))
     const d = g.map(r => Math.abs(r.true - r.built)).filter(Number.isFinite).sort((a, c) => a - c)
@@ -206,11 +206,12 @@ function compare(yaw: number) {
   return { yaw, rows, res, sides, detail, sideOuter }
 }
 
-const YAWS = process.env.YAWS ? process.env.YAWS.split(',').map(Number) : [0, 15, 30, 45, 60, 63, 66, 70, 75, 90, 105, 120], Pn = 400, COLS = Number(process.env.COLS ?? 4), LEGEND = !!process.env.LEGEND, out: unknown[] = []
+const VIEWS: [number, number][] = (process.env.YAWS ?? '').split(',').filter(Boolean).map(t => t.split(':').map(Number) as [number, number])
+const YAWS = VIEWS.length ? VIEWS.map(v => v[0]) : [0, 15, 30, 45, 60, 63, 66, 70, 75, 90, 105, 120], Pn = 400, COLS = Number(process.env.COLS ?? 4), LEGEND = !!process.env.LEGEND, out: unknown[] = []
 const COLOR = ['#13a05a', '#7b3fb5', '#c47a00']
 let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${COLS * Pn} ${COLS * Pn}" width="${COLS * Pn}" height="${COLS * Pn}" font-family="system-ui"><rect width="100%" height="100%" fill="#fff"/>`
 YAWS.forEach((yaw, k) => {
-  const R = compare(yaw), v = { yaw, pitch: 0 }, ox = (k % COLS) * Pn, oy = Math.floor(k / COLS) * Pn, X = (x: number) => ox + F.cx + x * F.S, Y = (y: number) => oy + F.cy - y * F.S
+  const pitch = VIEWS[k]?.[1] ?? 0, R = compare(yaw, pitch), v = { yaw, pitch }, ox = (k % COLS) * Pn, oy = Math.floor(k / COLS) * Pn, X = (x: number) => ox + F.cx + x * F.S, Y = (y: number) => oy + F.cy - y * F.S
   const pl = (pts: (readonly number[])[], st: string) => `<polyline fill="none" ${st} points="${pts.map(p => `${X(p[0]!).toFixed(1)},${Y(p[1]!).toFixed(1)}`).join(' ')}"/>`
   svg += `<rect x="${ox}" y="${oy}" width="${Pn}" height="${Pn}" fill="none" stroke="#ddd"/>`
   for (const l of doc.lines) svg += pl(sample(l.c, 60).map(p => rotate(p, v)), 'stroke="#d9a0a0" stroke-width="0.6"')
@@ -227,11 +228,11 @@ YAWS.forEach((yaw, k) => {
   for (const d of R.detail) { let runP: (readonly number[])[] = []; const flush = () => { if (runP.length > 1) svg += pl(runP, 'stroke="#1d3c8f" stroke-width="1.6"'); runP = [] }
     for (const p of d.pts) { if (p.z) runP.push(p.q); else flush() } flush() }
   const all = R.detail.flatMap(d => d.pts), agree = all.filter(p => p.z === p.r).length / all.length
-  svg += `<text x="${ox + 8}" y="${oy + 20}" font-size="15">转 ${yaw}°</text><text x="${ox + Pn - 8}" y="${oy + 20}" font-size="12" text-anchor="end" fill="#1d3c8f">两种遮挡算法一致 ${(agree * 100).toFixed(0)}%</text>`
+  svg += `<text x="${ox + 8}" y="${oy + 20}" font-size="15">转 ${yaw}°${pitch ? (pitch > 0 ? ' 仰' : ' 俯') + Math.abs(pitch) + '°' : ''}</text><text x="${ox + Pn - 8}" y="${oy + 20}" font-size="12" text-anchor="end" fill="#1d3c8f">两种遮挡算法一致 ${(agree * 100).toFixed(0)}%</text>`
   console.log(yaw, 'visibility agree', (agree * 100).toFixed(1) + '%', R.detail.map(d => `${d.l.name}:${d.pts.filter(p => p.z).length}/${d.pts.filter(p => p.r).length}`).join(' '))
   R.sides.forEach((x, i) => { svg += `<text x="${ox + 8}" y="${oy + Pn - 28 + i * 18}" font-size="12" fill="#333">${x.name}：中位 ${x.med.toFixed(3)} · 九成 ${x.p90.toFixed(3)} · 最大 ${x.max.toFixed(3)}</text>` })
   out.push({ yaw, sides: R.sides, nets: R.res.map(x => ({ net: x.net.name, lines: x.ls.length, med: +x.med.toFixed(4), p90: +x.p90.toFixed(4), max: +x.max.toFixed(4), g: x.ls.map(l => l.tan.map(t => +t.g.toFixed(3))) })) })
-  console.log(yaw, R.sides.map(x => `${x.name} ${[x.med, x.p90, x.max].map(n => n.toFixed(3)).join('/')}`).join(' | '), '| lines', R.res.map(x => x.ls.length).join('/'))
+  console.log(`${yaw}:${pitch}`, R.sides.map(x => `${x.name} ${[x.med, x.p90, x.max].map(n => n.toFixed(3)).join('/')}`).join(' | '), '| lines', R.res.map(x => x.ls.length).join('/'))
 })
 if (LEGEND) { const lg: [string, string][] = [['#111', '黑线 = VRoid 真轮廓'], ['#1d3c8f', '深蓝 = 耳朵、下颌线（线4）、眼睑：没被挡住的部分（用 VRoid 头的遮挡算）'], ['#13a05a', '绿 = 脸那一侧拼出的轮廓线（实 = 露在外面，虚 = 被更外的线盖住）'], ['#7b3fb5', '紫 = 后脑那一侧（带颈侧）'], ['#c47a00', '橙褐 = 颈前那一侧'], ['#e08a2c', '橙点 = 纬线上和视线相切的点'], ['#d9a0a0', '浅红 = 你的线框；浅红虚线 = 我自动补的线']]
   const oy = Math.ceil(YAWS.length / COLS) * Pn; lg.forEach(([c, t], i) => { svg += `<rect x="20" y="${oy + 14 + i * 22}" width="16" height="12" fill="${c}"/><text x="44" y="${oy + 25 + i * 22}" font-size="14">${t}</text>` }) }
