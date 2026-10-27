@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><title>线框轮廓</title>
+<style>body{margin:0;font:13px system-ui;background:#fafaf8;display:flex;flex-direction:column;height:100vh}.bar{padding:5px 10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-bottom:1px solid #e4e4e0}
+#wrap{flex:1;min-height:0;position:relative}canvas{display:block;width:100%;height:100%;background:#fff;cursor:grab;touch-action:none}
+.k{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:3px}</style></head>
+<body>
+<div class="bar"><b id="view">转 0° · 俯仰 0°</b> 拖动 = 转头 / 俯仰，滚轮缩放
+<button data-v="0,0">正面</button><button data-v="45,0">45°</button><button data-v="90,0">侧面</button><button data-v="135,0">斜后</button><button data-v="180,0">背面</button><button data-v="30,20">仰</button><button data-v="30,-25">俯</button></div>
+<div class="bar">
+<label><input id="head" type="checkbox" checked> VRoid 头</label>
+<label><input id="wire" type="checkbox" checked> <span class="k" style="background:#d9a0a0"></span>你的线框</label>
+<label><input id="autos" type="checkbox" checked> <span class="k" style="background:#e9c5c5"></span>自动补的线</label>
+<label><input id="outline" type="checkbox" checked> <span class="k" style="background:#13a05a"></span>拼出的轮廓（绿 脸 / 紫 后脑 / 褐 颈前）</label>
+<label><input id="covered" type="checkbox"> 被盖住的轮廓（淡）</label>
+<label><input id="inner" type="checkbox" checked> <span class="k" style="background:#1d3c8f"></span>耳朵、下颌线、眼睑（没被挡住的部分）</label>
+<label><input id="tan" type="checkbox" checked> 切点</label>
+</div>
+<div class="bar" style="color:#666">只按转头（yaw）做的拼法；俯仰时侧面轮廓照样按切点算，但头顶、下巴底下还没有专门的网（还没做）。</div>
+<div id="wrap"><canvas id="c"></canvas></div>
+<script type="module" src="./shelloutline.ts"></script></body></html>

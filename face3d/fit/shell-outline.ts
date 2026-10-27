@@ -246,3 +246,14 @@ if (process.env.USED) { for (const l of DETAIL) USED.add(l.name)
   const used = (n: string) => USED.has(n) || USED.has(mirrorOf(n)) // a net is used on both sides (mirrored)
   console.log('unused lines:', doc.lines.filter(l => !used(l.name)).map(l => l.name).join(' '))
   console.log('used lines:', doc.lines.filter(l => used(l.name)).length, '/', doc.lines.length) }
+// ---- for the 3D viewer (face3d/viewer/shelloutline.html): the nets (each once per side; both edges are taken there), the
+// automatic lines, the inner lines and the wire, all as samples / cubics ----
+if (process.env.EXPORT) {
+  const r4 = (c: Chain) => c.map(p => p.map(v => +v.toFixed(4)))
+  writeFileSync(process.env.EXPORT, JSON.stringify({
+    note: `bowen's head wire (${file}) as outline nets for the viewer (face3d/fit/shell-outline.ts)`,
+    nets: KINDS.map(({ n, kind }) => ({ name: n.name, kind, top: n.top ?? null, bottom: n.bottom ?? null, cols: n.cols.map(cs => cs.map(c => c && r4(c))), rails: n.rails.map(r => ({ name: r.name, pieces: r.pieces.map(pc => ({ from: pc.from, c: r4(pc.c) })) })) })),
+    autos: autos.map(a => ({ name: a.name, c: r4(a.c) })), detail: DETAIL.map(l => ({ name: l.name, c: l.c })), wire: doc.lines.map(l => ({ name: l.name, c: l.c })),
+  }))
+  console.log('exported', process.env.EXPORT)
+}
