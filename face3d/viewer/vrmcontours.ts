@@ -3,14 +3,14 @@
 // look from anywhere. WebGL, nothing computed here but the drawing.
 import vrmUrl from '../fit/ref/test.vrm?url'
 import data from './vrm-contours.json'
-import cageData from './vrm-cage.json'
+import clusterData from './vrm-clusters.json'
 import { cutNeck, loadVrmHead } from '../mesh/vrmhead'
 import { rotate } from '../src/view'
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
 const cv = $<HTMLCanvasElement>('c'), gl = cv.getContext('webgl', { antialias: true })!
 const C = data as unknown as { points: Record<string, [number, number, number] | null>; contours: { yaw: number; pitch: number; seg: number[]; outer: number[] }[] }
-const CG = cageData as unknown as { cages: { yaw: number; pitch: number; curves: { name: string; c: number[][] }[] }[] }
+const CL = clusterData as unknown as { clusters: { p: [number, number, number]; n: number; spread: number; yaws: number[]; pitches: number[] }[] }
 const YAWS = [...new Set(C.contours.map(c => c.yaw))], PITCHES = [...new Set(C.contours.map(c => c.pitch))]
 let yaw = 30, pitch = 10, zoom = 1
 
@@ -64,14 +64,13 @@ function draw() {
   gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
   if ($<HTMLInputElement>('hidden').checked) { gl.depthFunc(gl.ALWAYS); gl.uniform1f(ua, 0.18); lines(pos, col, gl.LINES); gl.depthFunc(gl.LESS) }
   gl.uniform1f(ua, 1); lines(pos, col, gl.LINES)
-  // the birdcage: each view's five (or fewer) cubic curves, sampled
-  const cagePos: number[] = [], cageCol: number[] = []
-  for (const cg of CG.cages) { if (!ys.has(cg.yaw) || !ps.has(cg.pitch)) continue; const k = colourOf(cg)
-    for (const cu of cg.curves) { const c = cu.c; let prev: number[] | null = null
-      for (let i = 0; i <= 16; i++) { const t = i / 16, u = 1 - t, w = [u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t], q = [0, 1, 2].map(d => w.reduce((a, wi, j) => a + wi * c[j]![d]!, 0))
-        if (prev) { cagePos.push(...prev, ...q); cageCol.push(...k, ...k) } prev = q } } }
-  if ($<HTMLInputElement>('cageOnHead').checked) lines(cagePos, cageCol, gl.LINES)
-  gl.viewport(half, 0, half, H); gl.clear(gl.DEPTH_BUFFER_BIT); gl.uniform1f(ua, 1); lines(cagePos, cageCol, gl.LINES); gl.viewport(0, 0, half, H)
+  // the crossing clusters (bowen 1793077048): orange = one turn angle's fan (all its pitches meet: the ring above the brows),
+  // blue = where many turn angles meet (mostly sharp spots: nose, lips, chin, ears); shown on the head (option) and alone on the right
+  const fanOnly = $<HTMLInputElement>('fanOnly').checked, cl = CL.clusters.filter(c => c.n >= +$<HTMLInputElement>('minN').value && (!fanOnly || c.yaws.length <= 2))
+  const cpos = cl.flatMap(c => c.p), ccol = cl.flatMap(c => (c.yaws.length <= 2 ? [0.95, 0.45, 0.05] : [0.15, 0.4, 0.9]))
+  gl.uniform1f(ua, 1)
+  if ($<HTMLInputElement>('clOnHead').checked) { gl.depthFunc(gl.ALWAYS); lines(cpos, ccol, gl.POINTS); gl.depthFunc(gl.LESS) }
+  gl.viewport(half, 0, half, H); gl.clear(gl.DEPTH_BUFFER_BIT); lines(cpos, ccol, gl.POINTS); gl.viewport(0, 0, half, H)
   // semantic points
   const L = $('labels'); L.innerHTML = ''
   if ($<HTMLInputElement>('pts').checked) {

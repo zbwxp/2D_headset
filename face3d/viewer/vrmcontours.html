@@ -5,9 +5,9 @@
 <div class="bar"><b id="view">转 0° · 俯仰 0°</b> 拖动画布转头 / 俯仰，滚轮缩放
 <button data-v="0,0">正面</button><button data-v="45,0">45°</button><button data-v="90,0">侧面</button><button data-v="0,45">仰 45</button><button data-v="0,-45">俯 45</button><button data-v="35,25">斜上</button>
 颜色按 <select id="by"><option value="yaw">转头角度</option><option value="pitch">俯仰角度</option></select>
-<label><input id="outer" type="checkbox" checked> 只看最外圈（脸的外轮廓）</label> <label><input id="hidden" type="checkbox"> 背面的线也画（淡）</label> <label><input id="pts" type="checkbox" checked> 语义点</label> <label><input id="cageOnHead" type="checkbox"> 鸟笼也画在左边头上</label></div>
+<label><input id="outer" type="checkbox" checked> 只看最外圈（脸的外轮廓）</label> <label><input id="hidden" type="checkbox"> 背面的线也画（淡）</label> <label><input id="pts" type="checkbox" checked> 语义点</label> <label><input id="clOnHead" type="checkbox" checked> 交点蔟也标在左边头上</label> <label><input id="fanOnly" type="checkbox"> 只看扇形交点（眉上一圈）</label> 交点数 ≥ <input id="minN" type="number" value="40" style="width:4em"></div>
 <div class="bar chips" id="yaws">转头：</div>
 <div class="bar chips" id="pitches">俯仰：</div>
-<div class="bar" id="status" style="color:#555"></div><div class="bar" style="color:#555">左：VRoid 头（无脖子）+ 各角度的外轮廓线　右：鸟笼 = 每个角度的外轮廓在语义点处断开，近侧 2 条 / 远侧 3 条贝塞尔，深度只取语义点、中间拉直</div>
+<div class="bar" id="status" style="color:#555"></div><div class="bar" style="color:#555">左：VRoid 头（无脖子）+ 各角度的外轮廓线　右：只有交点蔟（橙 = 同一转头角度各俯仰的线汇成一束 = 眉上那一圈；蓝 = 多个转头角度挤在一起，多在鼻尖、嘴唇、下巴、耳朵这些尖处）</div>
 <div id="wrap"><canvas id="c" width="1400" height="700"></canvas><div id="labels"></div></div>
 <script type="module" src="./vrmcontours.ts"></script></body></html>
