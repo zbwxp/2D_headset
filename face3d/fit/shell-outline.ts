@@ -159,7 +159,9 @@ const mirrorNet = (n: Net): Net => { const m = (c: Chain): Chain => c.map(p => [
  * and bottom ends become a column each (the straight step between the columns' own ends) */
 function transpose(n: Net): Net {
   const R = n.rails.length, hasTop = !!n.top, nC = n.cols.length, stretches = (hasTop ? 1 : 0) + R - 1 + (n.bottom ? 1 : 0)
-  const endOf = (i: number, first: boolean): P3 | null => { const cs = n.cols[i]!.filter(Boolean) as Chain[]; if (!cs.length) return null; return first ? cs[0]![0]! : cs[cs.length - 1]![cs[cs.length - 1]!.length - 1]! }
+  // (only a column that itself reaches the top / bottom stretch has an end there: the back midline ends at 后脑, which is no
+  // bottom — bridged to 下巴 it ran straight through the head and the line flew out, bowen 1793117610)
+  const endOf = (i: number, first: boolean): P3 | null => { const cs = n.cols[i]!, c = first ? cs[0] : cs[cs.length - 1]; if (!c) return null; return first ? c[0]! : c[c.length - 1]! }
   const newCols: (Chain | null)[][] = []
   if (hasTop) newCols.push(Array.from({ length: nC - 1 }, (_, m) => { const a = endOf(m, true), b = endOf(m + 1, true); return a && b ? [a, b] : null }))
   for (const r of n.rails) newCols.push(Array.from({ length: nC - 1 }, (_, m) => r.pieces.find(pc => pc.from === m)?.c ?? null))
@@ -209,16 +211,19 @@ function outlines(net: Net, yaw: number, pitch = 0, axis: 0 | 1 = 0) {
   for (let bI = 0; bI < n; bI++) {
     const pick = tan.map(t => t[Math.min(bI, t.length - 1)]!)
     const ends: { p: P3 | null; g: number }[] = [...(net.top ? [{ p: net.top, g: pick[0]!.g }] : []), ...pick, ...(net.bottom ? [{ p: net.bottom === 'free' ? null : net.bottom, g: pick[pick.length - 1]!.g }] : [])]
-    const pts: P3[] = []
+    let pts: P3[] = []
     for (let k = 0; k < ends.length - 1; k++) {
       const top = ends[k]!, bot = ends[k + 1]!, have = net.cols.map((c, i) => (c[k] ? i : -1)).filter(i => i >= 0), lo = Math.min(...have), hi = Math.max(...have)
+      // a stretch whose ends sit beyond the columns it has (a tangent point far down one line, the next line not reaching
+      // that far: bowen 1793117610 「转45 俯60 的后脑绿色线为什么会飞出去」) is not bridged: the line stops there
+      if (!have.length || top.g < lo - 0.01 || top.g > hi + 0.01 || bot.g < lo - 0.01 || bot.g > hi + 0.01) { if (pts.length > 1) lines.push({ tan: pick, pts }); pts = []; continue }
       // between the two nearest columns that reach this stretch (a column missing here is stepped over)
       const base = (u: number) => { const g = Math.max(lo, Math.min(hi, top.g + (bot.g - top.g) * u)), i0 = Math.max(...have.filter(i => i <= g)), i1 = Math.min(...have.filter(i => i >= g)), w = i1 === i0 ? 0 : (g - i0) / (i1 - i0)
         return w <= 0 ? at(net.cols[i0]![k]!, u) : mixRound(at(net.cols[i0]![k]!, u), at(net.cols[i1]![k]!, u), w) }
       const dTop = top.p ? sub(top.p, base(0)) : [0, 0, 0] as P3, dBot = bot.p ? sub(bot.p, base(1)) : [0, 0, 0] as P3
-      for (let j = k ? 1 : 0; j <= 60; j++) { const u = j / 60; pts.push(add(base(u), add(mix([0, 0, 0], dTop, 1 - u), mix([0, 0, 0], dBot, u)))) }
+      for (let j = pts.length ? 1 : 0; j <= 60; j++) { const u = j / 60; pts.push(add(base(u), add(mix([0, 0, 0], dTop, 1 - u), mix([0, 0, 0], dBot, u)))) }
     }
-    lines.push({ tan: pick, pts })
+    if (pts.length > 1) lines.push({ tan: pick, pts })
   }
   return lines
 }
@@ -296,17 +301,6 @@ if (process.env.USED) { for (const l of DETAIL) USED.add(l.name)
   const used = (n: string) => USED.has(n) || USED.has(mirrorOf(n)) // a net is used on both sides (mirrored)
   console.log('unused lines:', doc.lines.filter(l => !used(l.name)).map(l => l.name).join(' '))
   console.log('used lines:', doc.lines.filter(l => used(l.name)).length, '/', doc.lines.length) }
-// ---- for the 3D viewer (face3d/viewer/shelloutline.html): the nets (each once per side; both edges are taken there), the
-// automatic lines, the inner lines and the wire, all as samples / cubics ----
-if (process.env.EXPORT) {
-  const r4 = (c: Chain) => c.map(p => p.map(v => +v.toFixed(4)))
-  writeFileSync(process.env.EXPORT, JSON.stringify({
-    note: `bowen's head wire (${file}) as outline nets for the viewer (face3d/fit/shell-outline.ts)`,
-    nets: KINDS.map(({ n, kind }) => ({ name: n.name, kind, top: n.top ?? null, bottom: n.bottom ?? null, cols: n.cols.map(cs => cs.map(c => c && r4(c))), rails: n.rails.map(r => ({ name: r.name, pieces: r.pieces.map(pc => ({ from: pc.from, c: r4(pc.c) })) })) })),
-    autos: autos.map(a => ({ name: a.name, c: r4(a.c) })), detail: DETAIL.map(l => ({ name: l.name, c: l.c })), wire: doc.lines.map(l => ({ name: l.name, c: l.c })),
-  }))
-  console.log('exported', process.env.EXPORT)
-}
 // ---- the cap (bowen 1793117444 「头壳就直接设定成椭圆」, 1793117490 「圆环上部就是椭圆拟合一下」): above the forehead ring the
 // head is one ellipsoid, fitted to VRoid's skin there (left-right symmetric: centred on the midline, axes along the head's);
 // its outline in any view is an ellipse, worked out exactly (the ellipsoid squeezed to a ball, the ball's outline circle,
@@ -378,4 +372,17 @@ if (process.env.POLAR) {
     console.log(`${yaw}:${pitch}`, 'polar', [R.med, R.p90, R.max].map(n => n.toFixed(3)).join('/'))
   })
   writeFileSync(`face3d/viewer/ref-shell/outline-${file.replace(/\.json$/, '').replace(/.*\//, '')}-polar.svg`, sv + '</svg>')
+}
+// ---- for the 3D viewer (face3d/viewer/shelloutline.html): the nets (each once per side; both edges are taken there), the
+// automatic lines, the inner lines and the wire, all as samples / cubics ----
+if (process.env.EXPORT) {
+  const r4 = (c: Chain) => c.map(p => p.map(v => +v.toFixed(4)))
+  writeFileSync(process.env.EXPORT, JSON.stringify({
+    note: `bowen's head wire (${file}) as outline nets for the viewer (face3d/fit/shell-outline.ts)`,
+    nets: KINDS.map(({ n, kind }) => ({ name: n.name, kind, top: n.top ?? null, bottom: n.bottom ?? null, cols: n.cols.map(cs => cs.map(c => c && r4(c))), rails: n.rails.map(r => ({ name: r.name, pieces: r.pieces.map(pc => ({ from: pc.from, c: r4(pc.c) })) })) })),
+    tnets: KINDS.map(({ n, kind }) => { const t = transpose(n); return { name: t.name, kind, top: null, bottom: null, cols: t.cols.map(cs => cs.map(c => c && r4(c))), rails: t.rails.map(r => ({ name: r.name, pieces: r.pieces.map(pc => ({ from: pc.from, c: r4(pc.c) })) })) } }),
+    cap: { c: CAP.c, r: CAP.r }, ring: r4(ringC),
+    autos: autos.map(a => ({ name: a.name, c: r4(a.c) })), detail: DETAIL.map(l => ({ name: l.name, c: l.c })), wire: doc.lines.map(l => ({ name: l.name, c: l.c })),
+  }))
+  console.log('exported', process.env.EXPORT)
 }

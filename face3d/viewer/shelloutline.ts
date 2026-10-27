@@ -6,12 +6,12 @@
 import vrmUrl from '../fit/ref/test.vrm?url'
 import data from './shell-nets.json'
 import { loadVrmHead } from '../mesh/vrmhead'
-import { rotate } from '../src/view'
+import { rotate, toCamera } from '../src/view'
 
 type P3 = [number, number, number]
 type Chain = P3[]
 interface NetJ { name: string; kind: number; top: P3 | null; bottom: P3 | 'free' | null; cols: (Chain | null)[][]; rails: { name: string; pieces: { from: number; c: Chain }[] }[] }
-const D = data as unknown as { nets: NetJ[]; autos: { name: string; c: Chain }[]; detail: { name: string; c: P3[] }[]; wire: { name: string; c: P3[] }[] }
+const D = data as unknown as { nets: NetJ[]; tnets: NetJ[]; cap: { c: P3; r: P3 }; ring: P3[]; autos: { name: string; c: Chain }[]; detail: { name: string; c: P3[] }[]; wire: { name: string; c: P3[] }[] }
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
 const on = (id: string) => $<HTMLInputElement>(id).checked
 const cv = $<HTMLCanvasElement>('c'), gl = cv.getContext('webgl', { antialias: true, preserveDrawingBuffer: true })!
@@ -35,24 +35,50 @@ function tangents(r: NetJ['rails'][number], X: (p: P3) => number) {
   const keep = peaks.filter(({ q, i }) => peaks.every(o => { if (o.i === i || o.q.x <= q.x) return true; const [a, c] = o.i < i ? [o.i, i] : [i, o.i]; let dip = Infinity; for (let j = a; j <= c; j++) dip = Math.min(dip, s[j]!.x); return q.x - dip > 0.01 }))
   return keep.filter(({ i }, k) => k === 0 || i - keep[k - 1]!.i > Wn).map(({ q }) => q)
 }
-function outlines(net: NetJ, edge: number, v: { yaw: number; pitch: number }) {
-  const X = (p: P3) => edge * rotate(p, v)[0], tan = net.rails.map(r => tangents(r, X))
+const unit = (v: P3): P3 => { const m = len(v) || 1; return [v[0] / m, v[1] / m, v[2] / m] }
+/** two shell points mixed round the head's centre on the skull, straight lower down (as in shell-outline.ts) */
+function mixRound(a: P3, b: P3, w: number): P3 {
+  if (a[1] < -0.6 || b[1] < -0.6) return mix(a, b, w)
+  const c: P3 = [0, -0.3, 0], da = sub(a, c), db = sub(b, c), ra = len(da), rb = len(db); if (ra < 1e-6 || rb < 1e-6) return mix(a, b, w)
+  const ua = unit(da), ub = unit(db), om = Math.acos(Math.max(-1, Math.min(1, ua[0] * ub[0] + ua[1] * ub[1] + ua[2] * ub[2])))
+  const u: P3 = om < 1e-4 ? mix(ua, ub, w) : ([0, 1, 2].map(k => (Math.sin((1 - w) * om) * ua[k]! + Math.sin(w * om) * ub[k]!) / Math.sin(om)) as P3)
+  const r = ra + (rb - ra) * w; return add(c, [u[0] * r, u[1] * r, u[2] * r])
+}
+function outlines(net: NetJ, edge: number, v: { yaw: number; pitch: number }, axis: 0 | 1 = 0) {
+  const X = (p: P3) => edge * rotate(p, v)[axis], tan = net.rails.map(r => tangents(r, X))
   const n = Math.max(...tan.map(t => t.length)), lines: { tan: { p: P3 }[]; pts: P3[] }[] = []
   for (let bI = 0; bI < n; bI++) {
     const pick = tan.map(t => t[Math.min(bI, t.length - 1)]!)
     const ends: { p: P3 | null; g: number }[] = [...(net.top ? [{ p: net.top, g: pick[0]!.g }] : []), ...pick, ...(net.bottom ? [{ p: net.bottom === 'free' ? null : net.bottom, g: pick[pick.length - 1]!.g }] : [])]
-    const pts: P3[] = []
+    let pts: P3[] = []
     for (let k = 0; k < ends.length - 1; k++) {
       const top = ends[k]!, bot = ends[k + 1]!, have = net.cols.map((c, i) => (c[k] ? i : -1)).filter(i => i >= 0), lo = Math.min(...have), hi = Math.max(...have)
-      const base = (u: number) => { const g = Math.max(lo, Math.min(hi, top.g + (bot.g - top.g) * u)), i = Math.max(lo, Math.min(hi - 1, Math.floor(g))), w = hi === lo ? 0 : g - i
-        return w <= 0 ? at(net.cols[i]![k]!, u) : mix(at(net.cols[i]![k]!, u), at(net.cols[i + 1]![k]!, u), w) }
+      // a stretch whose ends sit beyond the columns it has (a tangent point far down one line, the next line not reaching
+      // that far: bowen 1793117610 「转45 俯60 的后脑绿色线为什么会飞出去」) is not bridged: the line stops there
+      if (!have.length || top.g < lo - 0.01 || top.g > hi + 0.01 || bot.g < lo - 0.01 || bot.g > hi + 0.01) { if (pts.length > 1) lines.push({ tan: pick, pts }); pts = []; continue }
+      const base = (u: number) => { const g = Math.max(lo, Math.min(hi, top.g + (bot.g - top.g) * u)), i0 = Math.max(...have.filter(i => i <= g)), i1 = Math.min(...have.filter(i => i >= g)), w = i1 === i0 ? 0 : (g - i0) / (i1 - i0)
+        return w <= 0 ? at(net.cols[i0]![k]!, u) : mixRound(at(net.cols[i0]![k]!, u), at(net.cols[i1]![k]!, u), w) }
       const dTop: P3 = top.p ? sub(top.p, base(0)) : [0, 0, 0], dBot: P3 = bot.p ? sub(bot.p, base(1)) : [0, 0, 0]
-      for (let j = k ? 1 : 0; j <= 40; j++) { const u = j / 40; pts.push(add(base(u), add(mix([0, 0, 0], dTop, 1 - u), mix([0, 0, 0], dBot, u)))) }
+      for (let j = pts.length ? 1 : 0; j <= 40; j++) { const u = j / 40; pts.push(add(base(u), add(mix([0, 0, 0], dTop, 1 - u), mix([0, 0, 0], dBot, u)))) }
     }
-    lines.push({ tan: pick, pts })
+    if (pts.length > 1) lines.push({ tan: pick, pts })
   }
   return lines
 }
+
+// ---- the cap above the forehead ring: one ellipsoid, its outline the exact ellipse, the part above the ring ----
+const az = (p: readonly number[]) => Math.atan2(p[0]!, p[2]!)
+const ringAt = (p: readonly number[]) => { const a = az(p); let best = D.ring[0]!, bd = Infinity; for (const q of D.ring) { let d = Math.abs(az(q) - a); if (d > Math.PI) d = 2 * Math.PI - d; if (d < bd) { bd = d; best = q } } return best[1] }
+function capOutline(v: { yaw: number; pitch: number }): P3[][] {
+  const { c, r } = D.cap, d = toCamera(v), du = unit([d[0] * r[0], d[1] * r[1], d[2] * r[2]])
+  const t: P3 = Math.abs(du[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0], e1 = unit([du[1] * t[2] - du[2] * t[1], du[2] * t[0] - du[0] * t[2], du[0] * t[1] - du[1] * t[0]]), e2: P3 = [du[1] * e1[2] - du[2] * e1[1], du[2] * e1[0] - du[0] * e1[2], du[0] * e1[1] - du[1] * e1[0]]
+  const ring = Array.from({ length: 181 }, (_, i) => { const a = (i * Math.PI) / 90; return [0, 1, 2].map(k => c[k]! + (Math.cos(a) * e1[k]! + Math.sin(a) * e2[k]!) * r[k]!) as P3 })
+  const runs: P3[][] = []; let cur: P3[] = []
+  for (const p of ring) { if (p[1] >= ringAt(p)) cur.push(p); else { if (cur.length > 1) runs.push(cur); cur = [] } }
+  if (cur.length > 1) { if (runs.length && ring[0]![1] >= ringAt(ring[0]!)) runs[0] = [...cur, ...runs[0]!]; else runs.push(cur) }
+  return runs
+}
+const EARS = D.detail.filter(l => /耳/.test(l.name)).map(l => sample(l.c, 60))
 
 // ---- camera: head space → clip ----
 const S0 = 0.42, CY = 0.2, aspect = () => cv.height / cv.width
@@ -91,7 +117,7 @@ function drawTris(P: number[], C: number[], mode: number = gl.TRIANGLES) {
   gl.drawArrays(mode, 0, P.length / 3)
 }
 const WIRE = D.wire.map(l => sample(l.c, 48)), INNER = D.detail.map(l => sample(l.c, 60))
-const COLORS = [[0.075, 0.63, 0.35], [0.48, 0.25, 0.71], [0.77, 0.48, 0]]
+const COLORS = [[0.075, 0.63, 0.35], [0.48, 0.25, 0.71], [0.77, 0.48, 0], [0.11, 0.24, 0.56], [0.82, 0.2, 0.17]]
 
 function draw() {
   const dpr = window.devicePixelRatio || 1, r = cv.getBoundingClientRect(), W = Math.round(r.width * dpr), H = Math.round(r.height * dpr)
@@ -116,17 +142,21 @@ function draw() {
   // the outline: every net, both screen sides; per side the outer line shows, the covered parts faint
   gl.disable(gl.DEPTH_TEST)
   if (on('outline')) {
-    const v = { yaw, pitch }, all: { kind: number; edge: number; pts: P3[]; scr: number[][]; tan: P3[] }[] = []
-    for (const net of D.nets) for (const edge of [1, -1]) for (const l of outlines(net, edge, v)) all.push({ kind: net.kind, edge, pts: l.pts, scr: l.pts.map(p => rotate(p, v) as unknown as number[]), tan: l.tan.map(t => t.p) })
-    // the outer per row on each side
-    const ROW = 0.01, outer = new Map<string, number>()
-    for (const L of all) for (let i = 0; i + 1 < L.scr.length; i++) { const a = L.scr[i]!, b = L.scr[i + 1]!, y0 = Math.min(a[1]!, b[1]!), y1 = Math.max(a[1]!, b[1]!)
-      for (let rI = Math.ceil(y0 / ROW); rI * ROW <= y1; rI++) { const y = rI * ROW, f = b[1] === a[1] ? 0 : (y - a[1]!) / (b[1]! - a[1]!), x = a[0]! + (b[0]! - a[0]!) * f, k = `${L.edge}:${rI}`, o = outer.get(k); if (o === undefined || L.edge * x > L.edge * o) outer.set(k, x) } }
-    const shown = (L: (typeof all)[number], q: number[]) => { const o = outer.get(`${L.edge}:${Math.round(q[1]! / ROW)}`); return o === undefined || L.edge * (q[0]! - o) >= -0.008 }
+    const v = { yaw, pitch }, all: { kind: number; pts: P3[]; scr: number[][]; tan: P3[] }[] = []
+    const push = (kind: number, pts: P3[], tan: P3[]) => all.push({ kind, pts, scr: pts.map(p => rotate(p, v) as unknown as number[]), tan })
+    for (const [nets, axis] of [[D.nets, 0], [D.tnets, 1]] as const) for (const net of nets) for (const edge of [1, -1]) for (const l of outlines(net, edge, v, axis)) push(net.kind, l.pts, l.tan.map(t => t.p))
+    if (on('cap')) for (const run of capOutline(v)) push(4, run, [])
+    for (const e of EARS) push(3, e, [])
+    // in every direction round the head's middle on the screen, the farthest line shows
+    const c0 = rotate([0, -0.45, 0], v), A = 360, best = new Array<number>(A).fill(-Infinity)
+    const ar = (q: number[]) => ({ a: ((Math.atan2(q[1]! - c0[1], q[0]! - c0[0]) * 180) / Math.PI + 360) % 360, r: Math.hypot(q[0]! - c0[0], q[1]! - c0[1]) })
+    for (const L of all) for (let i = 0; i + 1 < L.scr.length; i++) { const p = ar(L.scr[i]!), q = ar(L.scr[i + 1]!); let da = q.a - p.a; if (da > 180) da -= 360; if (da < -180) da += 360
+      const n = Math.max(1, Math.ceil(Math.abs(da))); for (let s = 0; s <= n; s++) { const f = s / n, a = Math.round(p.a + da * f + 360) % 360, r = p.r + (q.r - p.r) * f; if (r > best[a]!) best[a] = r } }
+    const shown = (q: number[]) => { const { a, r } = ar(q); return r >= best[Math.round(a) % 360]! - 0.01 }
     const P: number[] = [], C: number[] = [], T: number[] = [], TC: number[] = []
-    for (const L of all) { let run: P3[] = [], vis = shown(L, L.scr[0]!), any = false
+    for (const L of all) { let run: P3[] = [], vis = shown(L.scr[0]!), any = false
       const flush = () => { if (run.length > 1 && (vis || on('covered'))) band(run, vis ? 3 : 1.4, [...COLORS[L.kind]!, vis ? 1 : 0.28], P, C); if (vis && run.length > 3) any = true }
-      L.pts.forEach((p, i) => { const s = shown(L, L.scr[i]!); if (s !== vis) { run.push(p); flush(); run = [p]; vis = s } else run.push(p) }); flush()
+      L.pts.forEach((p, i) => { const s = shown(L.scr[i]!); if (s !== vis) { run.push(p); flush(); run = [p]; vis = s } else run.push(p) }); flush()
       if (any && on('tan')) for (const t of L.tan) { T.push(...clip(t)); TC.push(0.88, 0.54, 0.17, 1) } }
     drawTris(P, C); drawTris(T, TC, gl.POINTS)
   }
