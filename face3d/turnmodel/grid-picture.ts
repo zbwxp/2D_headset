@@ -1,9 +1,9 @@
 // The model at the VRoid grid's angles (bowen 1793027986): rows 仰45 / 0 / 俯45, columns yaw 0 / 30 / 60 / 75 / 90, every
 // line clipped by its show rule like the viewer. Run: npx vite-node face3d/turnmodel/grid-picture.ts <out.svg>
 import { writeFileSync } from 'node:fs'
-import { evaluate, type ModelData, type Cubic, type Show, type V, type Frame } from './index'
+import { evaluate, withDerivedPitch, type ModelData, type Cubic, type Show, type V, type Frame } from './index'
 import model from '../../bench-tasks/转头模型/model.json'
-const M = model as unknown as ModelData, out = process.argv[2]!
+const M = process.env.DERIVED === '1' ? withDerivedPitch(model as unknown as ModelData) : (model as unknown as ModelData), out = process.argv[2]! // DERIVED=1: front ±45 derived from the side view
 const YAWS = (process.env.YAWS ?? "0 30 60 75 90").split(" ").map(Number), PITCHES = [45, 0, -45], C = 400, Z = 1.55
 let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${C * YAWS.length}" height="${C * YAWS.length}" viewBox="0 0 ${C * YAWS.length} ${C * YAWS.length}"><rect width="100%" height="100%" fill="#fff"/>`
 const d = (c: Cubic, tf: (q: V) => V) => { const q = c.map(tf); return `M${q[0]![0].toFixed(1)},${q[0]![1].toFixed(1)} C${q.slice(1).map(v => v.map(x => x.toFixed(1)).join(',')).join(' ')}` }

@@ -35,7 +35,9 @@ export interface ModelData {
   ear: { up: V; tip: V; low: V; upLine: { ha: V; hb: V }; lowLine: { ha: V; hb: V } }
   params: Record<keyof Params, { value: number; source: string }>
   /** 俯仰 (bowen 1793026490): bowen's keys at yaw 0 (−45 俯, 0, +45 仰) and the eyes' shared sphere */
-  pitch: { keys: PitchKey[]; eyes: { anchorY: number; r: number; keys: { pitch: number; bend: number; s: number; oy: number }[] }; corners?: PitchCorner[] }
+  pitch: { keys: PitchKey[]; eyes: { anchorY: number; r: number; keys: { pitch: number; bend: number; s: number; oy: number }[] }; corners?: PitchCorner[]
+    /** the front ±45 derived from the side view turned 45° (bowen 1793074250): an alternative to keys / eyes, chosen by the caller */
+    derived?: { note: string; keys: PitchKey[]; eyes: ModelData['pitch']['eyes'] } }
 }
 /**
  * A keyframe bowen tuned at a turn and a pitch together (bowen 1793072003 / 1793073663): how far his bones are from what the
@@ -86,6 +88,13 @@ export function atHeight(c: Cubic, y: number, what = 'a point'): V {
   return bez(c, (lo + hi) / 2)
 }
 
+/** The model with the derived front ±45 (pitch.derived) in place of bowen's front keys; his turn-and-pitch keyframes were tuned
+ * against his keys, so they are left out. */
+export function withDerivedPitch(m: ModelData): ModelData {
+  if (!m.pitch.derived) throw new ModelRefusal('no derived pitch keys in this model')
+  return { ...m, pitch: { ...m.pitch, keys: m.pitch.derived.keys, eyes: m.pitch.derived.eyes, corners: [] } }
+}
+
 export const params = (m: ModelData): Params => Object.fromEntries(Object.entries(m.params).map(([k, v]) => [k, v.value])) as unknown as Params
 
 /**
@@ -113,7 +122,8 @@ export function evaluate(m: ModelData, yaw: number, p: Params = params(m), pitch
 function pitchChange(m: ModelData, pitch: number) {
   const K = m.pitch.keys, xs = K.map(k => k.pitch), k0 = K.find(k => k.pitch === 0)!
   const d = (get: (k: PitchKey) => V): V => (pitch === 0 ? [0, 0] : sub(smoothV(xs, K.map(get), pitch), get(k0)))
-  return { pt: (n: string) => d(k => k.pts[n]!), ha: (n: string) => d(k => k.handles[n]!.ha), hb: (n: string) => d(k => k.handles[n]!.hb) }
+  // a point only some keys carry (the side face's, in the derived keys only) does not move
+  return { pt: (n: string) => (K.every(k => k.pts[n]) ? d(k => k.pts[n]!) : [0, 0] as V), ha: (n: string) => d(k => k.handles[n]!.ha), hb: (n: string) => d(k => k.handles[n]!.hb) }
 }
 
 /**
@@ -160,7 +170,10 @@ function splitPitch(m: ModelData, ay: number, p: Params, pitch: number): Frame {
   const turn = frontPitch(m, y2, p, 0), up = turn.points.nearEarUp!, lo = turn.points.nearEarLow!, o: V = [(up[0] + lo[0]) / 2, (up[1] + lo[1]) / 2]
   // ρ > 0 (仰 at a positive turn) brings the front (+x) up (−y on screen)
   const c = Math.cos(rho), sn = Math.sin(rho)
-  const rot = (q: V): V => { const dx = q[0] - o[0], dy = q[1] - o[1]; return [o[0] + c * dx + sn * dy, o[1] - sn * dx + c * dy] }
+  const turned = (q: V): V => { const dx = q[0] - o[0], dy = q[1] - o[1]; return [o[0] + c * dx + sn * dy, o[1] - sn * dx + c * dy] }
+  // then moved up or down so the near eye's corners keep their height: the front keys are drawn with the eyes in place (bowen 1793074250)
+  const ne = a.eyes.near[0]!.pts, eyeH = (q0: V, q1: V) => (q0[1] + q1[1]) / 2, lift = eyeH(ne[0]!, ne[ne.length - 1]!) - eyeH(turned(ne[0]!), turned(ne[ne.length - 1]!))
+  const rot = (q: V): V => { const v = turned(q); return [v[0], v[1] + lift] }
   const lines = (ls: Line[]): Line[] => ls.map(l => ({ ...l, c: l.c.map(rot) as Cubic }))
   const eyeLines = (ls: EyeLine[]): EyeLine[] => ls.map(l => ({ ...l, pts: l.pts.map(rot) }))
   return { yaw: ay, pitch, outline: lines(a.outline), side: lines(a.side), eyes: { near: eyeLines(a.eyes.near), far: eyeLines(a.eyes.far) },
@@ -184,7 +197,7 @@ function frontPitch(m: ModelData, ay: number, p: Params, pitch: number): Frame {
   for (const id of Object.keys(k0.pts)) pts[id] = smoothV(ys, K.map(k => k.pts[id]!), ay)
   // pitch: the outline's points (crown and chin too, which the side face shares) and handles move by bowen's pitch change.
   // The side face's other points have no pitch rule yet (未建模)
-  for (const id of ['crown', 'chin', 'nearRoot', 'zyg', 'temple']) pts[id] = add(pts[id]!, D.pt(id))
+  for (const id of ['crown', 'chin', 'nearRoot', 'zyg', 'temple', 'brow', 'noseTip', 'lipUp', 'lipLow']) pts[id] = add(pts[id]!, D.pt(id))
   const outline: Line[] = m.outline.lines.map(l => ({ name: l.name, show: { outside: ['side'] },
     c: cubic(pts[l.a]!, add(smoothV(ys, K.map(k => k.handles[l.name]!.ha), ay), D.ha(l.name)), add(smoothV(ys, K.map(k => k.handles[l.name]!.hb), ay), D.hb(l.name)), pts[l.b]!) }))
   const side: Line[] = S.lines.map(l => ({ name: l.name, show: { outside: ['face'] }, c: cubic(pts[l.a]!, sq(l.ha), sq(l.hb), pts[l.b]!) }))

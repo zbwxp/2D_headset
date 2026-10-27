@@ -1,7 +1,7 @@
 // 转头模型: the rules hold at their corners. In the project run (vitest.config.ts)
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { evaluate, params, bez, atHeight, smoothAt, along, ModelRefusal, type ModelData, type Cubic, type V } from './index'
+import { evaluate, params, bez, atHeight, smoothAt, along, withDerivedPitch, ModelRefusal, type ModelData, type Cubic, type V } from './index'
 
 const M = JSON.parse(readFileSync(new URL('../../bench-tasks/转头模型/model.json', import.meta.url), 'utf8')) as ModelData
 const dist = (a: V, b: V) => Math.hypot(a[0] - b[0], a[1] - b[1])
@@ -173,14 +173,14 @@ describe('俯仰 (bowen 1793026490): his ±45 keys as a change added to the turn
     // pitch moves the samples, not what the turn hides
     up.eyes.near.forEach((e, i) => expect(e.seen).toEqual(f0.eyes.near[i]!.seen)); up.eyes.far.forEach((e, i) => expect(e.seen).toEqual(f0.eyes.far[i]!.seen))
   })
-  it('side-on (90°), nodding turns the whole 90° view in the picture plane about the near ear, by the pitch angle (VRoid, bowen 1793028098)', () => {
-    const f0 = evaluate(M, 90), up = f0.points.nearEarUp!, lo = f0.points.nearEarLow!, o: V = [(up[0] + lo[0]) / 2, (up[1] + lo[1]) / 2]
+  it('side-on (90°), nodding turns the whole 90° view in the picture plane about the near ear by the pitch angle, then moves it up or down so the eye corners keep their height (VRoid, bowen 1793028098 / 1793074250)', () => {
+    const f0 = evaluate(M, 90), up = f0.points.nearEarUp!, lo = f0.points.nearEarLow!, o: V = [(up[0] + lo[0]) / 2, (up[1] + lo[1]) / 2], ne = f0.eyes.near[0]!.pts
     for (const pt of [45, -30]) {
       const f = evaluate(M, 90, undefined, pt), c = Math.cos((pt * Math.PI) / 180), sn = Math.sin((pt * Math.PI) / 180)
-      for (const [k, q] of Object.entries(f0.points)) { const dx = q[0] - o[0], dy = q[1] - o[1]
-        expect(f.points[k]![0]).toBeCloseTo(o[0] + c * dx + sn * dy, 9); expect(f.points[k]![1]).toBeCloseTo(o[1] - sn * dx + c * dy, 9) }
-      // 仰 brings the nose up, 俯 down
-      expect(Math.sign(f0.points.noseTip![1] - f.points.noseTip![1])).toBe(Math.sign(pt))
+      const rot = (q: V): V => { const dx = q[0] - o[0], dy = q[1] - o[1]; return [o[0] + c * dx + sn * dy, o[1] - sn * dx + c * dy] }
+      const lift = (ne[0]![1] + ne[30]![1]) / 2 - (rot(ne[0]!)[1] + rot(ne[30]!)[1]) / 2
+      for (const [k, q] of Object.entries(f0.points)) { const r = rot(q); expect(f.points[k]![0]).toBeCloseTo(r[0], 9); expect(f.points[k]![1]).toBeCloseTo(r[1] + lift, 9) }
+      expect(Math.sign(f0.points.noseTip![1] - f.points.noseTip![1])).toBe(Math.sign(pt)) // 仰 brings the nose up, 俯 down
     }
   })
   it('turning with a large pitch does not jump: every point moves less than 2.5 per half degree (bowen 1793029402)', () => {
@@ -219,5 +219,14 @@ describe('turn-and-pitch keyframes (bowen 1793073663: his tuned 21 / 31)', () =>
     for (const k of C) { const f = evaluate(M, k.yaw, undefined, k.pitch), ends = f.side.flatMap(l => [l.c[0], l.c[3]])
       for (const q of [f.points.crown!, f.points.chin!]) expect(Math.min(...ends.map(e => Math.hypot(e[0] - q[0], e[1] - q[1])))).toBeLessThan(1e-9) }
   })
+})
+
+describe('the derived front ±45 (bowen 1793074250: heights from the side view turned 45°)', () => {
+  const MD = withDerivedPitch(M)
+  it('a turn keeps the heights: crown, nose, chin and the ear at ±45 move less than 6 between 0° and 90°', () => {
+    for (const pt of [45, -45]) { const a = evaluate(MD, 0, undefined, pt).points, b = evaluate(MD, 90, undefined, pt).points
+      for (const k of ['noseTip', 'chin', 'nearEarUp']) expect(Math.abs(a[k]![1] - b[k]![1])).toBeLessThan(6) }
+  })
+  it('every turn and pitch on a 5° grid solves', () => { for (let y = 0; y <= 90; y += 5) for (let p = -45; p <= 45; p += 5) expect(() => evaluate(MD, y, undefined, p)).not.toThrow() })
 })
 

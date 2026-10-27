@@ -1,11 +1,14 @@
 // 转头模型 viewer (bowen 1792849247): draws face3d/turnmodel at a yaw — nothing is computed here. Reference pictures
 // cross-fade between the neighbouring keyframes (only a comparison); the parameters can be tried in the boxes (not saved).
-import { evaluate, params, along, ModelRefusal, type ModelData, type Frame, type Cubic, type V, type Show, type Params } from '../turnmodel'
+import { evaluate, params, along, withDerivedPitch, ModelRefusal, type ModelData, type Frame, type Cubic, type V, type Show, type Params } from '../turnmodel'
 
 // the data and pictures by paths relative to this file (dot 1792856044: no machine path), resolved by the dev server
 import model from '../../bench-tasks/转头模型/model.json'
 const PICS = import.meta.glob('../../bench-tasks/转头模型/ref-*.png', { eager: true, query: '?url', import: 'default' }) as Record<string, string>
-const M = model as unknown as ModelData & { refs: { yaw: number; file: string; x: number; y: number; w: number; h: number }[] }
+const M0 = model as unknown as ModelData & { refs: { yaw: number; file: string; x: number; y: number; w: number; h: number }[] }
+// 正脸 ±45: bowen's keys, or the ones derived from the side view turned 45° (bowen 1793074773)
+const MD = { ...withDerivedPitch(M0), refs: M0.refs }
+let M = M0
 const load = (file: string) => new Promise<HTMLImageElement>(res => { const i = new Image(); i.onload = () => res(i); i.src = PICS['../../bench-tasks/转头模型/' + file]! })
 const imgs = await Promise.all(M.refs.map(r => load(r.file)))
 // the pitch keys' pictures (dot's, placed as in bowen's ±45 files; yaw 0 only)
@@ -39,6 +42,7 @@ function stroke(p: Path2D, show: Show, R: Record<string, Path2D | null>, colour:
 }
 
 function draw() {
+  M = $('derived').checked ? MD : M0
   const yaw = +$('yaw').value, ay = Math.abs(yaw), flip = yaw < 0, pitch = +$('pitch').value
   // an empty box is no value (dot 1792856126), not 0: refused like any other value with no answer
   const p = Object.fromEntries((Object.keys(P0) as (keyof Params)[]).map(k => [k, $('p-' + k).value.trim() === '' ? NaN : +$('p-' + k).value])) as unknown as Params
@@ -76,10 +80,10 @@ function draw() {
   }
   $('yv').textContent = `${yaw}°`; $('pv').textContent = pitch > 0 ? `仰 ${pitch}°` : pitch < 0 ? `俯 ${-pitch}°` : '0°'
   document.getElementById('info')!.textContent = `侧脸片 走到 ${(along(M.sheet.speed, ay) * 100).toFixed(0)}%（快慢曲线 5 个数）${flip ? ' · 镜像' : ''} · 关键帧：转头 0 / 45 / 90°，俯仰 0 / ±45°（你画的）`
-    + (pitch ? ` · 俯仰：正脸 = 你的关键帧（眼睛 = 共用球面框），侧面 = 整张图绕耳根转 ${pitch}°，中间按转头进度 ${(along(M.sheet.speed, ay) * 100).toFixed(0)}% 过渡` : '')
+    + (pitch ? ` · 俯仰：正脸 = ${$('derived').checked ? '推导（侧面转 45° 的高度）' : '你的关键帧 + 21/31'}（眼睛 = 共用球面框），侧面 = 整张图绕耳根转 ${pitch}°，中间按转头进度 ${(along(M.sheet.speed, ay) * 100).toFixed(0)}% 过渡` : '')
 }
 $('yaw').oninput = draw
-for (const id of ['ref', 'marks', 'fake', 'hidden']) $(id).onchange = draw
+for (const id of ['ref', 'marks', 'fake', 'hidden', 'derived']) $(id).onchange = draw
 for (const k of Object.keys(P0)) $('p-' + k).oninput = draw
 $('reset').onclick = () => { for (const [k, v] of Object.entries(P0)) $('p-' + k).value = String(v); draw() }
 for (const b of document.querySelectorAll<HTMLButtonElement>('button[data-k]')) b.onclick = () => { $('yaw').value = b.dataset.k!; draw() }
