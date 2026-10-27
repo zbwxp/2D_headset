@@ -21,7 +21,7 @@
 //   env YAWS=0,15,… COLS=4 LEGEND=1 TAG=… SWEEP=1
 import { readFileSync, writeFileSync } from 'node:fs'
 import { loadVrmHead, rasterHead } from '../mesh/vrmhead'
-import { rotate } from '../src/view'
+import { rotate, toCamera } from '../src/view'
 type P3 = [number, number, number]
 interface Ln { id: number; name: string; a: number; b: number; c: P3[] }
 interface Doc { points: { id: number; name: string; p: P3 }[]; lines: Ln[] }
@@ -117,6 +117,11 @@ const neck: Net = { name: '颈前那一侧', edge: 1,
   rails: [{ name: '下颌底', pieces: [{ c: auto('下巴底拐点→右耳后根（下颌底）', hugLink(P('下巴底拐点'), P('右耳后根'), 30, nearestV)), from: 0 }] },
     { name: '颈根（前）', pieces: [{ c: auto('颈前→颈侧底', hugLink(P('颈前'), nsR)), from: 0 }] }] }
 const NETS = [face, back, neck]
+// the inner lines drawn wherever they are not hidden
+// what can hide a line: the skin and the eyeballs (white, iris: the skin has holes at the eyes); not lashes, brows, mouth
+const isEye = (c: number[]) => (c[0] === 245 && c[1] === 245) || (c[0] === 70 && c[1] === 110)
+const SKIN = { ...D, parts: D.parts.filter(p => p.kind === 'skin' || isEye(p.color)) }
+const DETAIL = doc.lines.filter(l => /耳根—耳尖|耳尖—耳垂|耳垂—下耳根|^右?线4$|眼睑/.test(l.name))
 
 /** a rail's tangent points in a view: every bulge toward the outline's side (a sample farther out than all within ±W, or an
  * end farther out than its neighbours), standing out by more than a hair from the dip to the next */
@@ -165,7 +170,19 @@ function compare(yaw: number) {
   const sides = ([1, -1] as const).map(edge => { const mine = res.filter(x => x.net.edge === edge), ys = mine.flatMap(x => x.ls.flatMap(l => l.q.map(p => p[1]))), top = Math.max(...ys), bot = Math.max(Math.min(...ys), yMin)
     const d = rows.filter(r => r.y <= top && r.y >= bot).map(r => { const o = edge * Math.max(...mine.map(x => edge * x.outer(r.y)).filter(Number.isFinite)); return Math.abs((edge > 0 ? r.r : r.l) - o) }).filter(Number.isFinite).sort((a, c) => a - c)
     return { name: edge > 0 ? '右边（脸 + 颈前）' : '左边（后脑 + 颈后）', med: d[Math.floor(d.length / 2)] ?? NaN, p90: d[Math.floor(d.length * 0.9)] ?? NaN, max: d[d.length - 1] ?? NaN } })
-  return { yaw, rows, res, sides }
+  // the inner lines (bowen 1793114358/1793114371: ears, the jawline, the eyes — drawn wherever not hidden), each sample's
+  // visibility two ways: (z) VRoid's head in front of it (its depth buffer); (r) the wire alone, the head taken as round: the
+  // point faces the viewer when its direction from the head's centre does
+  // (the skin and eyeballs only: lashes and brows do not hide the lines drawn round them)
+  const toCam = toCamera(v), skinZ = rasterHead(SKIN, v, F, new Uint8ClampedArray(W * W * 4)).zb
+  const detail = DETAIL.map(l => { const pts = sample(l.c, 60).map(p => { const q = rotate(p, v), i = Math.floor(F.cx + q[0] * F.S), j = Math.floor(F.cy - q[1] * F.S)
+      // hidden when the head's surface at its pixel lies in front of it; at the outline's edge (a background pixel next to it)
+      // never hidden
+      let edge = false; for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= W || jj >= W || skinZ[jj * W + ii]! === -Infinity) edge = true }
+      const zc = i >= 0 && j >= 0 && i < W && j < W ? skinZ[j * W + i]! : -Infinity, z = edge || !(q[2] < zc - 0.04)
+      const dir = unit(sub(p, [0, -0.3, 0])), r = dir[0] * toCam[0] + dir[1] * toCam[1] + dir[2] * toCam[2] > -0.05
+      return { q, z, r } }); return { l, pts } })
+  return { yaw, rows, res, sides, detail }
 }
 
 const YAWS = process.env.YAWS ? process.env.YAWS.split(',').map(Number) : [0, 15, 30, 45, 60, 63, 66, 70, 75, 90, 105, 120], Pn = 400, COLS = Number(process.env.COLS ?? 4), LEGEND = !!process.env.LEGEND, out: unknown[] = []
@@ -185,14 +202,18 @@ YAWS.forEach((yaw, k) => {
       for (const r of runs) svg += pl(r.pts, r.shown ? `stroke="${COLOR[i]}" stroke-width="2"` : `stroke="${COLOR[i]}" stroke-width="1" stroke-dasharray="4 3" opacity="0.7"`)
       for (const t of l.tan) { const q = rotate(t.p, v); svg += `<circle cx="${X(q[0]).toFixed(1)}" cy="${Y(q[1]).toFixed(1)}" r="3.5" fill="#e08a2c" stroke="#fff"/>` }
     } })
-  svg += `<text x="${ox + 8}" y="${oy + 20}" font-size="15">转 ${yaw}°</text>`
+  for (const d of R.detail) { let runP: (readonly number[])[] = []; const flush = () => { if (runP.length > 1) svg += pl(runP, 'stroke="#1d3c8f" stroke-width="1.6"'); runP = [] }
+    for (const p of d.pts) { if (p.z) runP.push(p.q); else flush() } flush() }
+  const all = R.detail.flatMap(d => d.pts), agree = all.filter(p => p.z === p.r).length / all.length
+  svg += `<text x="${ox + 8}" y="${oy + 20}" font-size="15">转 ${yaw}°</text><text x="${ox + Pn - 8}" y="${oy + 20}" font-size="12" text-anchor="end" fill="#1d3c8f">两种遮挡算法一致 ${(agree * 100).toFixed(0)}%</text>`
+  console.log(yaw, 'visibility agree', (agree * 100).toFixed(1) + '%', R.detail.map(d => `${d.l.name}:${d.pts.filter(p => p.z).length}/${d.pts.filter(p => p.r).length}`).join(' '))
   R.sides.forEach((x, i) => { svg += `<text x="${ox + 8}" y="${oy + Pn - 28 + i * 18}" font-size="12" fill="#333">${x.name}：中位 ${x.med.toFixed(3)} · 九成 ${x.p90.toFixed(3)} · 最大 ${x.max.toFixed(3)}</text>` })
   out.push({ yaw, sides: R.sides, nets: R.res.map(x => ({ net: x.net.name, lines: x.ls.length, med: +x.med.toFixed(4), p90: +x.p90.toFixed(4), max: +x.max.toFixed(4), g: x.ls.map(l => l.tan.map(t => +t.g.toFixed(3))) })) })
   console.log(yaw, R.sides.map(x => `${x.name} ${[x.med, x.p90, x.max].map(n => n.toFixed(3)).join('/')}`).join(' | '), '| lines', R.res.map(x => x.ls.length).join('/'))
 })
 /** is this point of a line the outer one on its row (within a hair)? */
 function net1(x: { net: Net; outer: (y: number) => number }, q: readonly number[]) { const o = x.outer(q[1]!); return !Number.isFinite(o) || x.net.edge * (q[0]! - o) >= -0.004 }
-if (LEGEND) { const lg: [string, string][] = [['#111', '黑线 = VRoid 真轮廓'], ['#13a05a', '绿 = 脸那一侧拼出的轮廓线（实 = 露在外面，虚 = 被更外的线盖住）'], ['#7b3fb5', '紫 = 后脑那一侧（带颈侧）'], ['#c47a00', '橙褐 = 颈前那一侧'], ['#e08a2c', '橙点 = 纬线上和视线相切的点'], ['#d9a0a0', '浅红 = 你的线框；浅红虚线 = 我自动补的线']]
+if (LEGEND) { const lg: [string, string][] = [['#111', '黑线 = VRoid 真轮廓'], ['#1d3c8f', '深蓝 = 耳朵、下颌线（线4）、眼睑：没被挡住的部分（用 VRoid 头的遮挡算）'], ['#13a05a', '绿 = 脸那一侧拼出的轮廓线（实 = 露在外面，虚 = 被更外的线盖住）'], ['#7b3fb5', '紫 = 后脑那一侧（带颈侧）'], ['#c47a00', '橙褐 = 颈前那一侧'], ['#e08a2c', '橙点 = 纬线上和视线相切的点'], ['#d9a0a0', '浅红 = 你的线框；浅红虚线 = 我自动补的线']]
   const oy = Math.ceil(YAWS.length / COLS) * Pn; lg.forEach(([c, t], i) => { svg += `<rect x="20" y="${oy + 14 + i * 22}" width="16" height="12" fill="${c}"/><text x="44" y="${oy + 25 + i * 22}" font-size="14">${t}</text>` }) }
 const base = file.replace(/\.json$/, '').replace(/.*\//, '') + (process.env.TAG ?? '')
 writeFileSync(`face3d/viewer/ref-shell/outline-${base}.svg`, svg + '</svg>')
