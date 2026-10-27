@@ -173,7 +173,7 @@ const nearLine = (x: number, y: number) => { let best: Ln | null = null, bd = 7
   for (const l of doc.lines) for (let i = 0; i <= 48; i++) { const [sx, sy] = toScreen(cam(cubic(l.c, i / 48))), d = Math.hypot(sx - x, sy - y); if (d < bd) { bd = d; best = l } }
   return best }
 const local = (e: PointerEvent | MouseEvent) => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top] as const }
-let drag: { kind: 'turn'; x: number; y: number; yaw: number; pitch: number; moved: boolean } | { kind: 'point'; id: number; moved: boolean } | { kind: 'handle'; line: number; k: 1 | 2; moved: boolean } | { kind: 'zoom' | 'pan'; x: number; y: number; sx: number; sy: number; zoom: number; panX: number; panY: number; moved: boolean } | null = null
+let drag: { kind: 'turn'; x: number; y: number; yaw: number; pitch: number; moved: boolean } | { kind: 'point'; id: number; sx: number; sy: number; moved: boolean } | { kind: 'handle'; line: number; k: 1 | 2; moved: boolean } | { kind: 'zoom' | 'pan'; x: number; y: number; sx: number; sy: number; zoom: number; panX: number; panY: number; moved: boolean } | null = null
 /** a handle of the selected line under the cursor */
 const nearHandle = (x: number, y: number) => { const L = doc.lines.find(l => l.id === sel.line); if (!L) return null
   for (const k of [1, 2] as const) { const [sx, sy] = toScreen(cam(L.c[k]!)); if (Math.hypot(sx - x, sy - y) < 9) return { line: L.id, k } }
@@ -183,7 +183,7 @@ cv.onpointerdown = e => {
   if (zoomTool || space) { const [x, y] = local(e); drag = { kind: zoomTool ? 'zoom' : 'pan', x, y, sy: e.clientY, sx: e.clientX, zoom, panX, panY, moved: false }; return }
   const [x, y] = local(e), p = nearPoint(x, y), hd = nearHandle(x, y)
   if (hd) { drag = { kind: 'handle', ...hd, moved: false }; return }
-  if (p) { selectPoint(p.id, e.shiftKey); drag = { kind: 'point', id: p.id, moved: false }; list(); draw(); return }
+  if (p) { selectPoint(p.id, e.shiftKey); drag = { kind: 'point', id: p.id, sx: e.clientX, sy: e.clientY, moved: false }; list(); draw(); return }
   drag = { kind: 'turn', x: e.clientX, y: e.clientY, yaw, pitch, moved: false }; cv.style.cursor = 'grabbing'
 }
 cv.onpointermove = e => {
@@ -196,7 +196,9 @@ cv.onpointermove = e => {
     // a handle moves in the screen's plane at its own depth; the line then keeps its own handles
     if (!dr.moved) { snapshot(); dr.moved = true }
     const [x, y] = local(e), [q0, q1] = fromScreen(x, y); L.c[dr.k] = back([q0, q1, cam(L.c[dr.k]!)[2]]); L.own = true; draw(); return }
-  const [x, y] = local(e), s = sight(x, y), h = hit(s.o, s.d), p = pt(drag.id); if (!h || !p) return
+  const [x, y] = local(e)
+  if (!drag.moved && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 3) return // a press, not yet a drag
+  const s = sight(x, y), h = hit(s.o, s.d), p = pt(drag.id); if (!h || !p) return
   if (!drag.moved) { snapshot(); drag.moved = true }
   const dv = [0, 1, 2].map(k => h.p[k]! - p.p[k]!); p.p = h.p
   for (const l of doc.lines) if (l.a === p.id || l.b === p.id) {
@@ -206,7 +208,13 @@ cv.onpointermove = e => {
     } else { const a = pt(l.a)!, b = pt(l.b)!; l.c = hug(a.p, b.p, 24, 3) } } // light while dragging
   draw()
 }
+// a second press on the same point within a moment = rename (by hand rather than the dblclick event, which not every
+// browser sends once the pointer is captured; bowen 1793108360 「这个点1 我双击也无法改」)
+let lastTap: { id: number; t: number } | null = null
 cv.onpointerup = e => {
+  if (drag?.kind === 'point' && !drag.moved) { const now = performance.now(), id = drag.id
+    if (lastTap && lastTap.id === id && now - lastTap.t < 500) { lastTap = null; drag = null; cursor(); const p = pt(id); if (p) rename(p, p.p); return }
+    lastTap = { id, t: now } }
   if (drag?.kind === 'point' && drag.moved) { refit(new Set([drag.id])); changed() }
   else if (drag?.kind === 'handle' && drag.moved) changed()
   else if (drag?.kind === 'turn' && !drag.moved) { const [x, y] = local(e), l = nearLine(x, y); sel = l ? { points: [], line: l.id } : { points: [], line: null }; list(); draw() }
@@ -214,7 +222,7 @@ cv.onpointerup = e => {
 }
 cv.ondblclick = e => {
   if (zoomTool || space) return
-  const [x, y] = local(e), near = nearPoint(x, y); if (near) { rename(near, near.p); return } // a double-click on a point renames it
+  const [x, y] = local(e); if (nearPoint(x, y)) return // a double-click on a point: renamed on its second press (pointerup)
   const s = sight(x, y), h = hit(s.o, s.d); if (!h) return
   snapshot(); const id = doc.next++; doc.points.push({ id, name: uniqueName('点', doc.points.map(p => p.name)), p: h.p.map(v => +v.toFixed(5)) as P3 }); sel = { points: [id], line: null }; changed()
 }
@@ -224,12 +232,14 @@ cv.onwheel = e => { e.preventDefault(); const [x, y] = local(e); zoomAt(x, y, zo
 let zoomTool = false, space = false
 const cursor = () => { cv.style.cursor = zoomTool ? 'zoom-in' : space ? 'move' : 'grab' }
 /** a name box on the canvas at the point (Enter keeps it, Esc leaves it as it was) */
+let editing = false
 function rename(p: { name: string }, at: P3) {
+  if (editing) return; editing = true
   const [x, y] = toScreen(cam(at)), box = document.createElement('input'); box.value = p.name
   Object.assign(box.style, { position: 'absolute', left: `${x + 6}px`, top: `${y - 12}px`, font: '13px system-ui', width: '9em', zIndex: '5' })
   $('wrap').appendChild(box); box.focus(); box.select()
-  let done = false; const finish = (keep: boolean) => { if (done) return; done = true; const v = box.value.trim(); box.remove(); if (keep && v && v !== p.name) { snapshot(); p.name = v; changed() } }
-  box.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') finish(true); if (e.key === 'Escape') finish(false) }; box.onblur = () => finish(true)
+  let done = false; const finish = (keep: boolean) => { if (done) return; done = true; editing = false; const v = box.value.trim(); box.remove(); if (keep && v && v !== p.name) { snapshot(); p.name = v; changed() } }
+  box.onkeydown = e => { e.stopPropagation(); if (e.isComposing) return; if (e.key === 'Enter') finish(true); if (e.key === 'Escape') finish(false) }; box.onblur = () => finish(true)
 }
 $('link').onclick = () => {
   if (sel.points.length !== 2) { alert('先选两个点：点一个，再按住 Shift 点另一个'); return }
