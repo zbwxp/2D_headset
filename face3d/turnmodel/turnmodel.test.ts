@@ -202,3 +202,22 @@ describe('俯仰 (bowen 1793026490): his ±45 keys as a change added to the turn
   })
 })
 
+describe('turn-and-pitch keyframes (bowen 1793073663: his tuned 21 / 31)', () => {
+  const C = M.pitch.corners ?? [], M0 = { ...M, pitch: { ...M.pitch, corners: [] } } as ModelData
+  it('there are two, one each side of pitch 0', () => { expect(C.length).toBe(2); expect(new Set(C.map(k => Math.sign(k.pitch)))).toEqual(new Set([1, -1])) })
+  it('at its own turn and pitch a keyframe gives the rules plus its correction exactly', () => {
+    for (const k of C) {
+      const f = evaluate(M, k.yaw, undefined, k.pitch), f0 = evaluate(M0, k.yaw, undefined, k.pitch)
+      for (const l of f.outline) l.c.forEach((q, j) => { const d = k.lines['outline:' + l.name]![j]!; const o = f0.outline.find(x => x.name === l.name)!.c[j]!; expect(q[0]).toBeCloseTo(o[0] + d[0], 9); expect(q[1]).toBeCloseTo(o[1] + d[1], 9) })
+      f.eyes.near[0]!.pts.forEach((q, i) => { const d = k.eyes.near[0]![i]!, o = f0.eyes.near[0]!.pts[i]!; expect(q[0]).toBeCloseTo(o[0] + d[0], 9) })
+    }
+  })
+  it('nothing changes at turn 0, turn 90 or pitch 0', () => {
+    for (const [y, pt] of [[0, 30], [90, 30], [90, -30], [40, 0], [0, -40]] as const) expect(evaluate(M, y, undefined, pt)).toEqual(evaluate(M0, y, undefined, pt))
+  })
+  it('the side face keeps meeting the outline at crown and chin', () => {
+    for (const k of C) { const f = evaluate(M, k.yaw, undefined, k.pitch), ends = f.side.flatMap(l => [l.c[0], l.c[3]])
+      for (const q of [f.points.crown!, f.points.chin!]) expect(Math.min(...ends.map(e => Math.hypot(e[0] - q[0], e[1] - q[1])))).toBeLessThan(1e-9) }
+  })
+})
+

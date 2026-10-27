@@ -35,8 +35,13 @@ export interface ModelData {
   ear: { up: V; tip: V; low: V; upLine: { ha: V; hb: V }; lowLine: { ha: V; hb: V } }
   params: Record<keyof Params, { value: number; source: string }>
   /** 俯仰 (bowen 1793026490): bowen's keys at yaw 0 (−45 俯, 0, +45 仰) and the eyes' shared sphere */
-  pitch: { keys: PitchKey[]; eyes: { anchorY: number; r: number; keys: { pitch: number; bend: number; s: number; oy: number }[] } }
+  pitch: { keys: PitchKey[]; eyes: { anchorY: number; r: number; keys: { pitch: number; bend: number; s: number; oy: number }[] }; corners?: PitchCorner[] }
 }
+/**
+ * A keyframe bowen tuned at a turn and a pitch together (bowen 1793072003 / 1793073663): how far his bones are from what the
+ * rules give there — per control point of the outline and near-ear lines, per sample of the eyes.
+ */
+export interface PitchCorner { yaw: number; pitch: number; source: string; lines: Record<string, [V, V, V, V]>; eyes: { near: V[][]; far: V[][] } }
 export interface PitchKey { pitch: number; pts: Record<string, V>; handles: Record<string, { ha: V; hb: V }>; ref?: { file: string; x: number; y: number; w: number; h: number } }
 export interface Params { eyeAlpha: number; eyeRate: number; eyeKappa: number; earFacing0: number; earUp: number; earLow: number; fakePush: number }
 
@@ -119,6 +124,33 @@ function pitchChange(m: ModelData, pitch: number) {
  * keyed; no two shapes are averaged. The in-plane turn is about the near ear (between 上耳点 and 下耳点), as in VRoid.
  */
 function evaluateRight(m: ModelData, ay: number, p: Params, pitch: number): Frame {
+  return corners(m, splitPitch(m, ay, p, pitch), ay, pitch)
+}
+
+/**
+ * bowen's turn-and-pitch keyframes (PitchCorner): each one's correction, at full strength at its own turn and pitch, fading to
+ * nothing toward turn 0 (his front-on keys), turn 90 (the side-on rule) and pitch 0 — linearly in the turn on each side of
+ * the key and in the pitch up to the key (kept beyond it). Only keys on the same side of pitch 0 count.
+ */
+function corners(m: ModelData, f: Frame, ay: number, pitch: number): Frame {
+  const C = (m.pitch.corners ?? []).filter(k => pitch !== 0 && Math.sign(k.pitch) === Math.sign(pitch))
+  const w = C.map(k => Math.min(1, Math.abs(pitch / k.pitch)) * (ay <= k.yaw ? ay / k.yaw : Math.max(0, (90 - ay) / (90 - k.yaw))))
+  if (!C.length || w.every(x => x === 0)) return f
+  const shift = (q: V, d: (k: PitchCorner) => V | undefined): V => C.reduce<V>((acc, k, i) => { const v = d(k); return v ? [acc[0] + w[i]! * v[0], acc[1] + w[i]! * v[1]] : acc }, q)
+  const fix = (ls: Line[], key: (l: Line) => string): Line[] => ls.map(l => ({ ...l, c: l.c.map((q, j) => shift(q, k => k.lines[key(l)]?.[j])) as Cubic }))
+  const outline = fix(f.outline, l => 'outline:' + l.name), near = fix(f.ears.near, l => 'ear:' + l.name)
+  const eyes = (side: 'near' | 'far') => f.eyes[side].map((e, li) => ({ ...e, pts: e.pts.map((q, i) => shift(q, k => k.eyes[side][li]?.[i])) }))
+  const L = (n: string) => outline.find(l => l.name === n)!.c, pts = { ...f.points }
+  const dCrown: V = [L('farSkull')[3][0] - f.points.crown![0], L('farSkull')[3][1] - f.points.crown![1]], dChin: V = [L('farJaw')[3][0] - f.points.chin![0], L('farJaw')[3][1] - f.points.chin![1]]
+  Object.assign(pts, { zyg: L('farJaw')[0], chin: L('farJaw')[3], temple: L('farCheek')[3], crown: L('farSkull')[3], nearRoot: L('nearJaw')[0], nearEarUp: near[0]!.c[0], nearEarTip: near[0]!.c[3], nearEarLow: near[1]!.c[3] })
+  // the side face shares crown and chin with the outline: its ends there follow them
+  const same = (a: V, b: V) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) < 1e-9
+  const side = f.side.map(l => ({ ...l, c: l.c.map((q, j) => (j === 0 || j === 3) ? (same(q, f.points.crown!) ? add(q, dCrown) : same(q, f.points.chin!) ? add(q, dChin) : q) : q) as Cubic }))
+  return { ...f, outline, side, eyes: { near: eyes('near'), far: eyes('far') }, ears: { ...f.ears, near }, points: pts }
+}
+
+/** The turn and pitch by the rules alone (no turn-and-pitch keyframes). */
+function splitPitch(m: ModelData, ay: number, p: Params, pitch: number): Frame {
   if (pitch === 0) return frontPitch(m, ay, p, 0)
   if (ay === 0) return frontPitch(m, 0, p, pitch) // front-on: bowen's keys exactly (no round trip through asin)
   const y = rad(ay), pr = rad(pitch), p2 = Math.asin(Math.cos(y) * Math.sin(pr)), rho = Math.atan2(Math.sin(y) * Math.sin(pr), Math.cos(pr))
