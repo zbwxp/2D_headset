@@ -47,8 +47,8 @@ function sight(x: number, y: number): { o: P3; d: P3 } { const [q0, q1] = fromSc
 // ---- the shell: skin triangles for picking and pressing lines onto ----
 let TRI: Float64Array = new Float64Array(), ALL: Float64Array = new Float64Array() // skin; everything (eyes too, for what hides what)
 let nTri = 0
-/** nearest hit along o + t·d (t > 0) on the skin, or the farthest when `far` */
-function hit(o: P3, d: P3, far = false, tri = TRI): { t: number; p: P3 } | null {
+/** nearest hit along o + t·d (t > 0) on the skin; the farthest when `far`; the one nearest t = `near` when given */
+function hit(o: P3, d: P3, far = false, tri = TRI, near?: number): { t: number; p: P3 } | null {
   let best = far ? -Infinity : Infinity, TRI_ = tri
   for (let i = 0; i < TRI_.length / 9; i++) {
     const k = 9 * i, ax = TRI_[k]!, ay = TRI_[k + 1]!, az = TRI_[k + 2]!
@@ -58,9 +58,34 @@ function hit(o: P3, d: P3, far = false, tri = TRI): { t: number; p: P3 } | null 
     const inv = 1 / det, tx = o[0] - ax, ty = o[1] - ay, tz = o[2] - az, u = (tx * px + ty * py + tz * pz) * inv; if (u < 0 || u > 1) continue
     const qx = ty * e1z - tz * e1y, qy = tz * e1x - tx * e1z, qz = tx * e1y - ty * e1x, v = (d[0] * qx + d[1] * qy + d[2] * qz) * inv; if (v < 0 || u + v > 1) continue
     const t = (e2x * qx + e2y * qy + e2z * qz) * inv; if (t <= 1e-9) continue
-    if (far ? t > best : t < best) best = t
+    if (near !== undefined ? Math.abs(t - near) < Math.abs(best - near) : far ? t > best : t < best) best = t
   }
   return Number.isFinite(best) ? { t: best, p: [o[0] + d[0] * best, o[1] + d[1] * best, o[2] + d[2] * best] } : null
+}
+/** the skin point nearest to q (closest point on each triangle, Ericson's regions) */
+function nearestOnSkin(q: P3): P3 {
+  let best = Infinity, bp: P3 = q
+  const sub = (a: number[], b: number[]) => [a[0]! - b[0]!, a[1]! - b[1]!, a[2]! - b[2]!], dot = (a: number[], b: number[]) => a[0]! * b[0]! + a[1]! * b[1]! + a[2]! * b[2]!
+  for (let i = 0; i < nTri; i++) {
+    const k = 9 * i, a = [TRI[k]!, TRI[k + 1]!, TRI[k + 2]!], b = [TRI[k + 3]!, TRI[k + 4]!, TRI[k + 5]!], c = [TRI[k + 6]!, TRI[k + 7]!, TRI[k + 8]!]
+    let box = 0; for (let j = 0; j < 3; j++) { const lo = Math.min(a[j]!, b[j]!, c[j]!), hi = Math.max(a[j]!, b[j]!, c[j]!), e = q[j]! < lo ? lo - q[j]! : q[j]! > hi ? q[j]! - hi : 0; box += e * e }
+    if (box >= best) continue // its box is already farther than the best
+    const ab = sub(b, a), ac = sub(c, a), ap = sub(q, a), d1 = dot(ab, ap), d2 = dot(ac, ap); let r: number[]
+    if (d1 <= 0 && d2 <= 0) r = a
+    else { const bp_ = sub(q, b), d3 = dot(ab, bp_), d4 = dot(ac, bp_)
+      if (d3 >= 0 && d4 <= d3) r = b
+      else { const vc = d1 * d4 - d3 * d2
+        if (vc <= 0 && d1 >= 0 && d3 <= 0) { const v = d1 / (d1 - d3); r = [a[0]! + v * ab[0]!, a[1]! + v * ab[1]!, a[2]! + v * ab[2]!] }
+        else { const cp = sub(q, c), d5 = dot(ab, cp), d6 = dot(ac, cp)
+          if (d6 >= 0 && d5 <= d6) r = c
+          else { const vb = d5 * d2 - d1 * d6
+            if (vb <= 0 && d2 >= 0 && d6 <= 0) { const w = d2 / (d2 - d6); r = [a[0]! + w * ac[0]!, a[1]! + w * ac[1]!, a[2]! + w * ac[2]!] }
+            else { const va = d3 * d6 - d5 * d4
+              if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) { const w = (d4 - d3) / (d4 - d3 + (d5 - d6)); r = [b[0]! + w * (c[0]! - b[0]!), b[1]! + w * (c[1]! - b[1]!), b[2]! + w * (c[2]! - b[2]!)] }
+              else { const den = 1 / (va + vb + vc), v = vb * den, w = vc * den; r = [a[0]! + ab[0]! * v + ac[0]! * w, a[1]! + ab[1]! * v + ac[1]! * w, a[2]! + ab[2]! * v + ac[2]! * w] } } } } } }
+    const d = (r[0]! - q[0]) ** 2 + (r[1]! - q[1]) ** 2 + (r[2]! - q[2]) ** 2; if (d < best) { best = d; bp = [r[0]!, r[1]!, r[2]!] }
+  }
+  return bp
 }
 // pressing onto the shell: along the ray from the head's centre, the outermost skin
 const C: P3 = [0, -0.3, 0]
@@ -203,13 +228,30 @@ cv.onpointermove = e => {
   if (!drag.moved && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 3) return // a press, not yet a drag
   const s = sight(x, y), h = hit(s.o, s.d), p = pt(drag.id); if (!h || !p) return
   if (!drag.moved) { snapshot(); drag.moved = true }
-  const dv = [0, 1, 2].map(k => h.p[k]! - p.p[k]!); p.p = h.p
+  moveTo(p, h.p, true); draw()
+}
+/** a point to a new place on the shell; the handles at it go with it exactly (lines with their own handles), the other
+ * lines are pressed onto the shell again (lightly while dragging) */
+function moveTo(p: Pt, q: P3, light = false) {
+  const dv = [0, 1, 2].map(k => q[k]! - p.p[k]!); p.p = q
   for (const l of doc.lines) if (l.a === p.id || l.b === p.id) {
-    if (l.own) { // its handles go with their ends
+    if (l.own) {
       if (l.a === p.id) { l.c[0] = p.p; l.c[1] = l.c[1]!.map((v, k) => v + dv[k]!) as P3 }
       if (l.b === p.id) { l.c[3] = p.p; l.c[2] = l.c[2]!.map((v, k) => v + dv[k]!) as P3 }
-    } else { const a = pt(l.a)!, b = pt(l.b)!; l.c = hug(a.p, b.p, 24, 3) } } // light while dragging
-  draw()
+    } else { const a = pt(l.a)!, b = pt(l.b)!; l.c = light ? hug(a.p, b.p, 24, 3) : hug(a.p, b.p) } }
+}
+/** the arrow keys (bowen 1793109026 / 1793109036): the selected points one step across the screen, kept on the shell (the
+ * surface they are on); Shift = a big step, Alt = a small one */
+let arrowRun = 0
+function nudge(dx: number, dy: number) {
+  if (!sel.points.length) return false
+  if (performance.now() - arrowRun > 800) snapshot() // one undo per run of key presses
+  arrowRun = performance.now()
+  for (const id of sel.points) { const p = pt(id); if (!p) continue
+    // the step across the screen at the point's own depth, then the nearest skin point (works on the outline too, where a
+    // line of sight only grazes the shell)
+    const q = cam(p.p), [x, y] = toScreen(q), [q0, q1] = fromScreen(x + dx, y + dy); moveTo(p, nearestOnSkin(back([q0, q1, q[2]]))) }
+  changed(); return true
 }
 // a second press on the same point within a moment = rename (by hand rather than the dblclick event, which not every
 // browser sends once the pointer is captured; bowen 1793108360 「这个点1 我双击也无法改」)
@@ -280,6 +322,8 @@ window.addEventListener('keydown', e => {
   if (e.key === 'F2' || e.key === 'Enter') { const p = sel.points.length === 1 ? pt(sel.points[0]!) : undefined, l = doc.lines.find(k => k.id === sel.line)
     if (p) { e.preventDefault(); rename(p, p.p) } else if (l) { e.preventDefault(); rename(l, cubic(l.c, 0.5)) } return }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); doUndo(); return }
+  const ARROW: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }
+  if (ARROW[e.key]) { const step = e.shiftKey ? 10 : e.altKey ? 0.25 : 2, [dx, dy] = ARROW[e.key]!; if (nudge(dx * step, dy * step)) e.preventDefault(); return }
   if (e.key === 'Delete' || e.key === 'Backspace') { if (!sel.points.length && sel.line === null) return; snapshot()
     if (sel.points.length) removePoints(sel.points); else { doc.lines = doc.lines.filter(l => l.id !== sel.line); sel.line = null } changed() }
 })
@@ -291,7 +335,7 @@ $('openBtn').onclick = () => $('open').click()
 $<HTMLInputElement>('open').onchange = async e => { const f = (e.target as HTMLInputElement).files?.[0]; if (!f) return; snapshot(); doc = JSON.parse(await f.text()) as Doc; sel = { points: [], line: null }; changed() }
 window.addEventListener('resize', draw)
 window.addEventListener('keyup', e => { if (e.key === ' ') { space = false; cursor() } })
-;(window as unknown as { __shell: unknown }).__shell = { view: (y: number, p: number, z?: number) => { yaw = y; pitch = p; if (z) { zoom = z; panX = 0; panY = 0 } draw() }, doc: () => doc, sight, hit, hug, changed: () => changed(), set: (d: Doc) => { doc = d; changed() } }
+;(window as unknown as { __shell: unknown }).__shell = { view: (y: number, p: number, z?: number) => { yaw = y; pitch = p; if (z) { zoom = z; panX = 0; panY = 0 } draw() }, doc: () => doc, sel: () => sel, nudge, sight, hit, hug, changed: () => changed(), set: (d: Doc) => { doc = d; changed() } }
 
 // the neck as well (bowen 1793106912 「颈部也都给出来」): the skin kept down to NECK, but in the usual head space (the one every
 // other line here and in vrm-wire.json is in): the same raw vertices loaded both ways, matched at the crown and the nose tip
