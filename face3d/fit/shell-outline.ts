@@ -205,8 +205,10 @@ function tangents(r: Net['rails'][number], X: (p: P3) => number) {
   return keep.filter(({ i }, k) => k === 0 || i - keep[k - 1]!.i > Wn).map(({ q }) => q)
 }
 /** one view, one net: its outline lines (one per tangent point, in order across the rails) */
-function outlines(net: Net, yaw: number, pitch = 0, axis: 0 | 1 = 0) {
-  const v = { yaw, pitch }, X = (p: P3) => net.edge * rotate(p, v)[axis], tan = net.rails.map(r => tangents(r, X))
+/** dir: the screen direction the tangent points are farthest out in (by default the net's edge across the screen, or up
+ * the screen with axis 1) */
+function outlines(net: Net, yaw: number, pitch = 0, axis: 0 | 1 = 0, dir?: readonly [number, number]) {
+  const d = dir ?? (axis ? [0, net.edge] : [net.edge, 0]), v = { yaw, pitch }, X = (p: P3) => { const q = rotate(p, v); return d[0] * q[0] + d[1] * q[1] }, tan = net.rails.map(r => tangents(r, X))
   const n = Math.max(...tan.map(t => t.length)), lines: { tan: { p: P3; g: number }[]; pts: P3[] }[] = []
   for (let bI = 0; bI < n; bI++) {
     const pick = tan.map(t => t[Math.min(bI, t.length - 1)]!)
@@ -344,7 +346,11 @@ function polar(yaw: number, pitch: number) {
   // VRoid: per degree the farthest inside point along the ray (the outline), and whether it is the neck's cut (bottom rows)
   let yLow = Infinity; for (let j = W - 1; j >= 0; j--) { let any = false; for (let i = 0; i < W; i++) if (ras.zb[j * W + i]! > -Infinity) { any = true; break } if (any) { yLow = (F.cy - (j + 0.5)) / F.S; break } }
   const truth = Array.from({ length: A }, (_, a) => { const t = (a * Math.PI) / 180, dx = Math.cos(t), dy = Math.sin(t); let r = 0; for (let s = 0; s < 3; s += 0.004) if (inside(cx + dx * s, cy + dy * s)) r = s; return { r, cut: cy + dy * r < yLow + 0.06 } })
-  const lines = [...NETS.map(n => ({ n, axis: 0 as const })), ...TNETS.map(n => ({ n, axis: 1 as const }))].flatMap(({ n, axis }) => outlines(n, yaw, pitch, axis).map(l => ({ kind: KIND(n), axis, tan: l.tan, pts: l.pts, q: l.pts.map(p => rotate(p, v)) })))
+  // tangent points in eight directions (bowen 1793117729: looking down 60°, the face's lower outline runs slanting to the chin;
+  // farthest out across the screen fell on 下耳根 and the outline went down the jawline, while slanting-farthest lies on the
+  // cheek line 太阳穴 → 颧骨 → 下巴), each with the nets both ways (rails and crosswise)
+  const DIRS = Array.from({ length: 8 }, (_, i) => [Math.cos((i * Math.PI) / 4), Math.sin((i * Math.PI) / 4)] as const)
+  const lines = KINDS.flatMap(({ n, kind }) => { const t = transpose(n); return DIRS.flatMap(dv => [n, t].flatMap((net, axis) => outlines(net, yaw, pitch, axis as 0 | 1, dv).map(l => ({ kind, axis, tan: l.tan, pts: l.pts, q: l.pts.map(p => rotate(p, v)) })))) })
   if (USE_CAP) for (const run of capOutline(v)) lines.push({ kind: 4, axis: 0, tan: [], pts: run, q: run.map(p => rotate(p, v)) })
   // the ears' own lines take part too: where an ear is outside the head it is the outline (whichever is outer shows)
   for (const l of DETAIL.filter(d => /耳/.test(d.name))) { const pts = sample(l.c, 60); lines.push({ kind: 3, axis: 0, tan: [], pts, q: pts.map(p => rotate(p, v)) }) }

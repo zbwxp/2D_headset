@@ -44,8 +44,8 @@ function mixRound(a: P3, b: P3, w: number): P3 {
   const u: P3 = om < 1e-4 ? mix(ua, ub, w) : ([0, 1, 2].map(k => (Math.sin((1 - w) * om) * ua[k]! + Math.sin(w * om) * ub[k]!) / Math.sin(om)) as P3)
   const r = ra + (rb - ra) * w; return add(c, [u[0] * r, u[1] * r, u[2] * r])
 }
-function outlines(net: NetJ, edge: number, v: { yaw: number; pitch: number }, axis: 0 | 1 = 0) {
-  const X = (p: P3) => edge * rotate(p, v)[axis], tan = net.rails.map(r => tangents(r, X))
+function outlines(net: NetJ, d: readonly [number, number], v: { yaw: number; pitch: number }) {
+  const X = (p: P3) => { const q = rotate(p, v); return d[0] * q[0] + d[1] * q[1] }, tan = net.rails.map(r => tangents(r, X))
   const n = Math.max(...tan.map(t => t.length)), lines: { tan: { p: P3 }[]; pts: P3[] }[] = []
   for (let bI = 0; bI < n; bI++) {
     const pick = tan.map(t => t[Math.min(bI, t.length - 1)]!)
@@ -78,6 +78,7 @@ function capOutline(v: { yaw: number; pitch: number }): P3[][] {
   if (cur.length > 1) { if (runs.length && ring[0]![1] >= ringAt(ring[0]!)) runs[0] = [...cur, ...runs[0]!]; else runs.push(cur) }
   return runs
 }
+const DIRS = Array.from({ length: 8 }, (_, i) => [Math.cos((i * Math.PI) / 4), Math.sin((i * Math.PI) / 4)] as const)
 const EARS = D.detail.filter(l => /耳/.test(l.name)).map(l => sample(l.c, 60))
 
 // ---- camera: head space → clip ----
@@ -144,7 +145,8 @@ function draw() {
   if (on('outline')) {
     const v = { yaw, pitch }, all: { kind: number; pts: P3[]; scr: number[][]; tan: P3[] }[] = []
     const push = (kind: number, pts: P3[], tan: P3[]) => all.push({ kind, pts, scr: pts.map(p => rotate(p, v) as unknown as number[]), tan })
-    for (const [nets, axis] of [[D.nets, 0], [D.tnets, 1]] as const) for (const net of nets) for (const edge of [1, -1]) for (const l of outlines(net, edge, v, axis)) push(net.kind, l.pts, l.tan.map(t => t.p))
+    // tangent points in eight screen directions, the nets both ways (as in shell-outline.ts)
+    for (const nets of [D.nets, D.tnets]) for (const net of nets) for (const d of DIRS) for (const l of outlines(net, d, v)) push(net.kind, l.pts, l.tan.map(t => t.p))
     if (on('cap')) for (const run of capOutline(v)) push(4, run, [])
     for (const e of EARS) push(3, e, [])
     // in every direction round the head's middle on the screen, the farthest line shows
