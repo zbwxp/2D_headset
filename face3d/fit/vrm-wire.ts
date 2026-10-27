@@ -94,37 +94,12 @@ let ring = chain(zeroLine(i => N[i]![1], p => p[1] > -0.4 && p[1] < 0.3))
 const front = ring.reduce((bi, p, i) => (Math.abs(p[0]) < 0.05 && p[2] > 0 && (bi < 0 || p[2] > ring[bi]![2]) ? i : bi), -1), back = ring.reduce((bi, p, i) => (Math.abs(p[0]) < 0.05 && p[2] < 0 && (bi < 0 || p[2] < ring[bi]![2]) ? i : bi), -1)
 const closedLoop = dist(ring[0]!, ring[ring.length - 1]!) < 0.05
 const latitude = piecewise(ring, [front, back].sort((x, y) => x - y), true)
-// ---- the ear (bowen 1793100859; shape after his hand-tuned 90° ear, 1793101217/1793101295): its outline seen from the side,
-// 3 cubics 上耳根 → 耳尖 → 耳垂 → 下耳根, open along the front where the ear lies on the head. The ear = the skin standing out
-// past the head's side (|x| > 0.9) behind the cheek; its side picture filled triangle by triangle on a fine grid (z across,
-// y up), each cell keeping the outer face (the farthest |x|); the picture's outline traced once round from its top. Joints as
-// in bowen's ear: 上耳根 = the top, 耳尖 = the farthest back-and-up (his tip is behind his upper root, about level), 耳垂 = the
-// lowest, 下耳根 = up the front edge from the lobe at 16 % of the ear's height (his 90° ear: lobe ~37, lower root 31, tip 0)
-const inEar = (p: V3) => p[0] < -0.9 && p[2] > -0.6 && p[2] < 0.15 && p[1] < -0.2 && p[1] > -1.0
-const G = 0.004, EZ = -0.6, EY = -1.0, NW = Math.ceil(0.75 / G), NH = Math.ceil(0.8 / G), xb = new Float32Array(NW * NH).fill(Infinity)
-for (let t = 0; t < T.length; t += 3) { const v = [P[T[t]!]!, P[T[t + 1]!]!, P[T[t + 2]!]!]; if (!v.every(inEar)) continue
-  const [a, c, e] = v.map(p => [(p[2] - EZ) / G, (p[1] - EY) / G, p[0]]) as [number[], number[], number[]]
-  const den = (c[1]! - e[1]!) * (a[0]! - e[0]!) + (e[0]! - c[0]!) * (a[1]! - e[1]!); if (Math.abs(den) < 1e-12) continue
-  for (let i = Math.floor(Math.min(a[0]!, c[0]!, e[0]!)); i <= Math.ceil(Math.max(a[0]!, c[0]!, e[0]!)); i++) for (let j = Math.floor(Math.min(a[1]!, c[1]!, e[1]!)); j <= Math.ceil(Math.max(a[1]!, c[1]!, e[1]!)); j++) {
-    if (i < 0 || j < 0 || i >= NW || j >= NH) continue
-    const x = i + 0.5, y = j + 0.5, l1 = ((c[1]! - e[1]!) * (x - e[0]!) + (e[0]! - c[0]!) * (y - e[1]!)) / den, l2 = ((e[1]! - a[1]!) * (x - e[0]!) + (a[0]! - e[0]!) * (y - e[1]!)) / den, l3 = 1 - l1 - l2
-    if (l1 < -1e-6 || l2 < -1e-6 || l3 < -1e-6) continue
-    const xv = l1 * a[2]! + l2 * c[2]! + l3 * e[2]!; if (xv < xb[j * NW + i]!) xb[j * NW + i] = xv } }
-const onEar = (i: number, j: number) => i >= 0 && j >= 0 && i < NW && j < NH && xb[j * NW + i]! < Infinity
-let e0: [number, number] | null = null // the top cell; then Moore neighbour tracing once round
-for (let j = NH - 1; j >= 0 && !e0; j--) for (let i = 0; i < NW && !e0; i++) if (onEar(i, j)) e0 = [i, j]
-const D8 = [[-1, 0], [-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1]] as const, cells: [number, number][] = [e0!]
-for (let cur = e0!, back: [number, number] = [e0![0] - 1, e0![1]], n = 0; n < 40000; n++) {
-  const bi = D8.findIndex(d => cur[0] + d[0] === back[0] && cur[1] + d[1] === back[1]); let moved = false
-  for (let k = 1; k <= 8; k++) { const d = D8[(bi + k) % 8]!, c: [number, number] = [cur[0] + d[0], cur[1] + d[1]]; if (onEar(c[0], c[1])) { const pd = D8[(bi + k - 1) % 8]!; back = [cur[0] + pd[0], cur[1] + pd[1]]; cur = c; moved = true; break } }
-  if (!moved || (cur[0] === e0![0] && cur[1] === e0![1])) break; cells.push(cur) }
-let outline = cells.map(([i, j]) => [xb[j * NW + i]!, EY + (j + 0.5) * G, EZ + (i + 0.5) * G] as V3)
-if (outline[10]![2] > outline[0]![2]) outline = [outline[0]!, ...outline.slice(1).reverse()] // from the top, back first
-const iLobeO = outline.reduce((bi, p, i) => (p[1] < outline[bi]![1] ? i : bi), 0), lowY = outline[iLobeO]![1] + 0.16 * (outline[0]![1] - outline[iLobeO]![1])
-const iLowO = outline.reduce((bi, p, i) => (i > iLobeO && Math.abs(p[1] - lowY) < Math.abs(outline[bi]![1] - lowY) ? i : bi), iLobeO + 1)
-const rim: V3[] = outline.slice(0, iLowO + 1)
-const iTip = rim.reduce((bi, p, i) => (i < iLobeO && p[1] - p[2] > rim[bi]![1] - rim[bi]![2] ? i : bi), 1)
-const earFit = piecewise(rim, [0, iTip, iLobeO, rim.length - 1], false, 6) // joints held near bowen's shape (slide ±6 cells)
+// ---- the ear (bowen 1793100859): 3 cubics 上耳根 → 耳尖 → 耳垂 → 下耳根, open along the front where the ear lies on the head.
+// The line is bowen's own, drawn on a screenshot of this viewer (1793101979 「这才是耳朵」) and put back on the ear in 3D by
+// face3d/fit/ear-from-drawing.ts, split at his four points (1793102241); the joints slide a little (±3 points) where that fits better
+const drawn = JSON.parse(readFileSync('face3d/viewer/ref-ear/bowen-1793101979.ear.json', 'utf8')) as { points: V3[]; marks: { name: string; i: number }[] }
+const rim: V3[] = drawn.points
+const earFit = piecewise(rim, drawn.marks.map(m => m.i), false, 3)
 const mirror = (c: number[][]) => c.map(p => [-p[0]!, p[1]!, p[2]!])
 // how close the blue crossing clusters by the ear lie to the rim
 const CLe = JSON.parse(readFileSync('face3d/viewer/vrm-clusters.json', 'utf8')).clusters as { p: V3 }[]
