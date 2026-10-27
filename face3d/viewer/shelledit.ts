@@ -10,14 +10,16 @@ import { rotate } from '../src/view'
 
 type P3 = [number, number, number]
 interface Pt { id: number; name: string; p: P3 }
-interface Ln { id: number; name: string; a: number; b: number; c: P3[] }
+/** own: the line keeps its own handles (moved with their ends, or dragged), else it is pressed onto the shell again whenever an end moves */
+interface Ln { id: number; name: string; a: number; b: number; c: P3[]; own?: boolean }
 interface Doc { version: 1; next: number; points: Pt[]; lines: Ln[] }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
 const cv = $<HTMLCanvasElement>('c'), gl = cv.getContext('webgl', { antialias: true, preserveDrawingBuffer: true })!
 gl.getExtension('OES_element_index_uint')
 const KEY = 'shelledit-doc-v1'
-let doc: Doc = load() ?? { version: 1, next: 1, points: [], lines: [] }
+const stored = load()
+let doc: Doc = stored ?? { version: 1, next: 1, points: [], lines: [] }
 let sel: { points: number[]; line: number | null } = { points: [], line: null }
 const undo: string[] = []
 let yaw = 35, pitch = 10, zoom = 1
@@ -34,21 +36,21 @@ const cam = (p: P3) => rotate(p, { yaw, pitch })
 /** camera → css pixels on the canvas */
 const toScreen = (q: readonly number[]) => { const r = cv.getBoundingClientRect(), s = S0 * zoom; return [(0.5 + (q[0]! * s * aspect()) / 2) * r.width, (0.5 - (q[1]! * s + CY) / 2) * r.height] as const }
 /** css pixel → the line of sight in head space (origin far in front, direction into the screen) */
-function sight(x: number, y: number): { o: P3; d: P3 } {
-  const r = cv.getBoundingClientRect(), s = S0 * zoom, q0 = ((x / r.width) * 2 - 1) / (s * aspect()), q1 = ((1 - (y / r.height) * 2) - CY) / s
-  const { ex, ey, ez } = axes(), back = (q: number[]): P3 => [ex[0] * q[0]! + ex[1] * q[1]! + ex[2] * q[2]!, ey[0] * q[0]! + ey[1] * q[1]! + ey[2] * q[2]!, ez[0] * q[0]! + ez[1] * q[1]! + ez[2] * q[2]!]
-  return { o: back([q0, q1, 10]), d: back([0, 0, -1]) }
-}
+/** camera → head space */
+const back = (q: readonly number[]): P3 => { const { ex, ey, ez } = axes(); return [ex[0] * q[0]! + ex[1] * q[1]! + ex[2] * q[2]!, ey[0] * q[0]! + ey[1] * q[1]! + ey[2] * q[2]!, ez[0] * q[0]! + ez[1] * q[1]! + ez[2] * q[2]!] }
+/** css pixel → camera x, y */
+const fromScreen = (x: number, y: number) => { const r = cv.getBoundingClientRect(), s = S0 * zoom; return [((x / r.width) * 2 - 1) / (s * aspect()), ((1 - (y / r.height) * 2) - CY) / s] as const }
+function sight(x: number, y: number): { o: P3; d: P3 } { const [q0, q1] = fromScreen(x, y); return { o: back([q0, q1, 10]), d: back([0, 0, -1]) } }
 
 // ---- the shell: skin triangles for picking and pressing lines onto ----
-let TRI: Float64Array = new Float64Array()
+let TRI: Float64Array = new Float64Array(), ALL: Float64Array = new Float64Array() // skin; everything (eyes too, for what hides what)
 let nTri = 0
 /** nearest hit along o + t·d (t > 0) on the skin, or the farthest when `far` */
-function hit(o: P3, d: P3, far = false): { t: number; p: P3 } | null {
-  let best = far ? -Infinity : Infinity
-  for (let i = 0; i < nTri; i++) {
-    const k = 9 * i, ax = TRI[k]!, ay = TRI[k + 1]!, az = TRI[k + 2]!
-    const e1x = TRI[k + 3]! - ax, e1y = TRI[k + 4]! - ay, e1z = TRI[k + 5]! - az, e2x = TRI[k + 6]! - ax, e2y = TRI[k + 7]! - ay, e2z = TRI[k + 8]! - az
+function hit(o: P3, d: P3, far = false, tri = TRI): { t: number; p: P3 } | null {
+  let best = far ? -Infinity : Infinity, TRI_ = tri
+  for (let i = 0; i < TRI_.length / 9; i++) {
+    const k = 9 * i, ax = TRI_[k]!, ay = TRI_[k + 1]!, az = TRI_[k + 2]!
+    const e1x = TRI_[k + 3]! - ax, e1y = TRI_[k + 4]! - ay, e1z = TRI_[k + 5]! - az, e2x = TRI_[k + 6]! - ax, e2y = TRI_[k + 7]! - ay, e2z = TRI_[k + 8]! - az
     const px = d[1] * e2z - d[2] * e2y, py = d[2] * e2x - d[0] * e2z, pz = d[0] * e2y - d[1] * e2x, det = e1x * px + e1y * py + e1z * pz
     if (Math.abs(det) < 1e-12) continue
     const inv = 1 / det, tx = o[0] - ax, ty = o[1] - ay, tz = o[2] - az, u = (tx * px + ty * py + tz * pz) * inv; if (u < 0 || u > 1) continue
@@ -88,7 +90,7 @@ function load(): Doc | null { try { const s = localStorage.getItem(KEY); return 
 function store() { try { localStorage.setItem(KEY, JSON.stringify(doc)) } catch { /* private window: the file still works */ } }
 const snapshot = () => { undo.push(JSON.stringify(doc)); if (undo.length > 200) undo.shift() }
 const pt = (id: number) => doc.points.find(p => p.id === id)
-function refit(ids?: Set<number>) { for (const l of doc.lines) if (!ids || ids.has(l.a) || ids.has(l.b)) { const a = pt(l.a), b = pt(l.b); if (a && b) l.c = hug(a.p, b.p) } }
+function refit(ids?: Set<number>) { for (const l of doc.lines) if (!l.own && (!ids || ids.has(l.a) || ids.has(l.b))) { const a = pt(l.a), b = pt(l.b); if (a && b) l.c = hug(a.p, b.p) } }
 function changed() { store(); list(); draw() }
 
 // ---- drawing ----
@@ -129,15 +131,18 @@ function draw() {
   for (const l of doc.lines) { const P: number[] = []; for (let i = 0; i < 48; i++) P.push(...cubic(l.c, i / 48), ...cubic(l.c, (i + 1) / 48))
     const k = sel.line === l.id ? [0.1, 0.45, 1] : [0.85, 0.15, 0.2]; put(P, P.map((_, i) => k[i % 3]!), gl.LINES) }
   for (const p of doc.points) { const k = sel.points.includes(p.id) ? [0.1, 0.45, 1] : [0.05, 0.05, 0.05]; put([...p.p], k, gl.POINTS, sel.points.includes(p.id) ? 11 : 8) }
+  // the selected line's two handles (drawn over everything, so they can be reached behind the shell too)
+  const L = doc.lines.find(l => l.id === sel.line)
+  if (L) { gl.clear(gl.DEPTH_BUFFER_BIT); const H2 = [...L.c[0]!, ...L.c[1]!, ...L.c[3]!, ...L.c[2]!]; put(H2, H2.map((_, i) => [0.55, 0.55, 0.6][i % 3]!), gl.LINES); put([...L.c[1]!, ...L.c[2]!], [1, 0.55, 0, 1, 0.55, 0], gl.POINTS, 9) }
   labels()
 }
 /** is the point hidden behind the shell from here? */
-function hidden(p: P3) { const q = cam(p), [x, y] = toScreen(q), s = sight(x, y), h = hit(s.o, s.d); return !!h && cam(h.p)[2] > q[2] + 0.02 }
+function hidden(p: P3) { const q = cam(p), [x, y] = toScreen(q), s = sight(x, y), h = hit(s.o, s.d, false, ALL); return !!h && cam(h.p)[2] > q[2] + 0.02 }
 function labels() {
   const L = $('labels'); L.innerHTML = ''; const xray = $<HTMLInputElement>('xray').checked
   const add = (p: P3, name: string) => { const back = hidden(p); if (back && !xray) return; const [x, y] = toScreen(cam(p)), d = document.createElement('div'); d.textContent = name; d.style.left = `${x + 7}px`; d.style.top = `${y - 9}px`; if (back) d.className = 'back'; L.appendChild(d) }
   for (const p of doc.points) add(p.p, p.name)
-  for (const l of doc.lines) add(cubic(l.c, 0.5), l.name)
+  for (const l of doc.lines) if (sel.line === l.id || $<HTMLInputElement>('lnames').checked) add(cubic(l.c, 0.5), l.name)
 }
 
 // ---- the list ----
@@ -166,9 +171,14 @@ const nearLine = (x: number, y: number) => { let best: Ln | null = null, bd = 7
   for (const l of doc.lines) for (let i = 0; i <= 48; i++) { const [sx, sy] = toScreen(cam(cubic(l.c, i / 48))), d = Math.hypot(sx - x, sy - y); if (d < bd) { bd = d; best = l } }
   return best }
 const local = (e: PointerEvent | MouseEvent) => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top] as const }
-let drag: { kind: 'turn'; x: number; y: number; yaw: number; pitch: number; moved: boolean } | { kind: 'point'; id: number; moved: boolean } | null = null
+let drag: { kind: 'turn'; x: number; y: number; yaw: number; pitch: number; moved: boolean } | { kind: 'point'; id: number; moved: boolean } | { kind: 'handle'; line: number; k: 1 | 2; moved: boolean } | null = null
+/** a handle of the selected line under the cursor */
+const nearHandle = (x: number, y: number) => { const L = doc.lines.find(l => l.id === sel.line); if (!L) return null
+  for (const k of [1, 2] as const) { const [sx, sy] = toScreen(cam(L.c[k]!)); if (Math.hypot(sx - x, sy - y) < 9) return { line: L.id, k } }
+  return null }
 cv.onpointerdown = e => {
-  const [x, y] = local(e), p = nearPoint(x, y); cv.setPointerCapture(e.pointerId)
+  const [x, y] = local(e), p = nearPoint(x, y), hd = nearHandle(x, y); cv.setPointerCapture(e.pointerId)
+  if (hd) { drag = { kind: 'handle', ...hd, moved: false }; return }
   if (p) { selectPoint(p.id, e.shiftKey); drag = { kind: 'point', id: p.id, moved: false }; list(); draw(); return }
   drag = { kind: 'turn', x: e.clientX, y: e.clientY, yaw, pitch, moved: false }; cv.style.cursor = 'grabbing'
 }
@@ -176,13 +186,23 @@ cv.onpointermove = e => {
   if (!drag) return
   if (drag.kind === 'turn') { if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 3) drag.moved = true
     yaw = drag.yaw + (e.clientX - drag.x) * 0.5; pitch = Math.max(-89, Math.min(89, drag.pitch - (e.clientY - drag.y) * 0.5)); draw(); return }
+  if (drag.kind === 'handle') { const dr = drag, L = doc.lines.find(l => l.id === dr.line); if (!L) return
+    // a handle moves in the screen's plane at its own depth; the line then keeps its own handles
+    if (!dr.moved) { snapshot(); dr.moved = true }
+    const [x, y] = local(e), [q0, q1] = fromScreen(x, y); L.c[dr.k] = back([q0, q1, cam(L.c[dr.k]!)[2]]); L.own = true; draw(); return }
   const [x, y] = local(e), s = sight(x, y), h = hit(s.o, s.d), p = pt(drag.id); if (!h || !p) return
   if (!drag.moved) { snapshot(); drag.moved = true }
-  p.p = h.p; for (const l of doc.lines) if (l.a === p.id || l.b === p.id) { const a = pt(l.a)!, b = pt(l.b)!; l.c = hug(a.p, b.p, 24, 3) } // light while dragging
+  const dv = [0, 1, 2].map(k => h.p[k]! - p.p[k]!); p.p = h.p
+  for (const l of doc.lines) if (l.a === p.id || l.b === p.id) {
+    if (l.own) { // its handles go with their ends
+      if (l.a === p.id) { l.c[0] = p.p; l.c[1] = l.c[1]!.map((v, k) => v + dv[k]!) as P3 }
+      if (l.b === p.id) { l.c[3] = p.p; l.c[2] = l.c[2]!.map((v, k) => v + dv[k]!) as P3 }
+    } else { const a = pt(l.a)!, b = pt(l.b)!; l.c = hug(a.p, b.p, 24, 3) } } // light while dragging
   draw()
 }
 cv.onpointerup = e => {
   if (drag?.kind === 'point' && drag.moved) { refit(new Set([drag.id])); changed() }
+  else if (drag?.kind === 'handle' && drag.moved) changed()
   else if (drag?.kind === 'turn' && !drag.moved) { const [x, y] = local(e), l = nearLine(x, y); sel = l ? { points: [], line: l.id } : { points: [], line: null }; list(); draw() }
   drag = null; cv.style.cursor = 'grab'
 }
@@ -197,6 +217,28 @@ $('link').onclick = () => {
   const [a, b] = sel.points as [number, number], A = pt(a)!, B = pt(b)!
   snapshot(); const id = doc.next++; doc.lines.push({ id, name: uniqueName('线', doc.lines.map(l => l.name)), a, b, c: hug(A.p, B.p) }); sel = { points: [], line: id }; changed()
 }
+// the lines we already have (vrm-wire.json: meridian, latitude, ears, eye sockets; bowen 1793107710 「将现有的线都放在这个头壳上」)
+// as points and lines with their own handles, named (1793107717 「点和线名字都取好」): the meridian's joints by their names, the
+// latitude's front joint 额前 (its back joint is 后脑), ears and eyes by side — 左 / 右 as seen from the front (左 = x < 0)
+function importWire() {
+  const W = wire as unknown as { meridian: { names: string[]; curves: P3[][] }; latitude: { curves: P3[][] }; ear: { names: string[]; curves: P3[][] }; eyes: { names: string[]; curves: P3[][] } }
+  const pts: Pt[] = [], lns: Ln[] = [], taken = new Set(doc.points.map(p => p.name))
+  const at = (p: P3, name: string) => { const q = pts.find(o => Math.hypot(o.p[0] - p[0], o.p[1] - p[1], o.p[2] - p[2]) < 0.02); if (q) return q.id
+    let n = name; for (let i = 2; taken.has(n); i++) n = `${name}${i}`; taken.add(n); const id = doc.next++; pts.push({ id, name: n, p: [p[0], p[1], p[2]] }); return id }
+  const line = (c: P3[], a: string, b: string, name: string) => lns.push({ id: doc.next++, name, a: at(c[0]!, a), b: at(c[3]!, b), c: c.map(p => [p[0], p[1], p[2]] as P3), own: true })
+  W.meridian.curves.forEach((c, i) => line(c, W.meridian.names[i]!, W.meridian.names[i + 1]!, `${W.meridian.names[i]}—${W.meridian.names[i + 1]}`))
+  W.latitude.curves.forEach(c => { const left = (c[1]![0] + c[2]![0]) / 2 < 0, front = c[0]![2] > 0; line(c, front ? '额前' : '后脑', front ? '后脑' : '额前', `纬线${left ? '左' : '右'}半`) })
+  W.ear.curves.forEach((c, i) => { const side = c[0]![0] < 0 ? '左' : '右', k = i % 3, n = W.ear.names; line(c, side + n[k], side + n[k + 1], `${side}${n[k]}—${n[k + 1]}`) })
+  W.eyes.curves.forEach(c => { const side = c[0]![0] < 0 ? '左' : '右', [inner, outer, mid] = W.eyes.names as [string, string, string]
+    // each lid piece by its ends: 内眼角 → 外眼角 = 上眼睑, 外眼角 → 下眼睑中点 = 下眼睑外段, 下眼睑中点 → 内眼角 = 下眼睑内段
+    const isIn = (p: P3) => Math.abs(p[0]) < 0.35, isMid = (p: P3) => p[1] < -0.6, nm = (p: P3) => side + (isMid(p) ? mid : isIn(p) ? inner : outer)
+    const ends = [nm(c[0]!), nm(c[3]!)].map(s => s.slice(1)), piece = ends.includes(mid) ? (ends.includes(inner) ? '下眼睑内段' : '下眼睑外段') : '上眼睑'
+    line(c, nm(c[0]!), nm(c[3]!), side + piece) })
+  // a line's ends exactly on its points (two joints a hair apart became one point), the handles moved with them
+  for (const l of lns) for (const [e, h, id] of [[0, 1, l.a], [3, 2, l.b]] as const) { const p = pts.find(q => q.id === id)!.p, dv = [0, 1, 2].map(k => p[k]! - l.c[e]![k]!); l.c[e] = [...p]; l.c[h] = l.c[h]!.map((v, k) => v + dv[k]!) as P3 }
+  doc.points.push(...pts); doc.lines.push(...lns)
+}
+$('import').onclick = () => { snapshot(); importWire(); sel = { points: [], line: null }; changed() }
 const doUndo = () => { const s = undo.pop(); if (!s) return; doc = JSON.parse(s) as Doc; sel = { points: [], line: null }; changed() }
 $('undo').onclick = doUndo
 window.addEventListener('keydown', e => {
@@ -206,7 +248,7 @@ window.addEventListener('keydown', e => {
     if (sel.points.length) removePoints(sel.points); else { doc.lines = doc.lines.filter(l => l.id !== sel.line); sel.line = null } changed() }
 })
 for (const b of document.querySelectorAll<HTMLButtonElement>('button[data-v]')) b.onclick = () => { [yaw, pitch] = b.dataset.v!.split(',').map(Number) as [number, number]; draw() }
-for (const id of ['xray', 'wire']) $(id).addEventListener('change', draw)
+for (const id of ['xray', 'wire', 'lnames']) $(id).addEventListener('change', draw)
 $('save').onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(doc, null, 1)], { type: 'application/json' })); a.download = '头壳标注.json'; a.click(); URL.revokeObjectURL(a.href) }
 $('openBtn').onclick = () => $('open').click()
 $<HTMLInputElement>('open').onchange = async e => { const f = (e.target as HTMLInputElement).files?.[0]; if (!f) return; snapshot(); doc = JSON.parse(await f.text()) as Doc; sel = { points: [], line: null }; changed() }
@@ -230,6 +272,8 @@ fetch(vrmUrl).then(r => r.arrayBuffer()).then(b => {
   mesh = { pos: buf(new Float32Array(d.P.flat())), nor: buf(new Float32Array(d.N.flat())), idx: buf(idx, gl.ELEMENT_ARRAY_BUFFER), n: idx.length }
   nTri = d.skinTris.length / 3; TRI = new Float64Array(nTri * 9)
   for (let t = 0; t < nTri; t++) for (let k = 0; k < 3; k++) for (let j = 0; j < 3; j++) TRI[9 * t + 3 * k + j] = d.P[d.skinTris[3 * t + k]!]![j]!
+  const all = d.parts.flatMap(p => p.tris); ALL = new Float64Array(all.length * 3); all.forEach((v, i) => { for (let j = 0; j < 3; j++) ALL[3 * i + j] = d.P[v]![j]! })
+  if (!stored) importWire() // a first visit starts from the lines we have
   changed()
 })
 list(); draw()

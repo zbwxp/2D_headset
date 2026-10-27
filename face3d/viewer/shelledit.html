@@ -22,14 +22,14 @@ canvas{display:block;width:100%;height:100%;background:#fff;cursor:grab;touch-ac
 <div id="main">
 <div class="bar"><b id="view">转 0° · 俯仰 0°</b>
 <button data-v="0,0">正面</button><button data-v="45,0">45°</button><button data-v="90,0">侧面</button><button data-v="-90,0">另一侧</button><button data-v="180,0">背面</button><button data-v="0,60">从下往上</button><button data-v="0,-80">从上往下</button>
-<button id="link">连线（选两个点）</button><button id="undo">撤销</button>
+<button id="link">连线（选两个点）</button><button id="import">载入现有线框</button><button id="undo">撤销</button>
 <label><input id="xray" type="checkbox"> 透过头看背面的点线</label>
-<label><input id="wire" type="checkbox"> 参考线框</label>
+<label><input id="wire" type="checkbox"> 参考线框</label><label><input id="lnames" type="checkbox"> 线的名字（不勾只显示选中的那条）</label>
 <button id="save">保存文件</button><label><button id="openBtn">打开文件</button><input id="open" type="file" accept=".json" hidden></label></div>
 <div id="wrap"><canvas id="c"></canvas><div id="labels"></div></div>
 </div>
 <div id="side">
-<div id="help">拖动 = 转头，滚轮 = 缩放<br>双击头壳 = 加点；拖点 = 点贴着头壳滑<br>点一个点，再按住 Shift 点另一个 →「连线」<br>Delete = 删除选中的；Ctrl/⌘+Z = 撤销<br>自动存在浏览器里</div>
+<div id="help">拖动 = 转头，滚轮 = 缩放<br>双击头壳 = 加点；拖点 = 点贴着头壳滑<br>点一个点，再按住 Shift 点另一个 →「连线」<br>点一条线 = 显示它的两个手柄（橙），拖手柄改弯度<br>左 / 右 = 正面看画面的左 / 右<br>Delete = 删除选中的；Ctrl/⌘+Z = 撤销<br>自动存在浏览器里</div>
 <h3>点</h3><div id="points"></div>
 <h3>线</h3><div id="lines"></div>
 <div id="status" style="color:#777;font-size:11px;margin-top:8px"></div>
