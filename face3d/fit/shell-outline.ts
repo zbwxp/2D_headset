@@ -80,7 +80,8 @@ const neckSide = (y: number, s: number): P3 => press([s * 0.6, y, -0.05])
 type Chain = P3[]
 const sample = (c: P3[], n = 40): Chain => Array.from({ length: n + 1 }, (_, i) => cubic(c, i / n))
 const join = (...cs: Chain[]): Chain => cs.flatMap((c, i) => (i ? c.slice(1) : c))
-const lens = (c: Chain) => { const L = [0]; for (let i = 1; i < c.length; i++) L.push(L[i - 1]! + len(sub(c[i]!, c[i - 1]!))); return L }
+const LENS = new WeakMap<Chain, number[]>()
+const lens = (c: Chain) => { let L = LENS.get(c); if (!L) { L = [0]; for (let i = 1; i < c.length; i++) L.push(L[i - 1]! + len(sub(c[i]!, c[i - 1]!))); LENS.set(c, L) } return L }
 function at(c: Chain, u: number): P3 { const L = lens(c), s = u * L[L.length - 1]!; let i = 1; while (i < L.length - 1 && L[i]! < s) i++; const f = (s - L[i - 1]!) / ((L[i]! - L[i - 1]!) || 1); return mix(c[i - 1]!, c[i]!, Math.max(0, Math.min(1, f))) }
 const nearestIdx = (c: Chain, q: P3) => c.reduce((m, p, i) => (len(sub(p, q)) < len(sub(c[m]!, q)) ? i : m), 0)
 
@@ -134,6 +135,20 @@ const mirrorNet = (n: Net): Net => { const m = (c: Chain): Chain => c.map(p => [
     cols: n.cols.map(cs => cs.map(c => c && m(c))), rails: n.rails.map(r => ({ ...r, pieces: r.pieces.map(pc => ({ ...pc, c: m(pc.c) })) })) } }
 // and each net outlines whichever screen side it comes to: both edges (bowen 1793114547: turned to the back, a net fixed to
 // one screen side outlined the wrong one); a line inside the head on a side is never the outer one there
+/** the same net crosswise (bowen 1793115000, pitch): its columns become the rails (tangent points sliding up and down them,
+ * for the outline's top and bottom on the screen) and its rails the columns (their pieces give the bend between); the top
+ * and bottom ends become a column each (the straight step between the columns' own ends) */
+function transpose(n: Net): Net {
+  const R = n.rails.length, hasTop = !!n.top, nC = n.cols.length, stretches = (hasTop ? 1 : 0) + R - 1 + (n.bottom ? 1 : 0)
+  const endOf = (i: number, first: boolean): P3 | null => { const cs = n.cols[i]!.filter(Boolean) as Chain[]; if (!cs.length) return null; return first ? cs[0]![0]! : cs[cs.length - 1]![cs[cs.length - 1]!.length - 1]! }
+  const newCols: (Chain | null)[][] = []
+  if (hasTop) newCols.push(Array.from({ length: nC - 1 }, (_, m) => { const a = endOf(m, true), b = endOf(m + 1, true); return a && b ? [a, b] : null }))
+  for (const r of n.rails) newCols.push(Array.from({ length: nC - 1 }, (_, m) => r.pieces.find(pc => pc.from === m)?.c ?? null))
+  if (n.bottom) newCols.push(Array.from({ length: nC - 1 }, (_, m) => { const a = endOf(m, false), b = endOf(m + 1, false); return a && b ? [a, b] : null }))
+  void stretches
+  const rails = n.cols.map((cs, i) => ({ name: `竖线 ${i}`, pieces: cs.map((c, k) => (c ? { c, from: k } : null)).filter(Boolean) as { c: Chain; from: number }[] })).filter(r => r.pieces.length)
+  return { name: n.name, edge: n.edge, cols: newCols, rails }
+}
 const BASE = [face, back, neck], KINDS = [...BASE, ...BASE.map(mirrorNet)].map((n, i) => ({ n, kind: i % BASE.length }))
 const NETS = KINDS.flatMap(({ n, kind }) => ([1, -1] as const).map(edge => Object.assign({ ...n, edge }, { kind })))
 const KIND = (n: Net) => (n as Net & { kind: number }).kind
@@ -155,8 +170,8 @@ function tangents(r: Net['rails'][number], X: (p: P3) => number) {
   return keep.filter(({ i }, k) => k === 0 || i - keep[k - 1]!.i > Wn).map(({ q }) => q)
 }
 /** one view, one net: its outline lines (one per tangent point, in order across the rails) */
-function outlines(net: Net, yaw: number, pitch = 0) {
-  const v = { yaw, pitch }, X = (p: P3) => net.edge * rotate(p, v)[0], tan = net.rails.map(r => tangents(r, X))
+function outlines(net: Net, yaw: number, pitch = 0, axis: 0 | 1 = 0) {
+  const v = { yaw, pitch }, X = (p: P3) => net.edge * rotate(p, v)[axis], tan = net.rails.map(r => tangents(r, X))
   const n = Math.max(...tan.map(t => t.length)), lines: { tan: { p: P3; g: number }[]; pts: P3[] }[] = []
   for (let bI = 0; bI < n; bI++) {
     const pick = tan.map(t => t[Math.min(bI, t.length - 1)]!)
@@ -164,8 +179,9 @@ function outlines(net: Net, yaw: number, pitch = 0) {
     const pts: P3[] = []
     for (let k = 0; k < ends.length - 1; k++) {
       const top = ends[k]!, bot = ends[k + 1]!, have = net.cols.map((c, i) => (c[k] ? i : -1)).filter(i => i >= 0), lo = Math.min(...have), hi = Math.max(...have)
-      const base = (u: number) => { const g = Math.max(lo, Math.min(hi, top.g + (bot.g - top.g) * u)), i = Math.max(lo, Math.min(hi - 1, Math.floor(g))), w = hi === lo ? 0 : g - i
-        return w <= 0 ? at(net.cols[i]![k]!, u) : mix(at(net.cols[i]![k]!, u), at(net.cols[i + 1]![k]!, u), w) }
+      // between the two nearest columns that reach this stretch (a column missing here is stepped over)
+      const base = (u: number) => { const g = Math.max(lo, Math.min(hi, top.g + (bot.g - top.g) * u)), i0 = Math.max(...have.filter(i => i <= g)), i1 = Math.min(...have.filter(i => i >= g)), w = i1 === i0 ? 0 : (g - i0) / (i1 - i0)
+        return w <= 0 ? at(net.cols[i0]![k]!, u) : mix(at(net.cols[i0]![k]!, u), at(net.cols[i1]![k]!, u), w) }
       const dTop = top.p ? sub(top.p, base(0)) : [0, 0, 0] as P3, dBot = bot.p ? sub(bot.p, base(1)) : [0, 0, 0] as P3
       for (let j = k ? 1 : 0; j <= 60; j++) { const u = j / 60; pts.push(add(base(u), add(mix([0, 0, 0], dTop, 1 - u), mix([0, 0, 0], dBot, u)))) }
     }
@@ -257,4 +273,40 @@ if (process.env.EXPORT) {
     autos: autos.map(a => ({ name: a.name, c: r4(a.c) })), detail: DETAIL.map(l => ({ name: l.name, c: l.c })), wire: doc.lines.map(l => ({ name: l.name, c: l.c })),
   }))
   console.log('exported', process.env.EXPORT)
+}
+// ---- every direction (bowen 1793115000): the outline lines across (rails, the screen's sides) and up and down (the nets
+// crosswise, the screen's top and bottom) together; round the head's middle on the screen, in every direction the outer
+// line shows; compared with VRoid's outline the same way (distance from the middle, per degree) ----
+const TNETS = KINDS.flatMap(({ n, kind }) => { const t = transpose(n); return ([1, -1] as const).map(edge => Object.assign({ ...t, edge }, { kind })) })
+function polar(yaw: number, pitch: number) {
+  const v = { yaw, pitch }, ras = rasterHead(D, v, F, new Uint8ClampedArray(W * W * 4)), inside = (x: number, y: number) => { const i = Math.round(F.cx + x * F.S), j = Math.round(F.cy - y * F.S); return i >= 0 && j >= 0 && i < W && j < W && ras.zb[j * W + i]! > -Infinity }
+  const c0 = rotate([0, -0.45, 0], v), cx = c0[0], cy = c0[1], A = 360
+  // VRoid: per degree the farthest inside point along the ray (the outline), and whether it is the neck's cut (bottom rows)
+  let yLow = Infinity; for (let j = W - 1; j >= 0; j--) { let any = false; for (let i = 0; i < W; i++) if (ras.zb[j * W + i]! > -Infinity) { any = true; break } if (any) { yLow = (F.cy - (j + 0.5)) / F.S; break } }
+  const truth = Array.from({ length: A }, (_, a) => { const t = (a * Math.PI) / 180, dx = Math.cos(t), dy = Math.sin(t); let r = 0; for (let s = 0; s < 3; s += 0.004) if (inside(cx + dx * s, cy + dy * s)) r = s; return { r, cut: cy + dy * r < yLow + 0.06 } })
+  const lines = [...NETS.map(n => ({ n, axis: 0 as const })), ...TNETS.map(n => ({ n, axis: 1 as const }))].flatMap(({ n, axis }) => outlines(n, yaw, pitch, axis).map(l => ({ kind: KIND(n), axis, tan: l.tan, pts: l.pts, q: l.pts.map(p => rotate(p, v)) })))
+  // the built outline per degree: the farthest crossing of any line with the ray
+  const best = new Array<number>(A).fill(-Infinity)
+  const angR = (q: readonly number[]) => ({ a: ((Math.atan2(q[1]! - cy, q[0]! - cx) * 180) / Math.PI + 360) % 360, r: Math.hypot(q[0]! - cx, q[1]! - cy) })
+  for (const L of lines) for (let i = 0; i + 1 < L.q.length; i++) { const p = angR(L.q[i]!), q = angR(L.q[i + 1]!); let da = q.a - p.a; if (da > 180) da -= 360; if (da < -180) da += 360
+    const steps = Math.max(1, Math.ceil(Math.abs(da))); for (let s = 0; s <= steps; s++) { const f = s / steps, a = Math.round(p.a + da * f + 360) % 360, r = p.r + (q.r - p.r) * f; if (r > best[a]!) best[a] = r } }
+  const d = truth.map((t, a) => (t.cut || !Number.isFinite(best[a]!) ? NaN : Math.abs(t.r - best[a]!))).filter(Number.isFinite).sort((x, y) => x - y)
+  const shown = (q: readonly number[]) => { const { a, r } = angR(q); return r >= best[Math.round(a) % 360]! - 0.01 }
+  return { lines, shown, med: d[Math.floor(d.length / 2)] ?? NaN, p90: d[Math.floor(d.length * 0.9)] ?? NaN, max: d[d.length - 1] ?? NaN, truth, cx, cy }
+}
+if (process.env.POLAR) {
+  const Vs = (process.env.POLAR === '1' ? '0:0,45:0,90:0,0:30,45:30,90:30,0:-30,45:-30,90:-30,0:-60,45:-60,90:-60,0:60,45:60,90:60,135:-30' : process.env.POLAR).split(',').map(t => t.split(':').map(Number) as [number, number])
+  const C2 = 4; let sv = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${C2 * Pn} ${C2 * Pn}" width="${C2 * Pn}" height="${C2 * Pn}" font-family="system-ui"><rect width="100%" height="100%" fill="#fff"/>`
+  Vs.forEach(([yaw, pitch], k) => {
+    const R = polar(yaw, pitch), v = { yaw, pitch }, ox = (k % C2) * Pn, oy = Math.floor(k / C2) * Pn, X = (x: number) => ox + F.cx + x * F.S, Y = (y: number) => oy + F.cy - y * F.S
+    const pl = (pts: (readonly number[])[], st: string) => `<polyline fill="none" ${st} points="${pts.map(p => `${X(p[0]!).toFixed(1)},${Y(p[1]!).toFixed(1)}`).join(' ')}"/>`
+    sv += `<rect x="${ox}" y="${oy}" width="${Pn}" height="${Pn}" fill="none" stroke="#ddd"/>`
+    for (const l of doc.lines) sv += pl(sample(l.c, 60).map(p => rotate(p, v)), 'stroke="#e3b5b5" stroke-width="0.6"')
+    sv += pl([...R.truth.map((t, a) => [R.cx + Math.cos((a * Math.PI) / 180) * t.r, R.cy + Math.sin((a * Math.PI) / 180) * t.r]), [R.cx + R.truth[0]!.r, R.cy]], 'stroke="#111" stroke-width="1"')
+    for (const L of R.lines) { let run: (readonly number[])[] = []; const flush = () => { if (run.length > 1) sv += pl(run, `stroke="${COLOR[L.kind]}" stroke-width="2.2"${L.axis ? ' stroke-opacity="0.85"' : ''}`); run = [] }
+      for (const q of L.q) { if (R.shown(q)) run.push(q); else flush() } flush() }
+    sv += `<text x="${ox + 8}" y="${oy + 20}" font-size="15">转 ${yaw}°${pitch ? (pitch > 0 ? ' 仰' : ' 俯') + Math.abs(pitch) + '°' : ''}</text><text x="${ox + 8}" y="${oy + Pn - 10}" font-size="12" fill="#333">绕一圈 vs 真轮廓：中位 ${R.med.toFixed(3)} · 九成 ${R.p90.toFixed(3)} · 最大 ${R.max.toFixed(3)}</text>`
+    console.log(`${yaw}:${pitch}`, 'polar', [R.med, R.p90, R.max].map(n => n.toFixed(3)).join('/'))
+  })
+  writeFileSync(`face3d/viewer/ref-shell/outline-${file.replace(/\.json$/, '').replace(/.*\//, '')}-polar.svg`, sv + '</svg>')
 }
