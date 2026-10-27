@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><title>转头轮廓</title>
+<style>body{margin:0;font:13px system-ui;background:#fafaf8;display:flex;flex-direction:column;height:100vh}.bar{padding:5px 10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-bottom:1px solid #e4e4e0}
+#wrap{flex:1;min-height:0;position:relative;overflow:hidden}canvas{display:block;width:100%;height:100%;background:#fff;cursor:grab;touch-action:none}
+#labels{position:absolute;left:0;top:0;pointer-events:none}#labels div{position:absolute;font-size:11px;color:#7a3e00;background:rgba(255,255,255,.75);padding:0 2px;white-space:nowrap}</style></head>
+<body>
+<div class="bar"><b id="view">看：转 0°</b> 拖动 = 换角度看，滚轮缩放
+<button data-v="0,0">正面</button><button data-v="45,0">45°</button><button data-v="90,0">侧面</button><button data-v="180,0">背面</button><button data-v="0,-80">从上往下</button>
+<button id="follow">看的角度 = 轮廓的角度</button></div>
+<div class="bar">轮廓：转 <input id="yaw" type="range" min="0" max="90" step="5" value="45"> <b id="yawv">45°</b>
+<label><input id="all" type="checkbox"> 所有角度（每 15°）</label>
+<label><input id="raw" type="checkbox"> VRoid 原始轮廓（灰）</label>
+<label><input id="lines" type="checkbox" checked> 你的线框</label>
+<label><input id="names" type="checkbox" checked> 分段点名字</label>
+<label><input id="head" type="checkbox" checked> VRoid 头</label></div>
+<div class="bar" style="color:#666">每个转头角度：VRoid 头在这个角度的真轮廓（贴在模型上），在它和你画的横线（额头圈、头顶圈、太阳穴层、颧骨层、下颌底、颈上圈、耳后颈、中线）相交的地方分段，每段一条贝塞尔。耳朵是单独的线，轮廓在耳朵处跨过去。</div>
+<div id="wrap"><canvas id="c"></canvas><div id="labels"></div></div>
+<script type="module" src="./vrmyaw.ts"></script></body></html>
