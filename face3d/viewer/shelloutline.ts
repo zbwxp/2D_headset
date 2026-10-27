@@ -153,6 +153,26 @@ function fitOutline(v: { yaw: number; pitch: number }) {
   if (seq.length >= 2) { let i0 = 0; for (const k of [...cuts, seq.length - 1]) { if (k > i0) { if (cuts.includes(k)) tans[k] = t2(seq[k - 1]!, seq[k]!); if (cuts.includes(i0 - 1)) tans[i0] = t2(seq[i0]!, seq[i0 + 1]!); fitRun(seq, tans, i0, k, pieces) } i0 = k + 1 } }
   return { pieces, tan: tan.map(t => t.q), cap: capQ }
 }
+// ---- the face side's outline below the cap, by bowen's rule (1793121297 「yaw 0 度时靠耳朵到下巴那根脸轮廓0度时候的投影，yaw
+// 30度时太阳穴，颧骨那根线在30度时候的投影。在0-30度之间是这两个角度的线的加权混合」): two chains of his lines from the forehead
+// ring to 下巴 — the face contour (交点2 → 上耳根 → 下耳根 → 下巴) and the 太阳穴·颧骨 line (交点1 → 太阳穴 → 颧骨 → 下巴) — piece
+// for piece (交点2↔交点1, 上耳根↔太阳穴, 下耳根↔颧骨), the cubics' control points mixed by the turn / 30°; the face side only
+// (screen right for a turn > 0, both sides facing front) ----
+const wireByName = (n: string) => D.wire.find(l => l.name === n)!.c
+/** pieces joined end to start, each turned the way that joins */
+function chainOf(names: string[]): P3[][] {
+  const cs = names.map(n => wireByName(n).map(p => [...p] as P3)), d = (a: P3, b: P3) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])
+  const first = cs[0]!, second = cs[1]!; if (Math.min(d(first[0]!, second[0]!), d(first[0]!, second[3]!)) < Math.min(d(first[3]!, second[0]!), d(first[3]!, second[3]!))) first.reverse()
+  for (let i = 1; i < cs.length; i++) if (d(cs[i]![3]!, cs[i - 1]![3]!) < d(cs[i]![0]!, cs[i - 1]![3]!)) cs[i]!.reverse()
+  return cs
+}
+const RULE = ([1, -1] as const).map(side => { const pre = side > 0 ? '右' : ''; return { side, contour: chainOf([`${pre}线5前`, `${pre}线2`, `${pre}线4`]), temple: chainOf([`${pre}线2后`, `${pre}线1`, `${pre}线3`]) } })
+/** the rule's line for this turn on one side, or null outside 0–30° toward that side */
+function ruleLine(side: 1 | -1, turn: number): P3[][] | null {
+  const t = side * turn; if (t < -1e-9 || t > 30 + 1e-9) return null
+  const w = t / 30, r = RULE.find(x => x.side === side)!
+  return r.contour.map((c, i) => c.map((p, k) => [0, 1, 2].map(j => p[j]! + (r.temple[i]![k]![j]! - p[j]!) * w) as P3))
+}
 const EARS = D.detail.filter(l => /耳/.test(l.name)).map(l => sample(l.c, 60))
 
 // ---- camera: head space → clip ----
@@ -216,7 +236,13 @@ function draw() {
     drawTris(P, C) }
   // the outline: every net, both screen sides; per side the outer line shows, the covered parts faint
   gl.disable(gl.DEPTH_TEST)
-  if (on('outline') && !on('oldnet')) {
+  if (on('outline') && on('rule')) { // bowen's rule for the face side, 0–30°, and the cap
+    const v = { yaw, pitch }, P: number[] = [], C: number[] = []
+    for (const side of [1, -1] as const) { const L = ruleLine(side, yaw); if (L) for (const c of L) band(sample(c, 40), 3, [...COLORS[0]!, 1], P, C) }
+    for (const r of capOutline(v)) band(r, 3, [...COLORS[4]!, 1], P, C)
+    drawTris(P, C)
+  }
+  if (on('outline') && !on('oldnet') && !on('rule')) {
     const v = { yaw, pitch }, fo = fitOutline(v), s = S0 * zoom, a = aspect(), P: number[] = [], C: number[] = [], T: number[] = [], TC: number[] = []
     const toClip = (q: number[]) => [q[0]! * s * a, q[1]! * s + CY, 0]
     const band2 = (q: number[][], px: number, rgba: number[]) => { const cs = q.map(toClip), wx = (px / cv.width) * window.devicePixelRatio, wy = (px / cv.height) * window.devicePixelRatio
@@ -228,7 +254,7 @@ function draw() {
     if (on('tan')) for (const t of fo.tan) { T.push(...toClip(t)); TC.push(0.88, 0.54, 0.17, 1) }
     drawTris(P, C); drawTris(T, TC, gl.POINTS)
   }
-  if (on('outline') && on('oldnet')) {
+  if (on('outline') && on('oldnet') && !on('rule')) {
     const v = { yaw, pitch }, all: { kind: number; pts: P3[]; scr: number[][]; tan: P3[] }[] = []
     const push = (kind: number, pts: P3[], tan: P3[]) => all.push({ kind, pts, scr: pts.map(p => rotate(p, v) as unknown as number[]), tan })
     // tangent points in eight screen directions, the nets both ways (as in shell-outline.ts)
