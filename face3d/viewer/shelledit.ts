@@ -99,8 +99,10 @@ function shellNormal(p: P3, r = 0.08): P3 {
     n[0]! += cx; n[1]! += cy; n[2]! += cz }
   return norm(n.every(v => v === 0) ? [p[0] - C[0], p[1] - C[1], p[2] - C[2]] : n)
 }
-/** how far the line gets from the shell (the farthest of its samples from the nearest skin) */
-function lift(c: P3[], n = 16) { let m = 0; for (let i = 1; i < n; i++) { const q = cubic(c, i / n), s = nearestOnSkin(q); m = Math.max(m, Math.hypot(q[0] - s[0], q[1] - s[1], q[2] - s[2])) } return m }
+/** how far a point is off the shell (to the nearest skin) */
+const off = (q: P3) => { const s = nearestOnSkin(q); return Math.hypot(q[0] - s[0], q[1] - s[1], q[2] - s[2]) }
+/** how far the line gets from the shell (the farthest of its samples) */
+function lift(c: P3[], n = 16) { let m = 0; for (let i = 1; i < n; i++) m = Math.max(m, off(cubic(c, i / n))); return m }
 // pressing onto the shell: along the ray from the head's centre, the outermost skin
 const C: P3 = [0, -0.3, 0]
 const norm = (v: number[]): P3 => { const m = Math.hypot(v[0]!, v[1]!, v[2]!) || 1; return [v[0]! / m, v[1]! / m, v[2]! / m] }
@@ -307,16 +309,12 @@ function rename(p: { name: string }, at: P3) {
   let done = false; const finish = (keep: boolean) => { if (done) return; done = true; editing = false; const v = box.value.trim(); box.remove(); if (keep && v && v !== p.name) { snapshot(); p.name = v; changed() } }
   box.onkeydown = e => { e.stopPropagation(); if (e.isComposing) return; if (e.key === 'Enter') finish(true); if (e.key === 'Escape') finish(false) }; box.onblur = () => finish(true)
 }
-/** the selected line pressed close to the shell: both handles keep their directions, their lengths are chosen so the line lies
- * nearest the shell (the samples' distances to it, squared, least) */
-function snug(L: Ln) {
-  const E0 = L.c[0]!, E3 = L.c[3]!, d1 = [0, 1, 2].map(k => L.c[1]![k]! - E0[k]!), d2 = [0, 1, 2].map(k => L.c[2]![k]! - E3[k]!)
-  const at = (a: number, b: number): P3[] => [E0, [0, 1, 2].map(k => E0[k]! + a * d1[k]!) as P3, [0, 1, 2].map(k => E3[k]! + b * d2[k]!) as P3, E3]
-  const cost = (a: number, b: number) => { const c = at(a, b); let e = 0; for (let i = 1; i < 12; i++) { const q = cubic(c, i / 12), p = nearestOnSkin(q); e += (q[0] - p[0]) ** 2 + (q[1] - p[1]) ** 2 + (q[2] - p[2]) ** 2 } return e }
-  let a = 1, b = 1, best = cost(a, b)
-  for (const step of [0.4, 0.2, 0.1, 0.05, 0.02]) for (let moved = true; moved;) { moved = false
-    for (const [da, db] of [[step, 0], [-step, 0], [0, step], [0, -step]] as const) { const na = Math.max(0.02, a + da), nb = Math.max(0.02, b + db), e = cost(na, nb); if (e < best - 1e-12) { best = e; a = na; b = nb; moved = true } } }
-  L.c = at(a, b); L.own = true
+/** the selected line pressed onto the shell (like a shrink-wrap): its own course kept, each sample moved to the nearest
+ * skin, then one cubic through those (ends fixed), a few times over. bowen 1793109786: the first try kept the handle
+ * directions and only changed their lengths, and the handles shrank into their ends */
+function snug(L: Ln, rounds = 3) {
+  for (let r = 0; r < rounds; r++) { const q = Array.from({ length: 25 }, (_, i) => (i === 0 ? L.c[0]! : i === 24 ? L.c[3]! : nearestOnSkin(cubic(L.c, i / 24)))); L.c = fitCubic(q) }
+  L.own = true
 }
 $('snug').onclick = () => { const L = doc.lines.find(l => l.id === sel.line); if (!L) { alert('先点一条线'); return } snapshot(); snug(L); changed() }
 $('link').onclick = () => {
@@ -368,7 +366,7 @@ $('openBtn').onclick = () => $('open').click()
 $<HTMLInputElement>('open').onchange = async e => { const f = (e.target as HTMLInputElement).files?.[0]; if (!f) return; snapshot(); doc = JSON.parse(await f.text()) as Doc; sel = { points: [], line: null }; changed() }
 window.addEventListener('resize', draw)
 window.addEventListener('keyup', e => { if (e.key === ' ') { space = false; cursor() } })
-;(window as unknown as { __shell: unknown }).__shell = { view: (y: number, p: number, z?: number) => { yaw = y; pitch = p; if (z) { zoom = z; panX = 0; panY = 0 } draw() }, doc: () => doc, sel: () => sel, nudge, sight, hit, hug, changed: () => changed(), set: (d: Doc) => { doc = d; changed() } }
+;(window as unknown as { __shell: unknown }).__shell = { view: (y: number, p: number, z?: number) => { yaw = y; pitch = p; if (z) { zoom = z; panX = 0; panY = 0 } draw() }, doc: () => doc, sel: () => sel, nudge, snug, lift, off, nearestOnSkin, sight, hit, hug, changed: () => changed(), set: (d: Doc) => { doc = d; changed() } }
 
 // the neck as well (bowen 1793106912 「颈部也都给出来」): the skin kept down to NECK, but in the usual head space (the one every
 // other line here and in vrm-wire.json is in): the same raw vertices loaded both ways, matched at the crown and the nose tip
