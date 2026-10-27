@@ -2,6 +2,7 @@
 // latitude (the forehead ring, 2 cubics), from face3d/fit/vrm-wire.ts → vrm-wire.json; drag to turn both together. Drawing only.
 import vrmUrl from '../fit/ref/test.vrm?url'
 import wire from './vrm-wire.json'
+import clusterData from './vrm-clusters.json'
 import { loadVrmHead } from '../mesh/vrmhead'
 import { rotate } from '../src/view'
 
@@ -62,6 +63,9 @@ function draw() {
   if ($<HTMLInputElement>('raw').checked) lines(r.pos, r.col, gl.LINES)
   lines(w.pos, w.col, gl.LINES)
   if ($<HTMLInputElement>('joints').checked) lines(J.flat(), J.flatMap(() => [0, 0, 0]), gl.POINTS)
+  // the crossing clusters for reference (bowen draws on them): orange fans, blue many-angle clumps
+  if ($<HTMLInputElement>('cl').checked) { const cl = (clusterData as unknown as { clusters: { p: number[]; n: number; yaws: number[] }[] }).clusters.filter(c => c.n >= 40)
+    lines(cl.flatMap(c => c.p), cl.flatMap(c => (c.yaws.length <= 2 ? [0.95, 0.6, 0.3] : [0.55, 0.7, 0.95])), gl.POINTS) }
   gl.viewport(0, 0, half, H)
   // joint names on the right panel
   const L = $('labels'); L.innerHTML = ''
@@ -76,7 +80,7 @@ cv.onpointerup = cv.onpointercancel = () => { drag = null; cv.style.cursor = 'gr
 cv.onwheel = e => { e.preventDefault(); zoom = Math.max(0.4, Math.min(4, zoom * Math.exp(-e.deltaY * 0.001))); draw() }
 for (const b of document.querySelectorAll<HTMLButtonElement>('button[data-v]')) b.onclick = () => { [yaw, pitch] = b.dataset.v!.split(',').map(Number) as [number, number]; draw() }
 document.body.addEventListener('change', draw)
-;(window as unknown as { __view: (y: number, p: number) => void }).__view = (y, p) => { yaw = y; pitch = p; draw() }
+;(window as unknown as { __view: (y: number, p: number, z?: number) => void }).__view = (y, p, z) => { yaw = y; pitch = p; if (z) zoom = z; draw() }
 $('status').textContent = `经线 9 条，整体误差 ${Wd.meridian.rms}（头球半径 = 1）· 纬线 2 条，误差 ${Wd.latitude.rms}（橘黄交点到它的中位距离 ${Wd.latitude.orangeDistance.median}）· 眼眶每边 3 条，误差 ${Wd.eyes.rms} · 耳朵每边 3 条，误差 ${Wd.ear.rms}（蓝色交点到耳轮 ${Wd.ear.clusterDistance.median}）`
 fetch(vrmUrl).then(r => r.arrayBuffer()).then(b => {
   const d = loadVrmHead(b), idx = new Uint32Array(d.parts.flatMap(p => p.tris))

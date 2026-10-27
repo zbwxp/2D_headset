@@ -4,7 +4,7 @@
 <body>
 <div class="bar"><b id="view">转 0° · 俯仰 0°</b> 拖动画布转头 / 俯仰，滚轮缩放
 <button data-v="0,0">正面</button><button data-v="45,0">45°</button><button data-v="90,0">侧面</button><button data-v="0,60">从下往上</button><button data-v="0,-80">从上往下</button><button data-v="35,20">斜上</button>
-<label><input id="onHead" type="checkbox" checked> 线框也画在左边头上</label> <label><input id="raw" type="checkbox"> 原始截线（灰）</label> <label><input id="joints" type="checkbox" checked> 接点</label></div>
+<label><input id="onHead" type="checkbox" checked> 线框也画在左边头上</label> <label><input id="raw" type="checkbox"> 原始截线（灰）</label> <label><input id="joints" type="checkbox" checked> 接点</label> <label><input id="cl" type="checkbox"> 交点蔟（参考）</label></div>
 <div class="bar" id="status" style="color:#555"></div>
 <div class="bar" style="color:#555">左：VRoid 头（带脖子）　右：极简线框 = 经线（红，对称面截线，9 条贝塞尔）+ 纬线（橘，额头那一圈 = 从正上方看的外轮廓，2 条贝塞尔）+ 耳朵（绿，每边 3 条：上耳根 → 耳尖 → 耳垂 → 下耳根，不闭合）+ 眼眶（紫，皮肤在眼睛处开口的边，每边 3 条：上眼睑、下眼睑两段）</div>
 <div id="wrap"><canvas id="c" width="1400" height="700"></canvas><div id="labels"></div></div>
