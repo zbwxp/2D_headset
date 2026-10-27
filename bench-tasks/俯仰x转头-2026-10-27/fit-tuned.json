@@ -1,0 +1,78 @@
+{
+ "20-仰45转0-拟合yaw0pitch20.5.近2远3.耳朵骨线.json": {
+  "eyes": {
+   "yaw": 0,
+   "pitch": 39.5,
+   "rms": 1.1,
+   "scale": 1.056
+  },
+  "all": {
+   "yaw": 0.5,
+   "pitch": 42.25,
+   "rms": 1.74,
+   "scale": 1.067
+  },
+  "atEyeAngle": {
+   "eyes": 1.1,
+   "outline": 1.62,
+   "ear": 4.96
+  }
+ },
+ "21-仰45转30-拟合yaw38.5pitch13.近2远3.耳朵骨线.json": {
+  "eyes": {
+   "yaw": 40.75,
+   "pitch": 0.75,
+   "rms": 2.28,
+   "scale": 0.877
+  },
+  "all": {
+   "yaw": 43.75,
+   "pitch": 15.75,
+   "rms": 5.81,
+   "scale": 0.976
+  },
+  "atEyeAngle": {
+   "eyes": 2.28,
+   "outline": 13.43,
+   "ear": 25.52
+  }
+ },
+ "30-俯45转0-拟合yaw0pitch-37.5.近2远3.耳朵骨线.json": {
+  "eyes": {
+   "yaw": 0,
+   "pitch": -44.5,
+   "rms": 0.68,
+   "scale": 1.022
+  },
+  "all": {
+   "yaw": 0,
+   "pitch": -40.25,
+   "rms": 1.87,
+   "scale": 0.968
+  },
+  "atEyeAngle": {
+   "eyes": 0.68,
+   "outline": 5.36,
+   "ear": 7.04
+  }
+ },
+ "31-俯45转30-拟合yaw30pitch-38.5.近2远3.耳朵骨线.json": {
+  "eyes": {
+   "yaw": 35.75,
+   "pitch": -13,
+   "rms": 1.79,
+   "scale": 0.868
+  },
+  "all": {
+   "yaw": 37,
+   "pitch": -23,
+   "rms": 5.08,
+   "scale": 0.96
+  },
+  "atEyeAngle": {
+   "eyes": 1.79,
+   "outline": 14.74,
+   "ear": 12.61
+  }
+ }
+}
