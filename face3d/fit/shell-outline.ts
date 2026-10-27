@@ -128,6 +128,25 @@ const neck: Net = { name: '颈前那一侧', edge: 1,
   cols: [[sample(run('颈前—下巴底拐点', '下巴底拐点'))], [auto('右耳后根→颈侧底', hugLink(P('右耳后根'), nsR))]],
   rails: [{ name: '下颌底', pieces: [{ c: auto('下巴底拐点→右耳后根（下颌底）', hugLink(P('下巴底拐点'), P('右耳后根'), 30, nearestV)), from: 0 }] },
     { name: '颈根（前）', pieces: [{ c: auto('颈前→颈侧底', hugLink(P('颈前'), nsR)), from: 0 }] }] }
+// a ring round the top of the head (bowen 1793117292 「头顶先补一圈，让bezier曲线扭转尽量简单，尽量水平的圈」): level at
+// height Y_TOP (halfway between the crown and the forehead ring), one cubic between each two columns, every point at that
+// height (pressed straight out from the head's upright axis), so the pieces lie flat and do not twist
+const Y_TOP = (P('颅顶')[1] + P('额前')[1]) / 2
+function ringPiece(a: P3, b2: P3, y: number, n = 24): Chain {
+  const c: P3 = [0, y, -0.05], ang = (p: P3) => Math.atan2(p[0] - c[0], p[2] - c[2]), a0 = ang(a); let da = ang(b2) - a0; if (da > Math.PI) da -= 2 * Math.PI; if (da < -Math.PI) da += 2 * Math.PI
+  const path = Array.from({ length: n + 1 }, (_, i) => (i === 0 ? a : i === n ? b2 : (farHit(c, [Math.sin(a0 + (da * i) / n), 0, Math.cos(a0 + (da * i) / n)]) ?? mix(a, b2, i / n))))
+  return sample(fitCubic(path))
+}
+function addRing(net: Net, y: number, name: string) {
+  const cross = net.cols.map(cs => { const c0 = cs[0]; if (!c0) return null; const [up, low] = cutY(c0, y); cs.splice(0, 1, up, low); return up[up.length - 1]! })
+  // a crossing exactly at height y on each column (the sample just past it, levelled)
+  const pts = cross.map(p => (p ? ([p[0], y, p[2]] as P3) : null))
+  net.cols.forEach((cs, i) => { if (!pts[i]) cs.splice(0, 0, null); else { cs[0]![cs[0]!.length - 1] = pts[i]!; cs[1]![0] = pts[i]! } })
+  const pieces: { c: Chain; from: number }[] = []
+  for (let i = 0; i + 1 < pts.length; i++) if (pts[i] && pts[i + 1]) pieces.push({ from: i, c: auto(`${name} ${i + 1}`, ringPiece(pts[i]!, pts[i + 1]!, y)) })
+  net.rails.splice(0, 0, { name, pieces })
+}
+addRing(face, Y_TOP, '头顶那圈'); addRing(back, Y_TOP, '头顶那圈（后）')
 // every net on both sides (bowen 1793114494: at 0° the two sides came out different — the right had only the face's net, the
 // left only the back's): each mirrored across the midline, outlining the other screen side; each screen side shows the outer
 const mirrorNet = (n: Net): Net => { const m = (c: Chain): Chain => c.map(p => [-p[0], p[1], p[2]] as P3)
