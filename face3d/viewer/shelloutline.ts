@@ -55,7 +55,10 @@ function outlines(net: NetJ, d: readonly [number, number], v: { yaw: number; pit
       const top = ends[k]!, bot = ends[k + 1]!, have = net.cols.map((c, i) => (c[k] ? i : -1)).filter(i => i >= 0), lo = Math.min(...have), hi = Math.max(...have)
       // a stretch whose ends sit beyond the columns it has (a tangent point far down one line, the next line not reaching
       // that far: bowen 1793117610 「转45 俯60 的后脑绿色线为什么会飞出去」) is not bridged: the line stops there
-      if (!have.length || top.g < lo - 0.01 || top.g > hi + 0.01 || bot.g < lo - 0.01 || bot.g > hi + 0.01) { if (pts.length > 1) lines.push({ tan: pick, pts }); pts = []; continue }
+      // nor a stretch whose two tangent points sit more than one cell apart across the lines (bowen 1793117971 「转90 仰30 的鼻子
+      // 那部分支出去的绿线…我没有网是这样的」: a point low on the side-face line joined to one high on the next line cut across
+      // the face, mixed out of lines that are not there)
+      if (!have.length || top.g < lo - 0.01 || top.g > hi + 0.01 || bot.g < lo - 0.01 || bot.g > hi + 0.01 || Math.abs(top.g - bot.g) > 1.001) { if (pts.length > 1) lines.push({ tan: pick, pts }); pts = []; continue }
       const base = (u: number) => { const g = Math.max(lo, Math.min(hi, top.g + (bot.g - top.g) * u)), i0 = Math.max(...have.filter(i => i <= g)), i1 = Math.min(...have.filter(i => i >= g)), w = i1 === i0 ? 0 : (g - i0) / (i1 - i0)
         return w <= 0 ? at(net.cols[i0]![k]!, u) : mixRound(at(net.cols[i0]![k]!, u), at(net.cols[i1]![k]!, u), w) }
       const dTop: P3 = top.p ? sub(top.p, base(0)) : [0, 0, 0], dBot: P3 = bot.p ? sub(bot.p, base(1)) : [0, 0, 0]
