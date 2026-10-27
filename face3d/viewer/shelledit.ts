@@ -152,13 +152,16 @@ function list() {
   const P = $('points'), Lw = $('lines'); P.innerHTML = ''; Lw.innerHTML = ''
   const row = (box: HTMLElement, on: boolean, name: string, rename: (s: string) => void, del: () => void, pick: (e: MouseEvent) => void, note = '') => {
     const r = document.createElement('div'); r.className = 'row' + (on ? ' sel' : '')
-    const i = document.createElement('input'); i.value = name; i.onchange = () => { snapshot(); rename(i.value.trim() || name); changed() }; i.onfocus = e => pick(e as unknown as MouseEvent)
+    // focusing the name box selects its point / line but must not rebuild the list (that threw the focused box away:
+    // bowen 1793108708 「这个框只是高亮…还是不能选中并且修改」); only the highlight moves
+    const i = document.createElement('input'); i.value = name; i.onchange = () => { snapshot(); rename(i.value.trim() || name); changed() }
+    i.onfocus = () => { pick(new MouseEvent('click')); for (const o of document.querySelectorAll('#side .row')) o.classList.remove('sel'); r.classList.add('sel') }
     const s = document.createElement('span'); s.textContent = note
     const x = document.createElement('button'); x.textContent = '×'; x.title = '删除'; x.onclick = () => { snapshot(); del(); changed() }
     r.onclick = e => { if (e.target === r || e.target === s) pick(e) }; r.append(i, s, x); box.appendChild(r)
   }
-  for (const p of doc.points) row(P, sel.points.includes(p.id), p.name, s => { p.name = s }, () => removePoints([p.id]), e => { selectPoint(p.id, e.shiftKey); draw(); list() })
-  for (const l of doc.lines) row(Lw, sel.line === l.id, l.name, s => { l.name = s }, () => { doc.lines = doc.lines.filter(k => k !== l) }, () => { sel = { points: [], line: l.id }; draw(); list() }, `${pt(l.a)?.name} → ${pt(l.b)?.name}`)
+  for (const p of doc.points) row(P, sel.points.includes(p.id), p.name, s => { p.name = s }, () => removePoints([p.id]), e => { selectPoint(p.id, e.shiftKey); draw(); if (e.isTrusted) list() })
+  for (const l of doc.lines) row(Lw, sel.line === l.id, l.name, s => { l.name = s }, () => { doc.lines = doc.lines.filter(k => k !== l) }, e => { sel = { points: [], line: l.id }; draw(); if (e.isTrusted) list() }, `${pt(l.a)?.name} → ${pt(l.b)?.name}`)
   $('status').textContent = `${doc.points.length} 个点 · ${doc.lines.length} 条线`
 }
 function selectPoint(id: number, add: boolean) { sel.line = null; if (add) { if (!sel.points.includes(id)) sel.points.push(id) } else sel.points = [id] }
