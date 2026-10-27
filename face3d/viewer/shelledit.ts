@@ -22,7 +22,7 @@ const stored = load()
 let doc: Doc = stored ?? { version: 1, next: 1, points: [], lines: [] }
 let sel: { points: number[]; line: number | null } = { points: [], line: null }
 const undo: string[] = []
-let yaw = 35, pitch = 10, zoom = 1
+let yaw = 35, pitch = 10, zoom = 1, panX = 0, panY = 0 // pan: the camera point at the canvas centre
 
 // ---- camera: head space → camera (rotate) → clip ----
 const S0 = 0.42, CY = 0.2
@@ -30,16 +30,18 @@ const axes = () => ({ ex: rotate([1, 0, 0], { yaw, pitch }), ey: rotate([0, 1, 0
 const aspect = () => cv.height / cv.width
 function matrix(): Float32Array {
   const { ex, ey, ez } = axes(), s = S0 * zoom, a = aspect()
-  return new Float32Array([ex[0] * s * a, ex[1] * s, -ex[2] * 0.3, 0, ey[0] * s * a, ey[1] * s, -ey[2] * 0.3, 0, ez[0] * s * a, ez[1] * s, -ez[2] * 0.3, 0, 0, CY, 0, 1])
+  return new Float32Array([ex[0] * s * a, ex[1] * s, -ex[2] * 0.3, 0, ey[0] * s * a, ey[1] * s, -ey[2] * 0.3, 0, ez[0] * s * a, ez[1] * s, -ez[2] * 0.3, 0, -panX * s * a, CY - panY * s, 0, 1])
 }
 const cam = (p: P3) => rotate(p, { yaw, pitch })
 /** camera → css pixels on the canvas */
-const toScreen = (q: readonly number[]) => { const r = cv.getBoundingClientRect(), s = S0 * zoom; return [(0.5 + (q[0]! * s * aspect()) / 2) * r.width, (0.5 - (q[1]! * s + CY) / 2) * r.height] as const }
+const toScreen = (q: readonly number[]) => { const r = cv.getBoundingClientRect(), s = S0 * zoom; return [(0.5 + ((q[0]! - panX) * s * aspect()) / 2) * r.width, (0.5 - ((q[1]! - panY) * s + CY) / 2) * r.height] as const }
 /** css pixel → the line of sight in head space (origin far in front, direction into the screen) */
 /** camera → head space */
 const back = (q: readonly number[]): P3 => { const { ex, ey, ez } = axes(); return [ex[0] * q[0]! + ex[1] * q[1]! + ex[2] * q[2]!, ey[0] * q[0]! + ey[1] * q[1]! + ey[2] * q[2]!, ez[0] * q[0]! + ez[1] * q[1]! + ez[2] * q[2]!] }
 /** css pixel → camera x, y */
-const fromScreen = (x: number, y: number) => { const r = cv.getBoundingClientRect(), s = S0 * zoom; return [((x / r.width) * 2 - 1) / (s * aspect()), ((1 - (y / r.height) * 2) - CY) / s] as const }
+const fromScreen = (x: number, y: number) => { const r = cv.getBoundingClientRect(), s = S0 * zoom; return [((x / r.width) * 2 - 1) / (s * aspect()) + panX, ((1 - (y / r.height) * 2) - CY) / s + panY] as const }
+/** zoom keeping the camera point under (x, y) where it is */
+function zoomAt(x: number, y: number, z: number) { const [q0, q1] = fromScreen(x, y); zoom = Math.max(0.4, Math.min(12, z)); const [n0, n1] = fromScreen(x, y); panX += q0 - n0; panY += q1 - n1; draw() }
 function sight(x: number, y: number): { o: P3; d: P3 } { const [q0, q1] = fromScreen(x, y); return { o: back([q0, q1, 10]), d: back([0, 0, -1]) } }
 
 // ---- the shell: skin triangles for picking and pressing lines onto ----
@@ -171,19 +173,23 @@ const nearLine = (x: number, y: number) => { let best: Ln | null = null, bd = 7
   for (const l of doc.lines) for (let i = 0; i <= 48; i++) { const [sx, sy] = toScreen(cam(cubic(l.c, i / 48))), d = Math.hypot(sx - x, sy - y); if (d < bd) { bd = d; best = l } }
   return best }
 const local = (e: PointerEvent | MouseEvent) => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top] as const }
-let drag: { kind: 'turn'; x: number; y: number; yaw: number; pitch: number; moved: boolean } | { kind: 'point'; id: number; moved: boolean } | { kind: 'handle'; line: number; k: 1 | 2; moved: boolean } | null = null
+let drag: { kind: 'turn'; x: number; y: number; yaw: number; pitch: number; moved: boolean } | { kind: 'point'; id: number; moved: boolean } | { kind: 'handle'; line: number; k: 1 | 2; moved: boolean } | { kind: 'zoom' | 'pan'; x: number; y: number; sx: number; sy: number; zoom: number; panX: number; panY: number; moved: boolean } | null = null
 /** a handle of the selected line under the cursor */
 const nearHandle = (x: number, y: number) => { const L = doc.lines.find(l => l.id === sel.line); if (!L) return null
   for (const k of [1, 2] as const) { const [sx, sy] = toScreen(cam(L.c[k]!)); if (Math.hypot(sx - x, sy - y) < 9) return { line: L.id, k } }
   return null }
 cv.onpointerdown = e => {
-  const [x, y] = local(e), p = nearPoint(x, y), hd = nearHandle(x, y); cv.setPointerCapture(e.pointerId)
+  cv.setPointerCapture(e.pointerId)
+  if (zoomTool || space) { const [x, y] = local(e); drag = { kind: zoomTool ? 'zoom' : 'pan', x, y, sy: e.clientY, sx: e.clientX, zoom, panX, panY, moved: false }; return }
+  const [x, y] = local(e), p = nearPoint(x, y), hd = nearHandle(x, y)
   if (hd) { drag = { kind: 'handle', ...hd, moved: false }; return }
   if (p) { selectPoint(p.id, e.shiftKey); drag = { kind: 'point', id: p.id, moved: false }; list(); draw(); return }
   drag = { kind: 'turn', x: e.clientX, y: e.clientY, yaw, pitch, moved: false }; cv.style.cursor = 'grabbing'
 }
 cv.onpointermove = e => {
   if (!drag) return
+  if (drag.kind === 'zoom') { zoomAt(drag.x, drag.y, drag.zoom * Math.exp(-(e.clientY - drag.sy) * 0.01)); return }
+  if (drag.kind === 'pan') { const s = S0 * zoom, r = cv.getBoundingClientRect(); panX = drag.panX - ((e.clientX - drag.sx) / r.width) * 2 / (s * aspect()); panY = drag.panY + ((e.clientY - drag.sy) / r.height) * 2 / s; draw(); return }
   if (drag.kind === 'turn') { if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 3) drag.moved = true
     yaw = drag.yaw + (e.clientX - drag.x) * 0.5; pitch = Math.max(-89, Math.min(89, drag.pitch - (e.clientY - drag.y) * 0.5)); draw(); return }
   if (drag.kind === 'handle') { const dr = drag, L = doc.lines.find(l => l.id === dr.line); if (!L) return
@@ -204,14 +210,27 @@ cv.onpointerup = e => {
   if (drag?.kind === 'point' && drag.moved) { refit(new Set([drag.id])); changed() }
   else if (drag?.kind === 'handle' && drag.moved) changed()
   else if (drag?.kind === 'turn' && !drag.moved) { const [x, y] = local(e), l = nearLine(x, y); sel = l ? { points: [], line: l.id } : { points: [], line: null }; list(); draw() }
-  drag = null; cv.style.cursor = 'grab'
+  drag = null; cursor()
 }
 cv.ondblclick = e => {
-  const [x, y] = local(e); if (nearPoint(x, y)) return // a double-click on a point only selects it
+  if (zoomTool || space) return
+  const [x, y] = local(e), near = nearPoint(x, y); if (near) { rename(near, near.p); return } // a double-click on a point renames it
   const s = sight(x, y), h = hit(s.o, s.d); if (!h) return
   snapshot(); const id = doc.next++; doc.points.push({ id, name: uniqueName('点', doc.points.map(p => p.name)), p: h.p.map(v => +v.toFixed(5)) as P3 }); sel = { points: [id], line: null }; changed()
 }
-cv.onwheel = e => { e.preventDefault(); zoom = Math.max(0.4, Math.min(6, zoom * Math.exp(-e.deltaY * 0.001))); draw() }
+cv.onwheel = e => { e.preventDefault(); const [x, y] = local(e); zoomAt(x, y, zoom * Math.exp(-e.deltaY * 0.001)) }
+// Z = the zoom tool (bowen 1793108175): the cursor a magnifier, drag up = closer, down = farther, about where the drag began;
+// Z again = back to the usual tool. Space held = the hand (drag pans), like the usual editors
+let zoomTool = false, space = false
+const cursor = () => { cv.style.cursor = zoomTool ? 'zoom-in' : space ? 'move' : 'grab' }
+/** a name box on the canvas at the point (Enter keeps it, Esc leaves it as it was) */
+function rename(p: { name: string }, at: P3) {
+  const [x, y] = toScreen(cam(at)), box = document.createElement('input'); box.value = p.name
+  Object.assign(box.style, { position: 'absolute', left: `${x + 6}px`, top: `${y - 12}px`, font: '13px system-ui', width: '9em', zIndex: '5' })
+  $('wrap').appendChild(box); box.focus(); box.select()
+  let done = false; const finish = (keep: boolean) => { if (done) return; done = true; const v = box.value.trim(); box.remove(); if (keep && v && v !== p.name) { snapshot(); p.name = v; changed() } }
+  box.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') finish(true); if (e.key === 'Escape') finish(false) }; box.onblur = () => finish(true)
+}
 $('link').onclick = () => {
   if (sel.points.length !== 2) { alert('先选两个点：点一个，再按住 Shift 点另一个'); return }
   const [a, b] = sel.points as [number, number], A = pt(a)!, B = pt(b)!
@@ -243,17 +262,23 @@ const doUndo = () => { const s = undo.pop(); if (!s) return; doc = JSON.parse(s)
 $('undo').onclick = doUndo
 window.addEventListener('keydown', e => {
   if ((e.target as HTMLElement).tagName === 'INPUT') return
+  if (e.key.toLowerCase() === 'z' && !e.metaKey && !e.ctrlKey) { zoomTool = !zoomTool; cursor(); return }
+  if (e.key === ' ') { e.preventDefault(); if (!space) { space = true; cursor() } return }
+  if (e.key === 'F2' || e.key === 'Enter') { const p = sel.points.length === 1 ? pt(sel.points[0]!) : undefined, l = doc.lines.find(k => k.id === sel.line)
+    if (p) { e.preventDefault(); rename(p, p.p) } else if (l) { e.preventDefault(); rename(l, cubic(l.c, 0.5)) } return }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); doUndo(); return }
   if (e.key === 'Delete' || e.key === 'Backspace') { if (!sel.points.length && sel.line === null) return; snapshot()
     if (sel.points.length) removePoints(sel.points); else { doc.lines = doc.lines.filter(l => l.id !== sel.line); sel.line = null } changed() }
 })
 for (const b of document.querySelectorAll<HTMLButtonElement>('button[data-v]')) b.onclick = () => { [yaw, pitch] = b.dataset.v!.split(',').map(Number) as [number, number]; draw() }
+$('home').onclick = () => { zoom = 1; panX = 0; panY = 0; draw() }
 for (const id of ['xray', 'wire', 'lnames']) $(id).addEventListener('change', draw)
 $('save').onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(doc, null, 1)], { type: 'application/json' })); a.download = '头壳标注.json'; a.click(); URL.revokeObjectURL(a.href) }
 $('openBtn').onclick = () => $('open').click()
 $<HTMLInputElement>('open').onchange = async e => { const f = (e.target as HTMLInputElement).files?.[0]; if (!f) return; snapshot(); doc = JSON.parse(await f.text()) as Doc; sel = { points: [], line: null }; changed() }
 window.addEventListener('resize', draw)
-;(window as unknown as { __shell: unknown }).__shell = { view: (y: number, p: number, z?: number) => { yaw = y; pitch = p; if (z) zoom = z; draw() }, doc: () => doc, sight, hit, hug, changed: () => changed(), set: (d: Doc) => { doc = d; changed() } }
+window.addEventListener('keyup', e => { if (e.key === ' ') { space = false; cursor() } })
+;(window as unknown as { __shell: unknown }).__shell = { view: (y: number, p: number, z?: number) => { yaw = y; pitch = p; if (z) { zoom = z; panX = 0; panY = 0 } draw() }, doc: () => doc, sight, hit, hug, changed: () => changed(), set: (d: Doc) => { doc = d; changed() } }
 
 // the neck as well (bowen 1793106912 「颈部也都给出来」): the skin kept down to NECK, but in the usual head space (the one every
 // other line here and in vrm-wire.json is in): the same raw vertices loaded both ways, matched at the crown and the nose tip
