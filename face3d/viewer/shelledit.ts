@@ -313,8 +313,12 @@ function rename(p: { name: string }, at: P3) {
  * skin, then one cubic through those (ends fixed), a few times over. bowen 1793109786: the first try kept the handle
  * directions and only changed their lengths, and the handles shrank into their ends */
 function snug(L: Ln, rounds = 3) {
-  for (let r = 0; r < rounds; r++) { const q = Array.from({ length: 25 }, (_, i) => (i === 0 ? L.c[0]! : i === 24 ? L.c[3]! : nearestOnSkin(cubic(L.c, i / 24)))); L.c = fitCubic(q) }
-  L.own = true
+  // kept only where it is closer on the whole (mean distance off the shell); a line already about as close as one cubic
+  // can be is left as it is
+  const mean = (c: P3[]) => { let s = 0; for (let i = 1; i < 32; i++) s += off(cubic(c, i / 32)); return s / 31 }
+  let c = L.c
+  for (let r = 0; r < rounds; r++) { const q = Array.from({ length: 25 }, (_, i) => (i === 0 ? c[0]! : i === 24 ? c[3]! : nearestOnSkin(cubic(c, i / 24)))); c = fitCubic(q) }
+  if (mean(c) < mean(L.c)) { L.c = c; L.own = true }
 }
 $('snug').onclick = () => { const L = doc.lines.find(l => l.id === sel.line); if (!L) { alert('先点一条线'); return } snapshot(); snug(L); changed() }
 $('link').onclick = () => {
