@@ -133,5 +133,23 @@
   "tx": 511.5,
   "ty": 607.3,
   "points": 6
+ },
+ "key-up45 (12号文件的底图 pitch-up45-02)": {
+  "yaw": -0.5,
+  "pitch": 19.0,
+  "rms_px": 22.6,
+  "scale_px_per_unit": 5.1618,
+  "tx": 629.0,
+  "ty": 677.2,
+  "points": 9
+ },
+ "key-down45 (13号文件的底图 pitch-down45-03)": {
+  "yaw": 0.5,
+  "pitch": -41.0,
+  "rms_px": 26.1,
+  "scale_px_per_unit": 4.7408,
+  "tx": 622.3,
+  "ty": 650.9,
+  "points": 9
  }
 }
