@@ -119,6 +119,32 @@ const mirror = (c: number[][]) => c.map(p => [-p[0]!, p[1]!, p[2]!])
 const CLe = JSON.parse(readFileSync('face3d/viewer/vrm-clusters.json', 'utf8')).clusters as { p: V3 }[]
 const earCl = CLe.filter(c => c.p[0] < -0.85 && c.p[1] < -0.2 && c.p[1] > -1.0 && c.p[2] < 0.2).map(c => Math.min(...rim.map(r => dist(r, c.p))))
 
+// ---- the eye sockets (bowen 1793101059): the skin is open at each eye; the edge of that opening = the socket, exactly ----
+// the skin's boundary edges (one triangle only) at the eyes, chained into one loop per eye; 3 cubics like our eye bones:
+// upper lid 内眼角 → 外眼角, lower lid 内眼角 → 下眼睑中点 → 外眼角 (the corners = the loop's ends across, the middle = its lowest)
+const edgeCount = new Map<string, number>()
+for (let t = 0; t < T.length; t += 3) for (let e = 0; e < 3; e++) { const a = T[t + e]!, c = T[t + ((e + 1) % 3)]!, k = a < c ? `${a},${c}` : `${c},${a}`; edgeCount.set(k, (edgeCount.get(k) ?? 0) + 1) }
+const holeEdges = [...edgeCount.entries()].filter(([, n]) => n === 1).map(([k]) => k.split(',').map(Number) as [number, number]).filter(([a]) => { const q = P[a]!; return q[2] > 0.4 && q[1] > -0.9 && q[1] < -0.2 })
+function socket(side: -1 | 1) {
+  const es = holeEdges.filter(([a]) => Math.sign(P[a]![0]) === side), nb = new Map<number, number[]>()
+  for (const [a, c] of es) { (nb.get(a) ?? nb.set(a, []).get(a)!).push(c); (nb.get(c) ?? nb.set(c, []).get(c)!).push(a) }
+  // the loop, starting at the inner corner (the point nearest the midline)
+  const start = [...nb.keys()].reduce((m, i) => (Math.abs(P[i]![0]) < Math.abs(P[m]![0]) ? i : m))
+  const loop = [start]; let prev = -1, cur = start
+  while (true) { const nx = nb.get(cur)!.find(k => k !== prev); if (nx === undefined || nx === start) break; loop.push(nx); prev = cur; cur = nx; if (loop.length > 500) break }
+  let q = loop.map(i => P[i]!)
+  const iOut = q.reduce((m, p, i) => (Math.abs(p[0]) > Math.abs(q[m]![0]) ? i : m), 0)
+  // go round so the upper lid comes first (inner → outer along the top)
+  const upperFirst = q.slice(0, iOut + 1).reduce((a, p) => a + p[1], 0) / (iOut + 1) > q.slice(iOut).reduce((a, p) => a + p[1], 0) / (q.length - iOut)
+  if (!upperFirst) q = [q[0]!, ...q.slice(1).reverse()]
+  const io = q.reduce((m, p, i) => (Math.abs(p[0]) > Math.abs(q[m]![0]) ? i : m), 0)
+  const iMid = q.reduce((m, p, i) => (i > io && p[1] < q[m]![1] ? i : m), io + 1)
+  const closedQ = [...q, q[0]!] // back to the inner corner
+  const f = piecewise(closedQ, [0, io, iMid, closedQ.length - 1], false, 3)
+  return { joints: f.joints.map(i => closedQ[i]!.map(v => +v.toFixed(4))), curves: f.curves, rms: f.rms, raw: closedQ.map(p => p.map(v => +v.toFixed(4))) }
+}
+const eyeR = socket(-1), eyeL = socket(1)
+
 // how close the orange (one-turn-angle) crossing clusters lie to it
 const CL = JSON.parse(readFileSync('face3d/viewer/vrm-clusters.json', 'utf8')).clusters as { p: V3; yaws: number[] }[]
 const orange = CL.filter(c => c.yaws.length <= 2 && c.p[1] > -0.25 && c.p[1] < 0.1).map(c => Math.min(...ring.map(r => dist(r, c.p))))
@@ -128,10 +154,12 @@ const out = {
   meridian: { names: NAMES, joints: meridian.joints.map(i => prof[i]!.map(v => +v.toFixed(4))), curves: meridian.curves, rms: meridian.rms, raw: prof.map(p => p.map(v => +v.toFixed(4))) },
   ear: { names: ['上耳根', '耳尖', '耳垂', '下耳根'], joints: earFit.joints.map(i => rim[i]!.map(v => +v.toFixed(4))), curves: [...earFit.curves, ...earFit.curves.map(mirror)], rms: earFit.rms, raw: rim.map(p => p.map(v => +v.toFixed(4))),
     clusterDistance: { n: earCl.length, median: +([...earCl].sort((x, y) => x - y)[Math.floor(earCl.length / 2)] ?? NaN).toFixed(4) } },
+  eyes: { names: ['内眼角', '外眼角', '下眼睑中点'], near: eyeR, far: eyeL, curves: [...eyeR.curves, ...eyeL.curves], rms: Math.max(eyeR.rms, eyeL.rms) },
   latitude: { closed: closedLoop, joints: latitude.joints.map(i => ring[i]!.map(v => +v.toFixed(4))), curves: latitude.curves, rms: latitude.rms, raw: ring.map(p => p.map(v => +v.toFixed(4))), orangeDistance: { n: orange.length, median: +([...orange].sort((x, y) => x - y)[Math.floor(orange.length / 2)] ?? NaN).toFixed(4), max: +Math.max(...orange).toFixed(4) } },
 }
 writeFileSync('face3d/viewer/vrm-wire.json', JSON.stringify(out))
 console.log('meridian points', prof.length, 'rms', meridian.rms, 'joints moved', meridian.joints.map((j, k) => j - start[k]!).join(','))
 console.log('latitude points', ring.length, 'closed', closedLoop, 'rms', latitude.rms, 'orange→ring', JSON.stringify(out.latitude.orangeDistance))
+console.log('eye sockets', eyeR.raw.length, eyeL.raw.length, 'rms', eyeR.rms, eyeL.rms, 'joints', eyeR.joints.map(j => j.join(',')).join(' | '))
 console.log('ear rim points', rim.length, 'rms', earFit.rms, 'joints', out.ear.joints.map(j => j.join(',')).join(' | '), 'clusters→rim', JSON.stringify(out.ear.clusterDistance))
 console.log('joints', NAMES.map((n, k) => `${n} ${out.meridian.joints[k]!.join(',')}`).join(' | '))
