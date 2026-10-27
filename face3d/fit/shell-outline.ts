@@ -349,6 +349,105 @@ function capOutline(v: { yaw: number; pitch: number }): P3[][] {
 // line shows; compared with VRoid's outline the same way (distance from the middle, per degree) ----
 const USE_CAP = !process.env.NOCAP
 const TNETS = KINDS.flatMap(({ n, kind }) => { const t = transpose(n); return ([1, -1] as const).map(edge => Object.assign({ ...t, edge }, { kind })) })
+// ---- the outline fitted to tangent points (bowen 1793119514 「一条线就只提供一个切点，然后这个位置就一条线（比如后脑勺位置）去拟合
+// 这些切点，而不是接一部分曲线再接一部分点」): in a view every line gives at most one tangent point — the middle of its stretch that
+// lies on the outer edge of all the lines (seen round the head's middle on the screen); a line wholly inside the others gives
+// none. The cap above the forehead ring is the ellipsoid's ellipse; from one end of it round the rest of the head to the other,
+// as few cubics as fit those points (one, split at the worst point while any point is off by more than TOL), smooth at the
+// joints (the tangent there along the neighbours) and running on from the ellipse at its ends ----
+const TOL = Number(process.env.TOL ?? 0.012), CORNERS = !!process.env.CORNERS, CY0 = Number(process.env.CY0 ?? -0.45), CZ0 = Number(process.env.CZ0 ?? 0)
+const FIT_LINES = (() => { const yBase = Math.max(P('后颈')[1], P('颈前')[1])
+  // (not the ears, nor the eyelids; the neck's base ring 线11 closes the shape but gives no tangent point: below it the neck
+  // is cut, no outline)
+  const own = doc.lines.filter(l => !/耳根—耳尖|耳尖—耳垂|耳垂—下耳根|眼睑/.test(l.name)).map(l => ({ name: l.name, c: sample(l.c, 60), noTan: /^右?线11/.test(l.name) }))
+  return [...own, ...autos.map(a => ({ name: a.name, c: a.c, noTan: false }))].filter(l => l.noTan || Math.max(...l.c.map(p => p[1])) > yBase + 0.02) })()
+/** cubic through q (chord-length t), ends fixed, end tangents along t0 / t1 (unit, pointing into the curve), lengths by least squares */
+function fitTan(q: number[][], t0: number[], t1: number[]): number[][] {
+  const n = q.length - 1, L = [0]; for (let i = 1; i <= n; i++) L.push(L[i - 1]! + Math.hypot(q[i]![0]! - q[i - 1]![0]!, q[i]![1]! - q[i - 1]![1]!))
+  const P0 = q[0]!, P3_ = q[n]!, chord = Math.hypot(P3_[0]! - P0[0]!, P3_[1]! - P0[1]!)
+  let c00 = 0, c01 = 0, c11 = 0, x0 = 0, x1 = 0
+  for (let i = 0; i <= n; i++) { const t = L[i]! / (L[n]! || 1), u = 1 - t, b0 = u * u * u, b1 = 3 * u * u * t, b2 = 3 * u * t * t, b3 = t * t * t
+    const A1 = [t0[0]! * b1, t0[1]! * b1], A2 = [t1[0]! * b2, t1[1]! * b2], r = [q[i]![0]! - (b0 + b1) * P0[0]! - (b2 + b3) * P3_[0]!, q[i]![1]! - (b0 + b1) * P0[1]! - (b2 + b3) * P3_[1]!]
+    c00 += A1[0]! * A1[0]! + A1[1]! * A1[1]!; c01 += A1[0]! * A2[0]! + A1[1]! * A2[1]!; c11 += A2[0]! * A2[0]! + A2[1]! * A2[1]!; x0 += A1[0]! * r[0]! + A1[1]! * r[1]!; x1 += A2[0]! * r[0]! + A2[1]! * r[1]! }
+  const det = c00 * c11 - c01 * c01; let a1 = det ? (x0 * c11 - x1 * c01) / det : chord / 3, a2 = det ? (c00 * x1 - c01 * x0) / det : chord / 3
+  if (!(a1 > chord * 0.02) || !(a2 > chord * 0.02) || a1 > chord * 1.5 || a2 > chord * 1.5) { a1 = chord / 3; a2 = chord / 3 } // degenerate: thirds
+  return [P0, [P0[0]! + t0[0]! * a1, P0[1]! + t0[1]! * a1], [P3_[0]! + t1[0]! * a2, P3_[1]! + t1[1]! * a2], P3_]
+}
+const cub2 = (c: number[][], t: number) => { const u = 1 - t, w = [u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t]; return [0, 1].map(k => w.reduce((s2, wi, j) => s2 + wi * c[j]![k]!, 0)) }
+const nrm2 = (v: number[]) => { const m = Math.hypot(v[0]!, v[1]!) || 1; return [v[0]! / m, v[1]! / m] }
+/** pieces through pts[i..j] (screen points), tangents given at the ends; split at the worst point while it is off by > TOL */
+function fitRun(pts: number[][], tans: number[][], i: number, j: number, out: number[][][]) {
+  const seg = pts.slice(i, j + 1), c = fitTan(seg, tans[i]!, tans[j]!.map(v => -v))
+  const S = Array.from({ length: 81 }, (_, k) => cub2(c, k / 80)), err = seg.map(p => Math.min(...S.map(q => Math.hypot(q[0]! - p[0]!, q[1]! - p[1]!))))
+  const w = err.reduce((m, e, k) => (k > 0 && k < seg.length - 1 && e > err[m]! ? k : m), 1)
+  if (j - i >= 2 && err[w]! > TOL) { fitRun(pts, tans, i, i + w, out); fitRun(pts, tans, i + w, j, out) } else out.push(c)
+}
+/** the outer edge of the lines on the screen, in order: the line samples (and the cap's ellipse) stamped as discs of radius
+ * CLOSE, the gaps between them closed (dilated, then eroded by the same radius), the shape's outline traced once round */
+const CLOSE = Number(process.env.CLOSE ?? 0.1)
+function outerEdge(pts: number[][]) {
+  const G = W, S2 = F.S, toPx = (q: number[]) => [F.cx + q[0]! * S2, F.cy - q[1]! * S2], R = CLOSE * S2
+  const dil = new Uint8Array(G * G)
+  for (const q of pts) { const [x, y] = toPx(q) as [number, number]; for (let j = Math.max(0, Math.floor(y - R)); j <= Math.min(G - 1, Math.ceil(y + R)); j++) for (let i = Math.max(0, Math.floor(x - R)); i <= Math.min(G - 1, Math.ceil(x + R)); i++) if ((i - x) ** 2 + (j - y) ** 2 <= R * R) dil[j * G + i] = 1 }
+  // erode: distance (chamfer) to outside the dilated shape, keep ≥ R
+  const dist = new Float32Array(G * G).fill(1e9)
+  for (let k = 0; k < G * G; k++) if (!dil[k]) dist[k] = 0
+  for (let j = 0; j < G; j++) for (let i = 0; i < G; i++) { const k = j * G + i; if (i > 0) dist[k] = Math.min(dist[k]!, dist[k - 1]! + 1); if (j > 0) dist[k] = Math.min(dist[k]!, dist[k - G]! + 1); if (i > 0 && j > 0) dist[k] = Math.min(dist[k]!, dist[k - G - 1]! + 1.414); if (i < G - 1 && j > 0) dist[k] = Math.min(dist[k]!, dist[k - G + 1]! + 1.414) }
+  for (let j = G - 1; j >= 0; j--) for (let i = G - 1; i >= 0; i--) { const k = j * G + i; if (i < G - 1) dist[k] = Math.min(dist[k]!, dist[k + 1]! + 1); if (j < G - 1) dist[k] = Math.min(dist[k]!, dist[k + G]! + 1); if (i < G - 1 && j < G - 1) dist[k] = Math.min(dist[k]!, dist[k + G + 1]! + 1.414); if (i > 0 && j < G - 1) dist[k] = Math.min(dist[k]!, dist[k + G - 1]! + 1.414) }
+  const on = (i: number, j: number) => i >= 0 && j >= 0 && i < G && j < G && dist[j * G + i]! >= R - 0.5
+  let s0: [number, number] | null = null
+  for (let j = 0; j < G && !s0; j++) for (let i = 0; i < G && !s0; i++) if (on(i, j)) s0 = [i, j]
+  if (!s0) return []
+  const D8 = [[-1, 0], [-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1]] as const, cells: [number, number][] = [s0]
+  for (let cur = s0, back: [number, number] = [s0[0] - 1, s0[1]], n = 0; n < 20000; n++) {
+    const bi = D8.findIndex(d => cur[0] + d[0] === back[0] && cur[1] + d[1] === back[1]); let moved = false
+    for (let k = 1; k <= 8; k++) { const d = D8[(bi + k) % 8]!, c: [number, number] = [cur[0] + d[0], cur[1] + d[1]]; if (on(c[0], c[1])) { const pd = D8[(bi + k - 1) % 8]!; back = [cur[0] + pd[0], cur[1] + pd[1]]; cur = c; moved = true; break } }
+    if (!moved || (cur[0] === s0[0] && cur[1] === s0[1])) break; cells.push(cur) }
+  return cells.map(([i, j]) => [(i + 0.5 - F.cx) / S2, (F.cy - (j + 0.5)) / S2])
+}
+function fitOutline(v: { yaw: number; pitch: number }) {
+  const Ls = FIT_LINES.map(l => ({ name: l.name, noTan: l.noTan, p: l.c, q: l.c.map(p => rotate(p, v) as unknown as number[]) }))
+  const capRuns = USE_CAP ? capOutline(v) : [], capQ = capRuns.map(r => r.map(p => rotate(p, v) as unknown as number[]))
+  // the edge, in order round the shape
+  const edge = outerEdge([...Ls.flatMap(L => L.q), ...capQ.flat()]), nE = edge.length
+  const near = (q: number[]) => { let bi = 0, bd = Infinity; for (let i = 0; i < nE; i++) { const d = (edge[i]![0]! - q[0]!) ** 2 + (edge[i]![1]! - q[1]!) ** 2; if (d < bd) { bd = d; bi = i } } return { i: bi, d: Math.sqrt(bd) } }
+  const EPS = 2.5 / F.S
+  // the edge along the neck's base ring is the neck's cut: the outline is not carried across it (it stops on either side)
+  const cutAt = new Uint8Array(nE); for (const L of Ls) if (L.noTan) for (const q of L.q) { const n = near(q); if (n.d < EPS * 1.6) cutAt[n.i] = 1 }
+  // one tangent point per line: the middle of its longest stretch on the edge; none above the forehead ring (the cap's)
+  const tan: { name: string; q: number[]; p: P3; at: number }[] = []
+  for (const L of Ls) { if (L.noTan) continue; let best: [number, number] | null = null, s0 = -1
+    const hit = L.q.map((q, i) => { const n = near(q); return n.d < EPS && !(capRuns.length && L.p[i]![1] >= ringAt(L.p[i]!)) ? n.i : -1 })
+    for (let i = 0; i <= L.q.length; i++) { const e = i < L.q.length && hit[i]! >= 0; if (e && s0 < 0) s0 = i; if (!e && s0 >= 0) { if (!best || i - 1 - s0 > best[1] - best[0]) best = [s0, i - 1]; s0 = -1 } }
+    if (best) { const m = Math.round((best[0] + best[1]) / 2); tan.push({ name: L.name, q: L.q[m]!, p: L.p[m]!, at: hit[m]! })
+      if (CORNERS && best[1] - best[0] >= 0.75 * (L.q.length - 1)) for (const e of [0, L.q.length - 1]) if (hit[e]! >= 0) tan.push({ name: `${L.name} 端`, q: L.q[e]!, p: L.p[e]!, at: hit[e]! }) } }
+  for (let i = tan.length - 1; i >= 0; i--) if (tan.some((t, j) => j < i && Math.hypot(t.q[0]! - tan[i]!.q[0]!, t.q[1]! - tan[i]!.q[1]!) < 0.01)) tan.splice(i, 1)
+  // from one end of the cap round the edge (the way not under the cap) to the other end; with no cap, all round
+  const cap = capQ.slice().sort((a, b) => b.length - a.length)[0]
+  let seq: number[][], tans: number[][], cuts: number[] = []
+  const t2 = (a: number[], b: number[]) => nrm2([b[0]! - a[0]!, b[1]! - a[1]!])
+  if (cap && cap.length > 2 && nE > 10) {
+    const iA = near(cap[cap.length - 1]!).i, iB = near(cap[0]!).i, iM = near(cap[Math.floor(cap.length / 2)]!).i
+    const fwd = (x: number) => ((x - iA) % nE + nE) % nE, capFwd = fwd(iM) < fwd(iB) // the cap runs iA → iB forwards along the edge?
+    // walk from the cap's end away from it: the cap's end (A) on the side it ends, round to its start (B)
+    const startEnd = capFwd ? cap[0]! : cap[cap.length - 1]!, startIdx = capFwd ? iB : iA, stopEnd = capFwd ? cap[cap.length - 1]! : cap[0]!, stopIdx = capFwd ? iA : iB
+    const span = ((stopIdx - startIdx) % nE + nE) % nE, key = (i: number) => ((i - startIdx) % nE + nE) % nE
+    const mid = tan.filter(t => key(t.at) > 2 && key(t.at) < span - 2).sort((a, b) => key(a.at) - key(b.at)).map(t => t.q)
+    const tStart = capFwd ? t2(cap[1]!, cap[0]!) : t2(cap[cap.length - 2]!, cap[cap.length - 1]!), tStop = capFwd ? t2(cap[cap.length - 1]!, cap[cap.length - 2]!) : t2(cap[0]!, cap[1]!)
+    const midT = tan.filter(t => key(t.at) > 2 && key(t.at) < span - 2).sort((a, b) => key(a.at) - key(b.at))
+    seq = [startEnd, ...mid, stopEnd]; tans = seq.map((_, i) => (i === 0 ? tStart : i === seq.length - 1 ? tStop.map(x => -x) : t2(seq[i - 1]!, seq[i + 1]!)))
+    // breaks: between two neighbours whose stretch of edge runs over the cut
+    const ats = [startIdx, ...midT.map(t => t.at), stopIdx]
+    cuts = []; for (let k = 0; k + 1 < ats.length; k++) { let crossed = false; for (let x = ats[k]!; ((x - ats[k + 1]!) % nE + nE) % nE !== 0; x = (x + 1) % nE) if (cutAt[x]) { crossed = true; break } if (crossed) cuts.push(k) }
+  } else { seq = tan.slice().sort((a, b) => a.at - b.at).map(t => t.q); if (seq.length) seq.push(seq[0]!); const m = seq.length - 1; tans = seq.map((_, i) => t2(seq[(i - 1 + m) % m]!, seq[(i + 1) % m]!)) }
+  // fitted run by run (a break at the cut: there the ends' tangents are along their neighbours only)
+  const pieces: number[][][] = []
+  if (seq.length >= 2) { let i0 = 0; for (const k of [...cuts, seq.length - 1]) { const i1 = k; if (i1 > i0) {
+      if (cuts.includes(i1)) tans[i1] = t2(seq[Math.max(i0, i1 - 1)]!, seq[i1]!)
+      if (cuts.includes(i0 - 1)) tans[i0] = t2(seq[i0]!, seq[Math.min(i1, i0 + 1)]!)
+      fitRun(seq, tans, i0, i1, pieces) } i0 = k + 1 } }
+  return { tan, pieces, cap: capQ, edge }
+}
 function polar(yaw: number, pitch: number) {
   const v = { yaw, pitch }, ras = rasterHead(D, v, F, new Uint8ClampedArray(W * W * 4)), inside = (x: number, y: number) => { const i = Math.round(F.cx + x * F.S), j = Math.round(F.cy - y * F.S); return i >= 0 && j >= 0 && i < W && j < W && ras.zb[j * W + i]! > -Infinity }
   const c0 = rotate([0, -0.45, 0], v), cx = c0[0], cy = c0[1], A = 360
@@ -362,18 +461,21 @@ function polar(yaw: number, pitch: number) {
   // farthest out across the screen fell on 下耳根 and the outline went down the jawline, while slanting-farthest lies on the
   // cheek line 太阳穴 → 颧骨 → 下巴), each with the nets both ways (rails and crosswise)
   const DIRS = Array.from({ length: 8 }, (_, i) => [Math.cos((i * Math.PI) / 4), Math.sin((i * Math.PI) / 4)] as const)
-  const lines = KINDS.flatMap(({ n, kind }) => { const t = transpose(n); return DIRS.flatMap(dv => [n, t].flatMap((net, axis) => outlines(net, yaw, pitch, axis as 0 | 1, dv).map(l => ({ kind, axis, tan: l.tan, pts: l.pts, q: l.pts.map(p => rotate(p, v)) })))) })
+  const FIT = !process.env.OLDNET, fo = FIT ? fitOutline(v) : null
+  const lines = FIT ? fo!.pieces.map(c => { const q = Array.from({ length: 61 }, (_, i) => [...cub2(c, i / 60), 0] as unknown as P3); return { kind: 0, axis: 0, tan: [] as { p: P3; g: number }[], pts: q, q } }) : KINDS.flatMap(({ n, kind }) => { const t = transpose(n); return DIRS.flatMap(dv => [n, t].flatMap((net, axis) => outlines(net, yaw, pitch, axis as 0 | 1, dv).map(l => ({ kind, axis, tan: l.tan, pts: l.pts, q: l.pts.map(p => rotate(p, v)) })))) })
   if (USE_CAP) for (const run of capOutline(v)) lines.push({ kind: 4, axis: 0, tan: [], pts: run, q: run.map(p => rotate(p, v)) })
   // the ears' own lines take part too: where an ear is outside the head it is the outline (whichever is outer shows)
   for (const l of DETAIL.filter(d => /耳/.test(d.name))) { const pts = sample(l.c, 60); lines.push({ kind: 3, axis: 0, tan: [], pts, q: pts.map(p => rotate(p, v)) }) }
   // the built outline per degree: the farthest crossing of any line with the ray
-  const best = new Array<number>(A).fill(-Infinity)
+  const best = new Array<number>(A).fill(-Infinity), headBest = new Array<number>(A).fill(-Infinity)
   const angR = (q: readonly number[]) => ({ a: ((Math.atan2(q[1]! - cy, q[0]! - cx) * 180) / Math.PI + 360) % 360, r: Math.hypot(q[0]! - cx, q[1]! - cy) })
   for (const L of lines) for (let i = 0; i + 1 < L.q.length; i++) { const p = angR(L.q[i]!), q = angR(L.q[i + 1]!); let da = q.a - p.a; if (da > 180) da -= 360; if (da < -180) da += 360
-    const steps = Math.max(1, Math.ceil(Math.abs(da))); for (let s = 0; s <= steps; s++) { const f = s / steps, a = Math.round(p.a + da * f + 360) % 360, r = p.r + (q.r - p.r) * f; if (r > best[a]!) best[a] = r } }
+    const steps = Math.max(1, Math.ceil(Math.abs(da))); for (let s = 0; s <= steps; s++) { const f = s / steps, a = Math.round(p.a + da * f + 360) % 360, r = p.r + (q.r - p.r) * f; if (r > best[a]!) best[a] = r; if (L.kind !== 3 && r > headBest[a]!) headBest[a] = r } }
+  // (where only an ear's line is there — the open neck's cut seen past it — nothing is compared)
+  for (let a = 0; a < A; a++) if (!Number.isFinite(headBest[a]!)) best[a] = -Infinity
   const d = truth.map((t, a) => (t.cut || !Number.isFinite(best[a]!) ? NaN : Math.abs(t.r - best[a]!))).filter(Number.isFinite).sort((x, y) => x - y)
   const shown = (q: readonly number[]) => { const { a, r } = angR(q); return r >= best[Math.round(a) % 360]! - 0.01 }
-  return { lines, shown, med: d[Math.floor(d.length / 2)] ?? NaN, p90: d[Math.floor(d.length * 0.9)] ?? NaN, max: d[d.length - 1] ?? NaN, truth, cx, cy }
+  return { lines, shown, fo, med: d[Math.floor(d.length / 2)] ?? NaN, p90: d[Math.floor(d.length * 0.9)] ?? NaN, max: d[d.length - 1] ?? NaN, truth, cx, cy }
 }
 if (process.env.POLAR) {
   const Vs = (process.env.POLAR === '1' ? '0:0,45:0,90:0,0:30,45:30,90:30,0:-30,45:-30,90:-30,0:-60,45:-60,90:-60,0:60,45:60,90:60,135:-30' : process.env.POLAR).split(',').map(t => t.split(':').map(Number) as [number, number])
@@ -386,6 +488,8 @@ if (process.env.POLAR) {
     sv += pl([...R.truth.map((t, a) => [R.cx + Math.cos((a * Math.PI) / 180) * t.r, R.cy + Math.sin((a * Math.PI) / 180) * t.r]), [R.cx + R.truth[0]!.r, R.cy]], 'stroke="#111" stroke-width="1"')
     for (const L of R.lines) { let run: (readonly number[])[] = []; const flush = () => { if (run.length > 1) sv += pl(run, `stroke="${COLOR[L.kind]}" stroke-width="2.2"${L.axis ? ' stroke-opacity="0.85"' : ''}`); run = [] }
       for (const q of L.q) { if (R.shown(q)) run.push(q); else flush() } flush() }
+    if (R.fo && process.env.SHOWEDGE) sv += pl(R.fo.edge.map(q => [q[0]!, q[1]!]), 'stroke="#3aa0ff" stroke-width="0.8" stroke-dasharray="2 2"')
+    if (R.fo) for (const t of R.fo.tan) sv += `<circle cx="${X(t.q[0]!).toFixed(1)}" cy="${Y(t.q[1]!).toFixed(1)}" r="3" fill="#e08a2c" stroke="#fff" stroke-width="0.8"/>`
     sv += `<text x="${ox + 8}" y="${oy + 20}" font-size="15">转 ${yaw}°${pitch ? (pitch > 0 ? ' 仰' : ' 俯') + Math.abs(pitch) + '°' : ''}</text><text x="${ox + 8}" y="${oy + Pn - 10}" font-size="12" fill="#333">绕一圈 vs 真轮廓：中位 ${R.med.toFixed(3)} · 九成 ${R.p90.toFixed(3)} · 最大 ${R.max.toFixed(3)}</text>`
     console.log(`${yaw}:${pitch}`, 'polar', [R.med, R.p90, R.max].map(n => n.toFixed(3)).join('/'))
   })
@@ -399,7 +503,7 @@ if (process.env.EXPORT) {
     note: `bowen's head wire (${file}) as outline nets for the viewer (face3d/fit/shell-outline.ts)`,
     nets: KINDS.map(({ n, kind }) => ({ name: n.name, kind, top: n.top ?? null, bottom: n.bottom ?? null, cols: n.cols.map(cs => cs.map(c => c && r4(c))), rails: n.rails.map(r => ({ name: r.name, pieces: r.pieces.map(pc => ({ from: pc.from, c: r4(pc.c) })) })) })),
     tnets: KINDS.map(({ n, kind }) => { const t = transpose(n); return { name: t.name, kind, top: null, bottom: null, cols: t.cols.map(cs => cs.map(c => c && r4(c))), rails: t.rails.map(r => ({ name: r.name, pieces: r.pieces.map(pc => ({ from: pc.from, c: r4(pc.c) })) })) } }),
-    cap: { c: CAP.c, r: CAP.r }, ring: r4(ringC),
+    cap: { c: CAP.c, r: CAP.r }, ring: r4(ringC), fitLines: FIT_LINES.map(l => ({ name: l.name, noTan: l.noTan, c: r4(l.c) })),
     autos: autos.map(a => ({ name: a.name, c: r4(a.c) })), detail: DETAIL.map(l => ({ name: l.name, c: l.c })), wire: doc.lines.map(l => ({ name: l.name, c: l.c })),
   }))
   console.log('exported', process.env.EXPORT)

@@ -10,12 +10,13 @@
 <label><input id="head" type="checkbox" checked> VRoid 头</label>
 <label><input id="wire" type="checkbox" checked> <span class="k" style="background:#d9a0a0"></span>你的线框</label>
 <label><input id="autos" type="checkbox" checked> <span class="k" style="background:#e9c5c5"></span>自动补的线</label>
-<label><input id="outline" type="checkbox" checked> <span class="k" style="background:#13a05a"></span>拼出的轮廓（绿 脸 / 紫 后脑 / 褐 颈前 / 深蓝 耳朵）</label>
+<label><input id="outline" type="checkbox" checked> <span class="k" style="background:#13a05a"></span>轮廓（绿 = 穿过切点的贝塞尔 / 红 = 椭球）</label>
 <label><input id="cap" type="checkbox" checked> <span class="k" style="background:#d0342c"></span>额头圈以上 = 椭球</label>
-<label><input id="covered" type="checkbox"> 被盖住的轮廓（淡）</label>
+<label><input id="oldnet" type="checkbox"> 旧拼法（沿网线拼）</label>
+<label><input id="covered" type="checkbox"> 被盖住的轮廓（淡，旧拼法）</label>
 <label><input id="inner" type="checkbox" checked> <span class="k" style="background:#1d3c8f"></span>耳朵、下颌线、眼睑（没被挡住的部分）</label>
 <label><input id="tan" type="checkbox" checked> 切点</label>
 </div>
-<div class="bar" style="color:#666">切点：横线上找画面左右最外的点、竖线上找画面上下最外的点；绕头一圈每个方向显示最外的线。额头圈以上用椭球的轮廓椭圆。下巴底下到脖子、后脑下半还不准。</div>
+<div class="bar" style="color:#666">每条线只出一个切点（它露在所有线最外面那一段的中点），切点之间用尽量少的贝塞尔串起来；额头圈以上用椭球的轮廓椭圆；脖子底下是切口，不连。耳朵和眼睑、下颌线一样，没被头挡住的部分才画。</div>
 <div id="wrap"><canvas id="c"></canvas></div>
 <script type="module" src="./shelloutline.ts"></script></body></html>

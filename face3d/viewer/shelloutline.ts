@@ -11,7 +11,7 @@ import { rotate, toCamera } from '../src/view'
 type P3 = [number, number, number]
 type Chain = P3[]
 interface NetJ { name: string; kind: number; top: P3 | null; bottom: P3 | 'free' | null; cols: (Chain | null)[][]; rails: { name: string; pieces: { from: number; c: Chain }[] }[] }
-const D = data as unknown as { nets: NetJ[]; tnets: NetJ[]; cap: { c: P3; r: P3 }; ring: P3[]; autos: { name: string; c: Chain }[]; detail: { name: string; c: P3[] }[]; wire: { name: string; c: P3[] }[] }
+const D = data as unknown as { nets: NetJ[]; tnets: NetJ[]; cap: { c: P3; r: P3 }; ring: P3[]; fitLines: { name: string; noTan: boolean; c: P3[] }[]; autos: { name: string; c: Chain }[]; detail: { name: string; c: P3[] }[]; wire: { name: string; c: P3[] }[] }
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
 const on = (id: string) => $<HTMLInputElement>(id).checked
 const cv = $<HTMLCanvasElement>('c'), gl = cv.getContext('webgl', { antialias: true, preserveDrawingBuffer: true })!
@@ -83,6 +83,76 @@ function capOutline(v: { yaw: number; pitch: number }): P3[][] {
   return runs
 }
 const DIRS = Array.from({ length: 8 }, (_, i) => [Math.cos((i * Math.PI) / 4), Math.sin((i * Math.PI) / 4)] as const)
+// ---- the outline fitted to tangent points (as in face3d/fit/shell-outline.ts fitOutline; bowen 1793119514): one tangent point
+// per line — the middle of its stretch on the outer edge of all the lines — and as few smooth cubics through them as fit,
+// from one end of the cap's ellipse round to the other; open at the neck's cut ----
+const FW = 400, FS = FW / 3.4, FCX = FW / 2, FCY = FW * 0.42, CLOSE = 0.1, TOL = 0.012
+function outerEdge(pts: number[][]) {
+  const G = FW, R = CLOSE * FS, dil = new Uint8Array(G * G)
+  for (const q of pts) { const x = FCX + q[0]! * FS, y = FCY - q[1]! * FS; for (let j = Math.max(0, Math.floor(y - R)); j <= Math.min(G - 1, Math.ceil(y + R)); j++) for (let i = Math.max(0, Math.floor(x - R)); i <= Math.min(G - 1, Math.ceil(x + R)); i++) if ((i - x) ** 2 + (j - y) ** 2 <= R * R) dil[j * G + i] = 1 }
+  const dist = new Float32Array(G * G).fill(1e9)
+  for (let k = 0; k < G * G; k++) if (!dil[k]) dist[k] = 0
+  for (let j = 0; j < G; j++) for (let i = 0; i < G; i++) { const k = j * G + i; if (i > 0) dist[k] = Math.min(dist[k]!, dist[k - 1]! + 1); if (j > 0) dist[k] = Math.min(dist[k]!, dist[k - G]! + 1); if (i > 0 && j > 0) dist[k] = Math.min(dist[k]!, dist[k - G - 1]! + 1.414); if (i < G - 1 && j > 0) dist[k] = Math.min(dist[k]!, dist[k - G + 1]! + 1.414) }
+  for (let j = G - 1; j >= 0; j--) for (let i = G - 1; i >= 0; i--) { const k = j * G + i; if (i < G - 1) dist[k] = Math.min(dist[k]!, dist[k + 1]! + 1); if (j < G - 1) dist[k] = Math.min(dist[k]!, dist[k + G]! + 1); if (i < G - 1 && j < G - 1) dist[k] = Math.min(dist[k]!, dist[k + G + 1]! + 1.414); if (i > 0 && j < G - 1) dist[k] = Math.min(dist[k]!, dist[k + G - 1]! + 1.414) }
+  const inS = (i: number, j: number) => i >= 0 && j >= 0 && i < G && j < G && dist[j * G + i]! >= R - 0.5
+  let s0: [number, number] | null = null
+  for (let j = 0; j < G && !s0; j++) for (let i = 0; i < G && !s0; i++) if (inS(i, j)) s0 = [i, j]
+  if (!s0) return []
+  const D8 = [[-1, 0], [-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1]] as const, cells: [number, number][] = [s0]
+  for (let cur = s0, back: [number, number] = [s0[0] - 1, s0[1]], n = 0; n < 20000; n++) {
+    const bi = D8.findIndex(d => cur[0] + d[0] === back[0] && cur[1] + d[1] === back[1]); let moved = false
+    for (let k = 1; k <= 8; k++) { const d = D8[(bi + k) % 8]!, c: [number, number] = [cur[0] + d[0], cur[1] + d[1]]; if (inS(c[0], c[1])) { const pd = D8[(bi + k - 1) % 8]!; back = [cur[0] + pd[0], cur[1] + pd[1]]; cur = c; moved = true; break } }
+    if (!moved || (cur[0] === s0[0] && cur[1] === s0[1])) break; cells.push(cur) }
+  return cells.map(([i, j]) => [(i + 0.5 - FCX) / FS, (FCY - (j + 0.5)) / FS])
+}
+const nrm2 = (v: number[]) => { const m = Math.hypot(v[0]!, v[1]!) || 1; return [v[0]! / m, v[1]! / m] }
+const t2 = (a: number[], b: number[]) => nrm2([b[0]! - a[0]!, b[1]! - a[1]!])
+const cub2 = (c: number[][], t: number) => { const u = 1 - t, w = [u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t]; return [0, 1].map(k => w.reduce((s2, wi, j) => s2 + wi * c[j]![k]!, 0)) }
+function fitTan(q: number[][], ta: number[], tb: number[]): number[][] {
+  const n = q.length - 1, L = [0]; for (let i = 1; i <= n; i++) L.push(L[i - 1]! + Math.hypot(q[i]![0]! - q[i - 1]![0]!, q[i]![1]! - q[i - 1]![1]!))
+  const P0 = q[0]!, P3_ = q[n]!, chord = Math.hypot(P3_[0]! - P0[0]!, P3_[1]! - P0[1]!); let c00 = 0, c01 = 0, c11 = 0, x0 = 0, x1 = 0
+  for (let i = 0; i <= n; i++) { const t = L[i]! / (L[n]! || 1), u = 1 - t, b0 = u * u * u, b1 = 3 * u * u * t, b2 = 3 * u * t * t, b3 = t * t * t
+    const A1 = [ta[0]! * b1, ta[1]! * b1], A2 = [tb[0]! * b2, tb[1]! * b2], r = [q[i]![0]! - (b0 + b1) * P0[0]! - (b2 + b3) * P3_[0]!, q[i]![1]! - (b0 + b1) * P0[1]! - (b2 + b3) * P3_[1]!]
+    c00 += A1[0]! ** 2 + A1[1]! ** 2; c01 += A1[0]! * A2[0]! + A1[1]! * A2[1]!; c11 += A2[0]! ** 2 + A2[1]! ** 2; x0 += A1[0]! * r[0]! + A1[1]! * r[1]!; x1 += A2[0]! * r[0]! + A2[1]! * r[1]! }
+  const det = c00 * c11 - c01 * c01; let a1 = det ? (x0 * c11 - x1 * c01) / det : chord / 3, a2 = det ? (c00 * x1 - c01 * x0) / det : chord / 3
+  if (!(a1 > chord * 0.02) || !(a2 > chord * 0.02) || a1 > chord * 1.5 || a2 > chord * 1.5) { a1 = chord / 3; a2 = chord / 3 }
+  return [P0, [P0[0]! + ta[0]! * a1, P0[1]! + ta[1]! * a1], [P3_[0]! + tb[0]! * a2, P3_[1]! + tb[1]! * a2], P3_]
+}
+function fitRun(pts: number[][], tans: number[][], i: number, j: number, out: number[][][]) {
+  const seg = pts.slice(i, j + 1), c = fitTan(seg, tans[i]!, tans[j]!.map(v => -v))
+  const S = Array.from({ length: 81 }, (_, k) => cub2(c, k / 80)), err = seg.map(p => Math.min(...S.map(q => Math.hypot(q[0]! - p[0]!, q[1]! - p[1]!))))
+  const w = err.reduce((m, e, k) => (k > 0 && k < seg.length - 1 && e > err[m]! ? k : m), 1)
+  if (j - i >= 2 && err[w]! > TOL) { fitRun(pts, tans, i, i + w, out); fitRun(pts, tans, i + w, j, out) } else out.push(c)
+}
+function fitOutline(v: { yaw: number; pitch: number }) {
+  const Ls = D.fitLines.map(l => ({ ...l, q: l.c.map(p => rotate(p, v) as unknown as number[]) }))
+  const capQ = on('cap') ? capOutline(v).map(r => r.map(p => rotate(p, v) as unknown as number[])) : []
+  const edge = outerEdge([...Ls.flatMap(L => L.q), ...capQ.flat()]), nE = edge.length
+  const near = (q: number[]) => { let bi = 0, bd = Infinity; for (let i = 0; i < nE; i++) { const d = (edge[i]![0]! - q[0]!) ** 2 + (edge[i]![1]! - q[1]!) ** 2; if (d < bd) { bd = d; bi = i } } return { i: bi, d: Math.sqrt(bd) } }
+  const EPS = 2.5 / FS, cutAt = new Uint8Array(nE)
+  for (const L of Ls) if (L.noTan) for (const q of L.q) { const n = near(q); if (n.d < EPS * 1.6) cutAt[n.i] = 1 }
+  const tan: { q: number[]; at: number }[] = []
+  for (const L of Ls) { if (L.noTan) continue; let best: [number, number] | null = null, s0 = -1
+    const hit = L.q.map((q, i) => { const n = near(q); return n.d < EPS && !(capQ.length && L.c[i]![1] >= ringAt(L.c[i]!)) ? n.i : -1 })
+    for (let i = 0; i <= L.q.length; i++) { const e = i < L.q.length && hit[i]! >= 0; if (e && s0 < 0) s0 = i; if (!e && s0 >= 0) { if (!best || i - 1 - s0 > best[1] - best[0]) best = [s0, i - 1]; s0 = -1 } }
+    if (best) { const m = Math.round((best[0] + best[1]) / 2); tan.push({ q: L.q[m]!, at: hit[m]! }) } }
+  for (let i = tan.length - 1; i >= 0; i--) if (tan.some((t, j) => j < i && Math.hypot(t.q[0]! - tan[i]!.q[0]!, t.q[1]! - tan[i]!.q[1]!) < 0.01)) tan.splice(i, 1)
+  const cap = capQ.slice().sort((a, b) => b.length - a.length)[0], pieces: number[][][] = []
+  let seq: number[][] = [], tans: number[][] = [], ats: number[] = []
+  if (cap && cap.length > 2 && nE > 10) {
+    const iA = near(cap[cap.length - 1]!).i, iB = near(cap[0]!).i, iM = near(cap[Math.floor(cap.length / 2)]!).i
+    const fwd = (x: number) => ((x - iA) % nE + nE) % nE, capFwd = fwd(iM) < fwd(iB)
+    const startEnd = capFwd ? cap[0]! : cap[cap.length - 1]!, startIdx = capFwd ? iB : iA, stopEnd = capFwd ? cap[cap.length - 1]! : cap[0]!, stopIdx = capFwd ? iA : iB
+    const span = ((stopIdx - startIdx) % nE + nE) % nE, key = (i: number) => ((i - startIdx) % nE + nE) % nE
+    const midT = tan.filter(t => key(t.at) > 2 && key(t.at) < span - 2).sort((a, b) => key(a.at) - key(b.at))
+    const tStart = capFwd ? t2(cap[1]!, cap[0]!) : t2(cap[cap.length - 2]!, cap[cap.length - 1]!), tStop = capFwd ? t2(cap[cap.length - 1]!, cap[cap.length - 2]!) : t2(cap[0]!, cap[1]!)
+    seq = [startEnd, ...midT.map(t => t.q), stopEnd]; tans = seq.map((_, i) => (i === 0 ? tStart : i === seq.length - 1 ? tStop.map(x => -x) : t2(seq[i - 1]!, seq[i + 1]!)))
+    ats = [startIdx, ...midT.map(t => t.at), stopIdx]
+  } else { const st = tan.slice().sort((a, b) => a.at - b.at); seq = st.map(t => t.q); ats = st.map(t => t.at); tans = seq.map((_, i) => t2(seq[Math.max(0, i - 1)]!, seq[Math.min(seq.length - 1, i + 1)]!)) }
+  const cuts: number[] = []; for (let k = 0; k + 1 < ats.length; k++) { for (let x = ats[k]!; ((x - ats[k + 1]!) % nE + nE) % nE !== 0; x = (x + 1) % nE) if (cutAt[x]) { cuts.push(k); break } }
+  if (seq.length >= 2) { let i0 = 0; for (const k of [...cuts, seq.length - 1]) { if (k > i0) { if (cuts.includes(k)) tans[k] = t2(seq[k - 1]!, seq[k]!); if (cuts.includes(i0 - 1)) tans[i0] = t2(seq[i0]!, seq[i0 + 1]!); fitRun(seq, tans, i0, k, pieces) } i0 = k + 1 } }
+  return { pieces, tan: tan.map(t => t.q), cap: capQ }
+}
 const EARS = D.detail.filter(l => /耳/.test(l.name)).map(l => sample(l.c, 60))
 
 // ---- camera: head space → clip ----
@@ -146,7 +216,19 @@ function draw() {
     drawTris(P, C) }
   // the outline: every net, both screen sides; per side the outer line shows, the covered parts faint
   gl.disable(gl.DEPTH_TEST)
-  if (on('outline')) {
+  if (on('outline') && !on('oldnet')) {
+    const v = { yaw, pitch }, fo = fitOutline(v), s = S0 * zoom, a = aspect(), P: number[] = [], C: number[] = [], T: number[] = [], TC: number[] = []
+    const toClip = (q: number[]) => [q[0]! * s * a, q[1]! * s + CY, 0]
+    const band2 = (q: number[][], px: number, rgba: number[]) => { const cs = q.map(toClip), wx = (px / cv.width) * window.devicePixelRatio, wy = (px / cv.height) * window.devicePixelRatio
+      for (let i = 0; i + 1 < cs.length; i++) { const p0 = cs[i]!, p1 = cs[i + 1]!, dx = (p1[0]! - p0[0]!) / wx, dy = (p1[1]! - p0[1]!) / wy, l = Math.hypot(dx, dy) || 1, nx = (-dy / l) * wx, ny = (dx / l) * wy
+        const qq = [[p0[0]! + nx, p0[1]! + ny, 0], [p0[0]! - nx, p0[1]! - ny, 0], [p1[0]! + nx, p1[1]! + ny, 0], [p1[0]! - nx, p1[1]! - ny, 0]]; for (const k of [0, 1, 2, 1, 3, 2]) { P.push(...qq[k]!); C.push(...rgba) } } }
+    for (const c of fo.pieces) band2(Array.from({ length: 41 }, (_, i) => cub2(c, i / 40)), 3, [...COLORS[0]!, 1])
+    for (const r of fo.cap) band2(r, 3, [...COLORS[4]!, 1])
+    // (the ears are drawn with the inner lines, where the head does not hide them)
+    if (on('tan')) for (const t of fo.tan) { T.push(...toClip(t)); TC.push(0.88, 0.54, 0.17, 1) }
+    drawTris(P, C); drawTris(T, TC, gl.POINTS)
+  }
+  if (on('outline') && on('oldnet')) {
     const v = { yaw, pitch }, all: { kind: number; pts: P3[]; scr: number[][]; tan: P3[] }[] = []
     const push = (kind: number, pts: P3[], tan: P3[]) => all.push({ kind, pts, scr: pts.map(p => rotate(p, v) as unknown as number[]), tan })
     // tangent points in eight screen directions, the nets both ways (as in shell-outline.ts)
