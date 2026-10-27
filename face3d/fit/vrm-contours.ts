@@ -5,11 +5,11 @@
 // Plus the semantic points at 0,0 (eye corners, nose tip, mouth, 山根, 眉心, upper and lower ear roots), found on the mesh.
 // Writes face3d/viewer/vrm-contours.json. Run: npx vite-node face3d/fit/vrm-contours.ts [face3d/fit/ref/test.vrm]
 import { readFileSync, writeFileSync } from 'node:fs'
-import { loadVrmHead, rasterHead } from '../mesh/vrmhead'
+import { cutNeck, loadVrmHead, rasterHead } from '../mesh/vrmhead'
 import { type V3, rotate, toCamera } from '../src/view'
 
 const file = process.argv[2] ?? 'face3d/fit/ref/test.vrm'
-const b = readFileSync(file), D = loadVrmHead(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength))
+const b = readFileSync(file), D = cutNeck(loadVrmHead(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength))) // no neck: the outline closes over the chin (bowen 1793076475)
 const P = D.P, N = D.N, T = D.skinTris
 const dot = (a: V3, c: V3) => a[0] * c[0] + a[1] * c[1] + a[2] * c[2]
 const lerp = (a: V3, c: V3, t: number): V3 => [a[0] + (c[0] - a[0]) * t, a[1] + (c[1] - a[1]) * t, a[2] + (c[2] - a[2]) * t]

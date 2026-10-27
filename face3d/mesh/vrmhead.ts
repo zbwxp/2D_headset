@@ -114,3 +114,20 @@ export function contourSegments(data: VrmHead, f: Frame, ras: ReturnType<typeof 
   }
   return out
 }
+
+/**
+ * The head without the neck (bowen 1793076475: the outline at 0,0 must close over the chin, not run down the neck): skin
+ * triangles whose centre lies below a plane tilted from under the chin (front) to under the skull (back) are dropped —
+ * y < a + b·z, through (z 0.6, y −1.5) and (z −0.5, y −1.05) in head space (the VRoid head: chin tip at y −1.45, z 0.88).
+ */
+export function cutNeck(d: VrmHead, a = -1.255, b = -0.409): VrmHead {
+  const keep = (t: number[], i: number) => { const p = [t[3 * i]!, t[3 * i + 1]!, t[3 * i + 2]!].map(k => d.P[k]!), y = (p[0]![1] + p[1]![1] + p[2]![1]) / 3, z = (p[0]![2] + p[1]![2] + p[2]![2]) / 3; return y >= a + b * z }
+  const parts = d.parts.map(part => {
+    if (part.kind !== 'skin') return part
+    const tris: number[] = [], cornerN: number[] = []
+    for (let i = 0; i < part.tris.length / 3; i++) if (keep(part.tris, i)) { tris.push(part.tris[3 * i]!, part.tris[3 * i + 1]!, part.tris[3 * i + 2]!); cornerN.push(...part.cornerN.slice(9 * i, 9 * i + 9)) }
+    return { ...part, tris, cornerN }
+  })
+  const skinTris = parts.filter(p => p.kind === 'skin').flatMap(p => p.tris), inSkin = new Set(skinTris)
+  return { ...d, parts, skinTris, edges: d.edges.filter(e => inSkin.has(e.a) && inSkin.has(e.b)) }
+}

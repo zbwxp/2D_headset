@@ -3,12 +3,14 @@
 // look from anywhere. WebGL, nothing computed here but the drawing.
 import vrmUrl from '../fit/ref/test.vrm?url'
 import data from './vrm-contours.json'
-import { loadVrmHead } from '../mesh/vrmhead'
+import cageData from './vrm-cage.json'
+import { cutNeck, loadVrmHead } from '../mesh/vrmhead'
 import { rotate } from '../src/view'
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
 const cv = $<HTMLCanvasElement>('c'), gl = cv.getContext('webgl', { antialias: true })!
 const C = data as unknown as { points: Record<string, [number, number, number] | null>; contours: { yaw: number; pitch: number; seg: number[]; outer: number[] }[] }
+const CG = cageData as unknown as { cages: { yaw: number; pitch: number; curves: { name: string; c: number[][] }[] }[] }
 const YAWS = [...new Set(C.contours.map(c => c.yaw))], PITCHES = [...new Set(C.contours.map(c => c.pitch))]
 let yaw = 30, pitch = 10, zoom = 1
 
@@ -39,7 +41,9 @@ const shown = (name: string) => new Set([...document.querySelectorAll<HTMLInputE
 
 function draw() {
   $('view').textContent = `转 ${yaw.toFixed(0)}° · 俯仰 ${pitch > 0 ? '仰' : pitch < 0 ? '俯' : ''}${Math.abs(pitch).toFixed(0)}°`
-  gl.viewport(0, 0, cv.width, cv.height); gl.clearColor(1, 1, 1, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST)
+  const H = cv.height, half = cv.width / 2
+  gl.viewport(0, 0, cv.width, H); gl.clearColor(1, 1, 1, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST)
+  gl.viewport(0, 0, half, H)
   const m = matrix()
   if (mesh) {
     gl.useProgram(meshProg); gl.uniformMatrix4fv(gl.getUniformLocation(meshProg, 'm'), false, m)
@@ -60,12 +64,20 @@ function draw() {
   gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
   if ($<HTMLInputElement>('hidden').checked) { gl.depthFunc(gl.ALWAYS); gl.uniform1f(ua, 0.18); lines(pos, col, gl.LINES); gl.depthFunc(gl.LESS) }
   gl.uniform1f(ua, 1); lines(pos, col, gl.LINES)
+  // the birdcage: each view's five (or fewer) cubic curves, sampled
+  const cagePos: number[] = [], cageCol: number[] = []
+  for (const cg of CG.cages) { if (!ys.has(cg.yaw) || !ps.has(cg.pitch)) continue; const k = colourOf(cg)
+    for (const cu of cg.curves) { const c = cu.c; let prev: number[] | null = null
+      for (let i = 0; i <= 16; i++) { const t = i / 16, u = 1 - t, w = [u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t], q = [0, 1, 2].map(d => w.reduce((a, wi, j) => a + wi * c[j]![d]!, 0))
+        if (prev) { cagePos.push(...prev, ...q); cageCol.push(...k, ...k) } prev = q } } }
+  if ($<HTMLInputElement>('cageOnHead').checked) lines(cagePos, cageCol, gl.LINES)
+  gl.viewport(half, 0, half, H); gl.clear(gl.DEPTH_BUFFER_BIT); gl.uniform1f(ua, 1); lines(cagePos, cageCol, gl.LINES); gl.viewport(0, 0, half, H)
   // semantic points
   const L = $('labels'); L.innerHTML = ''
   if ($<HTMLInputElement>('pts').checked) {
     const pts = Object.entries(C.points).filter((e): e is [string, [number, number, number]] => !!e[1])
     gl.depthFunc(gl.ALWAYS); lines(pts.flatMap(([, p]) => p), pts.flatMap(() => [0, 0, 0]), gl.POINTS); gl.depthFunc(gl.LESS)
-    for (const [name, p] of pts) { const r = rotate(p, { yaw, pitch }), x = (0.5 + (r[0] * 0.42 * zoom) / 2) * cv.width, y = (0.5 - (r[1] * 0.42 * zoom + 0.25) / 2) * cv.height
+    for (const [name, p] of pts) { const r = rotate(p, { yaw, pitch }), x = (0.5 + (r[0] * 0.42 * zoom) / 2) * (cv.width / 2), y = (0.5 - (r[1] * 0.42 * zoom + 0.25) / 2) * cv.height
       const d = document.createElement('div'); d.textContent = name; d.style.left = `${x + 7}px`; d.style.top = `${y - 8}px`; d.style.opacity = r[2] > -0.2 ? '1' : '0.4'; L.appendChild(d) }
   }
   $('status').textContent = `${C.contours.filter(c => ys.has(c.yaw) && ps.has(c.pitch)).length} 个角度的轮廓线（每个角度 = 从那里看时能看到的轮廓，画在头的表面上；勾「只看最外圈」= 只留头的外边缘）`
@@ -85,7 +97,7 @@ document.body.addEventListener('click', e => { const t = e.target as HTMLElement
 
 $('status').textContent = '正在读 test.vrm…'
 fetch(vrmUrl).then(r => r.arrayBuffer()).then(b => {
-  const d = loadVrmHead(b), P = new Float32Array(d.P.flat()), Nn = new Float32Array(d.N.flat()), idx = new Uint32Array(d.parts.flatMap(p => p.tris))
+  const d = cutNeck(loadVrmHead(b)), P = new Float32Array(d.P.flat()), Nn = new Float32Array(d.N.flat()), idx = new Uint32Array(d.parts.flatMap(p => p.tris))
   mesh = { pos: buf(P), nor: buf(Nn), idx: buf(idx, gl.ELEMENT_ARRAY_BUFFER), n: idx.length }; draw()
 }).catch(e => { $('status').textContent = '读取失败：' + e })
 draw()
