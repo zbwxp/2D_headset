@@ -88,14 +88,18 @@ const path = walk.map((p, i) => (i === 0 || i === walk.length - 1 ? p : ([0, 1].
 // each path point onto the ear
 const R = 3, onEar = path.map(([u, v]) => {
   const pic = SQ.map(s => ({ s, d: Math.hypot(toPic(s.q)[0] - u, toPic(s.q)[1] - v) }))
-  // through the ear for sure, else through its low parts, else through any skin round it (the flap at the upper root), else
-  // beside the ear (the ear-for-sure point nearest the line of sight)
+  // through the ear for sure, else through its low parts, else beside the ear (the ear-for-sure point nearest the line of
+  // sight: the line drawn just outside the ear's outline). Never the head behind or the flap of skin at the upper root
+  // (bowen 1793102726 「这个小勾并不合理」: the line on that flap made a hook)
   const front = (es: typeof pic) => es.reduce((m, e) => (e.s.q[2] > m.s.q[2] ? e : m))
-  const sure = pic.filter(e => e.d < R && e.s.st >= 0.03), low = pic.filter(e => e.d < R && e.s.st >= 0.005), any = pic.filter(e => e.d < R)
-  return sure.length ? front(sure) : low.length ? front(low) : any.length ? front(any) : pic.filter(e => e.s.st >= 0.03).reduce((m, e) => (e.d < m.d ? e : m))
+  const sure = pic.filter(e => e.d < R && e.s.st >= 0.03), low = pic.filter(e => e.d < R && e.s.st >= 0.005)
+  return sure.length ? { ...front(sure), tier: 'sure' } : low.length ? { ...front(low), tier: 'low' } : { ...pic.filter(e => e.s.st >= 0.03).reduce((m, e) => (e.d < m.d ? e : m)), tier: 'beside' }
 })
-const pts = onEar.map(e => e.s.p.map(v => +v.toFixed(4)) as V3), off = onEar.map(e => +e.d.toFixed(1))
-// ---- 3. the marks → indices ----
-const marks = MARKS.map(([name, m]) => ({ name, i: path.reduce((bi, p, i) => (Math.hypot(p[0] - m[0], p[1] - m[1]) < Math.hypot(path[bi]![0] - m[0], path[bi]![1] - m[1]) ? i : bi), 0) }))
-writeFileSync(`${REF}.ear.json`, JSON.stringify({ note: 'bowen\'s ear line (screenshot 1793101979) back in 3D: face3d/fit/ear-from-drawing.ts', view: best, path, points: pts, offPixels: off, marks }))
+// the line starts and ends on the ear: leading / trailing points whose line of sight misses the ear (more than R beside it) dropped,
+// so 上耳根 is where bowen's line first reaches the ear
+const first = onEar.findIndex(e => e.d < R), last = onEar.length - 1 - [...onEar].reverse().findIndex(e => e.d < R)
+const kept = onEar.slice(first, last + 1), pts = kept.map(e => e.s.p.map(v => +v.toFixed(4)) as V3), off = kept.map(e => +e.d.toFixed(1))
+// ---- 3. the marks → indices (a mark off the kept part goes to its nearest end) ----
+const marks = MARKS.map(([name, m]) => ({ name, i: Math.max(0, Math.min(kept.length - 1, path.reduce((bi, p, i) => (Math.hypot(p[0] - m[0], p[1] - m[1]) < Math.hypot(path[bi]![0] - m[0], path[bi]![1] - m[1]) ? i : bi), 0) - first)) }))
+writeFileSync(`${REF}.ear.json`, JSON.stringify({ note: 'bowen\'s ear line (screenshot 1793101979) back in 3D: face3d/fit/ear-from-drawing.ts', view: best, path: path.slice(first, last + 1), dropped: { start: first, end: onEar.length - 1 - last }, points: pts, offPixels: off, marks }))
 console.log('path', path.length, 'ear samples', S.length, 'marks', JSON.stringify(marks), 'beside the ear (px) max', Math.max(...off), 'median', [...off].sort((x, y) => x - y)[Math.floor(off.length / 2)])
