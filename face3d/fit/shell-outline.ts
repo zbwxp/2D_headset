@@ -177,6 +177,20 @@ const isEye = (c: number[]) => (c[0] === 245 && c[1] === 245) || (c[0] === 70 &&
 const SKIN = { ...D, parts: D.parts.filter(p => p.kind === 'skin' || isEye(p.color)) }
 const DETAIL = doc.lines.filter(l => /耳根—耳尖|耳尖—耳垂|耳垂—下耳根|^右?线4$|眼睑/.test(l.name))
 
+/** mixing two points of the shell the way the shell runs between them, not straight through it: round the head's centre
+ * (the direction swung, the distance mixed) (bowen 1793117292 follow-up: mixed straight,
+ * the outline between two columns cut inside the head and ran in straight pieces near the crown) */
+function mixRound(a: P3, b2: P3, w: number): P3 {
+  // the skull only (above the cheekbones): lower down, jaw and nape are far from round about the centre and mix straight
+  if (a[1] < -0.6 || b2[1] < -0.6) return mix(a, b2, w)
+  const neckish = false, c: P3 = [0, -0.3, 0]
+  const da = neckish ? ([a[0] - c[0], 0, a[2] - c[2]] as P3) : sub(a, c), db = neckish ? ([b2[0] - c[0], 0, b2[2] - c[2]] as P3) : sub(b2, c)
+  const ra = len(da), rb = len(db); if (ra < 1e-6 || rb < 1e-6) return mix(a, b2, w)
+  const ua = unit(da), ub = unit(db), cos = Math.max(-1, Math.min(1, ua[0] * ub[0] + ua[1] * ub[1] + ua[2] * ub[2])), om = Math.acos(cos)
+  const u: P3 = om < 1e-4 ? mix(ua, ub, w) : ([0, 1, 2].map(k => (Math.sin((1 - w) * om) * ua[k]! + Math.sin(w * om) * ub[k]!) / Math.sin(om)) as P3)
+  const r = ra + (rb - ra) * w, p: P3 = add(c, [u[0] * r, u[1] * r, u[2] * r])
+  return neckish ? [p[0], a[1] + (b2[1] - a[1]) * w, p[2]] : p
+}
 /** a rail's tangent points in a view: every bulge toward the outline's side (a sample farther out than all within ±W, or an
  * end farther out than its neighbours), standing out by more than a hair from the dip to the next */
 function tangents(r: Net['rails'][number], X: (p: P3) => number) {
@@ -200,7 +214,7 @@ function outlines(net: Net, yaw: number, pitch = 0, axis: 0 | 1 = 0) {
       const top = ends[k]!, bot = ends[k + 1]!, have = net.cols.map((c, i) => (c[k] ? i : -1)).filter(i => i >= 0), lo = Math.min(...have), hi = Math.max(...have)
       // between the two nearest columns that reach this stretch (a column missing here is stepped over)
       const base = (u: number) => { const g = Math.max(lo, Math.min(hi, top.g + (bot.g - top.g) * u)), i0 = Math.max(...have.filter(i => i <= g)), i1 = Math.min(...have.filter(i => i >= g)), w = i1 === i0 ? 0 : (g - i0) / (i1 - i0)
-        return w <= 0 ? at(net.cols[i0]![k]!, u) : mix(at(net.cols[i0]![k]!, u), at(net.cols[i1]![k]!, u), w) }
+        return w <= 0 ? at(net.cols[i0]![k]!, u) : mixRound(at(net.cols[i0]![k]!, u), at(net.cols[i1]![k]!, u), w) }
       const dTop = top.p ? sub(top.p, base(0)) : [0, 0, 0] as P3, dBot = bot.p ? sub(bot.p, base(1)) : [0, 0, 0] as P3
       for (let j = k ? 1 : 0; j <= 60; j++) { const u = j / 60; pts.push(add(base(u), add(mix([0, 0, 0], dTop, 1 - u), mix([0, 0, 0], dBot, u)))) }
     }
@@ -243,7 +257,7 @@ function compare(yaw: number, pitch = 0) {
 
 const VIEWS: [number, number][] = (process.env.YAWS ?? '').split(',').filter(Boolean).map(t => t.split(':').map(Number) as [number, number])
 const YAWS = VIEWS.length ? VIEWS.map(v => v[0]) : [0, 15, 30, 45, 60, 63, 66, 70, 75, 90, 105, 120], Pn = 400, COLS = Number(process.env.COLS ?? 4), LEGEND = !!process.env.LEGEND, out: unknown[] = []
-const COLOR = ['#13a05a', '#7b3fb5', '#c47a00']
+const COLOR = ['#13a05a', '#7b3fb5', '#c47a00', '#1d3c8f', '#d0342c']
 let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${COLS * Pn} ${COLS * Pn}" width="${COLS * Pn}" height="${COLS * Pn}" font-family="system-ui"><rect width="100%" height="100%" fill="#fff"/>`
 YAWS.forEach((yaw, k) => {
   const pitch = VIEWS[k]?.[1] ?? 0, R = compare(yaw, pitch), v = { yaw, pitch }, ox = (k % COLS) * Pn, oy = Math.floor(k / COLS) * Pn, X = (x: number) => ox + F.cx + x * F.S, Y = (y: number) => oy + F.cy - y * F.S
@@ -293,9 +307,42 @@ if (process.env.EXPORT) {
   }))
   console.log('exported', process.env.EXPORT)
 }
+// ---- the cap (bowen 1793117444 「头壳就直接设定成椭圆」, 1793117490 「圆环上部就是椭圆拟合一下」): above the forehead ring the
+// head is one ellipsoid, fitted to VRoid's skin there (left-right symmetric: centred on the midline, axes along the head's);
+// its outline in any view is an ellipse, worked out exactly (the ellipsoid squeezed to a ball, the ball's outline circle,
+// stretched back); only the part above the ring counts ----
+const ringC = join(...['纬线右半前·纬线', '纬线右半后前·纬线', '纬线右半后后·纬线', '纬线左半前·纬线', '纬线左半后前·纬线', '纬线左半后后·纬线'].map(n => sample(lineOf(n).c)))
+const az = (p: readonly number[]) => Math.atan2(p[0]!, p[2]!)
+const ringAt = (p: readonly number[]) => { const a = az(p); let best = ringC[0]!, bd = Infinity; for (const q of ringC) { let d = Math.abs(az(q) - a); if (d > Math.PI) d = 2 * Math.PI - d; if (d < bd) { bd = d; best = q } } return best[1] }
+const CAP = (() => {
+  const pts = [...new Set(D.skinTris)].map(i => D.P[i]! as P3).filter(p => p[1] > ringAt(p) + 0.02)
+  // A x² + B y² + C z² + D y + E z = 1, least squares
+  const M = Array.from({ length: 5 }, () => new Array<number>(6).fill(0))
+  for (const p of pts) { const f = [p[0] * p[0], p[1] * p[1], p[2] * p[2], p[1], p[2]]; for (let i = 0; i < 5; i++) { for (let j = 0; j < 5; j++) M[i]![j]! += f[i]! * f[j]!; M[i]![5]! += f[i]! } }
+  for (let i = 0; i < 5; i++) { let m = i; for (let r = i + 1; r < 5; r++) if (Math.abs(M[r]![i]!) > Math.abs(M[m]![i]!)) m = r; [M[i], M[m]] = [M[m]!, M[i]!]
+    for (let r = 0; r < 5; r++) if (r !== i) { const k = M[r]![i]! / M[i]![i]!; for (let c = i; c < 6; c++) M[r]![c]! -= k * M[i]![c]! } }
+  const [A, B, C, Dd, E] = M.map((r, i) => r[5]! / r[i]!) as [number, number, number, number, number]
+  const cy = -Dd / (2 * B), cz = -E / (2 * C), K = 1 + (Dd * Dd) / (4 * B) + (E * E) / (4 * C)
+  const r = [Math.sqrt(K / A), Math.sqrt(K / B), Math.sqrt(K / C)] as P3, c: P3 = [0, cy, cz]
+  const res = pts.map(p => Math.abs(Math.hypot(p[0] / r[0], (p[1] - cy) / r[1], (p[2] - cz) / r[2]) - 1) * Math.min(...r)), rms = Math.sqrt(res.reduce((a, v) => a + v * v, 0) / res.length)
+  console.log('cap ellipsoid centre', c.map(v => v.toFixed(3)).join(','), 'radii', r.map(v => v.toFixed(3)).join(','), 'points', pts.length, 'rms', rms.toFixed(4))
+  return { c, r }
+})()
+/** the cap's outline in a view: the ellipse on the screen, the part above the forehead ring */
+function capOutline(v: { yaw: number; pitch: number }): P3[][] {
+  const d = toCamera(v), du = unit([d[0] * CAP.r[0], d[1] * CAP.r[1], d[2] * CAP.r[2]] as P3)
+  const t = Math.abs(du[1]) < 0.9 ? ([0, 1, 0] as P3) : ([1, 0, 0] as P3), e1 = unit([du[1] * t[2] - du[2] * t[1], du[2] * t[0] - du[0] * t[2], du[0] * t[1] - du[1] * t[0]] as P3)
+  const e2: P3 = [du[1] * e1[2] - du[2] * e1[1], du[2] * e1[0] - du[0] * e1[2], du[0] * e1[1] - du[1] * e1[0]]
+  const ring = Array.from({ length: 361 }, (_, i) => { const a = (i * Math.PI) / 180, u = [0, 1, 2].map(k => Math.cos(a) * e1[k]! + Math.sin(a) * e2[k]!); return [0, 1, 2].map(k => CAP.c[k]! + u[k]! * CAP.r[k]!) as P3 })
+  const runs: P3[][] = []; let cur: P3[] = []
+  for (const p of ring) { if (p[1] >= ringAt(p)) cur.push(p); else { if (cur.length > 1) runs.push(cur); cur = [] } }
+  if (cur.length > 1) { if (runs.length && ring[0]![1] >= ringAt(ring[0]!)) runs[0] = [...cur, ...runs[0]!]; else runs.push(cur) }
+  return runs
+}
 // ---- every direction (bowen 1793115000): the outline lines across (rails, the screen's sides) and up and down (the nets
 // crosswise, the screen's top and bottom) together; round the head's middle on the screen, in every direction the outer
 // line shows; compared with VRoid's outline the same way (distance from the middle, per degree) ----
+const USE_CAP = !process.env.NOCAP
 const TNETS = KINDS.flatMap(({ n, kind }) => { const t = transpose(n); return ([1, -1] as const).map(edge => Object.assign({ ...t, edge }, { kind })) })
 function polar(yaw: number, pitch: number) {
   const v = { yaw, pitch }, ras = rasterHead(D, v, F, new Uint8ClampedArray(W * W * 4)), inside = (x: number, y: number) => { const i = Math.round(F.cx + x * F.S), j = Math.round(F.cy - y * F.S); return i >= 0 && j >= 0 && i < W && j < W && ras.zb[j * W + i]! > -Infinity }
@@ -304,6 +351,9 @@ function polar(yaw: number, pitch: number) {
   let yLow = Infinity; for (let j = W - 1; j >= 0; j--) { let any = false; for (let i = 0; i < W; i++) if (ras.zb[j * W + i]! > -Infinity) { any = true; break } if (any) { yLow = (F.cy - (j + 0.5)) / F.S; break } }
   const truth = Array.from({ length: A }, (_, a) => { const t = (a * Math.PI) / 180, dx = Math.cos(t), dy = Math.sin(t); let r = 0; for (let s = 0; s < 3; s += 0.004) if (inside(cx + dx * s, cy + dy * s)) r = s; return { r, cut: cy + dy * r < yLow + 0.06 } })
   const lines = [...NETS.map(n => ({ n, axis: 0 as const })), ...TNETS.map(n => ({ n, axis: 1 as const }))].flatMap(({ n, axis }) => outlines(n, yaw, pitch, axis).map(l => ({ kind: KIND(n), axis, tan: l.tan, pts: l.pts, q: l.pts.map(p => rotate(p, v)) })))
+  if (USE_CAP) for (const run of capOutline(v)) lines.push({ kind: 4, axis: 0, tan: [], pts: run, q: run.map(p => rotate(p, v)) })
+  // the ears' own lines take part too: where an ear is outside the head it is the outline (whichever is outer shows)
+  for (const l of DETAIL.filter(d => /耳/.test(d.name))) { const pts = sample(l.c, 60); lines.push({ kind: 3, axis: 0, tan: [], pts, q: pts.map(p => rotate(p, v)) }) }
   // the built outline per degree: the farthest crossing of any line with the ray
   const best = new Array<number>(A).fill(-Infinity)
   const angR = (q: readonly number[]) => ({ a: ((Math.atan2(q[1]! - cy, q[0]! - cx) * 180) / Math.PI + 360) % 360, r: Math.hypot(q[0]! - cx, q[1]! - cy) })
