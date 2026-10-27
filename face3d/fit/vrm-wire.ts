@@ -94,6 +94,31 @@ let ring = chain(zeroLine(i => N[i]![1], p => p[1] > -0.4 && p[1] < 0.3))
 const front = ring.reduce((bi, p, i) => (Math.abs(p[0]) < 0.05 && p[2] > 0 && (bi < 0 || p[2] > ring[bi]![2]) ? i : bi), -1), back = ring.reduce((bi, p, i) => (Math.abs(p[0]) < 0.05 && p[2] < 0 && (bi < 0 || p[2] < ring[bi]![2]) ? i : bi), -1)
 const closedLoop = dist(ring[0]!, ring[ring.length - 1]!) < 0.05
 const latitude = piecewise(ring, [front, back].sort((x, y) => x - y), true)
+// ---- the ear (bowen 1793100859): its rim seen from the side, 3 cubics 上耳根 → 耳尖 → 耳垂 → 下耳根, open between the roots ----
+// the ear = the skin standing out past the head's side (|x| > 0.92) behind the cheek; its rim = per 3° round the ear's centre (in
+// the side view, z across, y up) the ear point farthest from it, in 3D; the roots = where the ear meets the head at its top and
+// bottom (nearest the head); the tip = the rim's upper-back corner (the way an elf ear stretches); the lobe = the lowest
+const EAR = [...new Set(T)].map(i => P[i]!).filter(p => p[0] < -0.92 && p[2] > -0.6 && p[2] < 0.15 && p[1] < 0 && p[1] > -1.1)
+const yTop = Math.max(...EAR.map(p => p[1])), yLow = Math.min(...EAR.map(p => p[1])), nearest = (ps: V3[]) => ps.reduce((a, p) => (Math.abs(p[0]) < Math.abs(a[0]) ? p : a))
+const rootUp = nearest(EAR.filter(p => p[1] > yTop - 0.08)), rootLow = nearest(EAR.filter(p => p[1] < yLow + 0.08))
+const ec = [0, 1, 2].map(k => EAR.reduce((a, p) => a + p[k]!, 0) / EAR.length) as V3, ang = (p: V3) => ((Math.atan2(p[1] - ec[1], p[2] - ec[2]) * 180) / Math.PI + 360) % 360
+const rimBins = new Map<number, V3>()
+for (const p of EAR) { const a = Math.floor(ang(p) / 3), r = Math.hypot(p[1] - ec[1], p[2] - ec[2]), o = rimBins.get(a); if (!o || r > Math.hypot(o[1] - ec[1], o[2] - ec[2])) rimBins.set(a, p) }
+// the ear is a thin plate: at each rim place take the outer face (the ear point farthest out sideways within 0.03 of it), so the
+// rim does not zigzag between the plate's two faces
+for (const [a, p] of rimBins) { const out = EAR.filter(q => Math.hypot(q[1] - p[1], q[2] - p[2]) < 0.03).reduce((m, q) => (q[0] < m[0] ? q : m), p); rimBins.set(a, out) }
+// the rim from the upper root's angle round the back and the bottom to the lower root's (the front, where it is attached, left open)
+const aUp = ang(rootUp), aLow = ang(rootLow), span = (aLow - aUp + 360) % 360
+const rim: V3[] = [rootUp, ...[...rimBins.entries()].map(([k, p]) => ({ t: ((k * 3 + 1.5 - aUp + 360) % 360), p })).filter(e => e.t > 3 && e.t < span - 3).sort((x, y) => x.t - y.t).map(e => e.p), rootLow]
+// the tip: the rim's upper-back corner (farthest up-and-back from the ear's centre in the side view) — where an elf ear stretches
+const ub = (p: V3) => (p[1] - ec[1]) - (p[2] - ec[2]), iTip = rim.reduce((bi, p, i) => (i > 0 && i < rim.length - 1 && ub(p) > ub(rim[bi]!) ? i : bi), 1)
+const iLobe = rim.reduce((bi, p, i) => (i > iTip && p[1] < rim[bi]!![1] ? i : bi), Math.min(rim.length - 2, iTip + 1))
+const earFit = piecewise(rim, [0, iTip, iLobe, rim.length - 1], false, 6)
+const mirror = (c: number[][]) => c.map(p => [-p[0]!, p[1]!, p[2]!])
+// how close the blue crossing clusters by the ear lie to the rim
+const CLe = JSON.parse(readFileSync('face3d/viewer/vrm-clusters.json', 'utf8')).clusters as { p: V3 }[]
+const earCl = CLe.filter(c => c.p[0] < -0.85 && c.p[1] < -0.2 && c.p[1] > -1.0 && c.p[2] < 0.2).map(c => Math.min(...rim.map(r => dist(r, c.p))))
+
 // how close the orange (one-turn-angle) crossing clusters lie to it
 const CL = JSON.parse(readFileSync('face3d/viewer/vrm-clusters.json', 'utf8')).clusters as { p: V3; yaws: number[] }[]
 const orange = CL.filter(c => c.yaws.length <= 2 && c.p[1] > -0.25 && c.p[1] < 0.1).map(c => Math.min(...ring.map(r => dist(r, c.p))))
@@ -101,9 +126,12 @@ const orange = CL.filter(c => c.yaws.length <= 2 && c.p[1] > -0.25 && c.p[1] < 0
 const out = {
   note: 'the simplest head wireframe: one meridian (the plane of symmetry, 9 cubics) and one latitude (normal level at the forehead, 2 cubics); joints slid for the least total error (face3d/fit/vrm-wire.ts, bowen 1793100382 / 1793100411)',
   meridian: { names: NAMES, joints: meridian.joints.map(i => prof[i]!.map(v => +v.toFixed(4))), curves: meridian.curves, rms: meridian.rms, raw: prof.map(p => p.map(v => +v.toFixed(4))) },
+  ear: { names: ['上耳根', '耳尖', '耳垂', '下耳根'], joints: earFit.joints.map(i => rim[i]!.map(v => +v.toFixed(4))), curves: [...earFit.curves, ...earFit.curves.map(mirror)], rms: earFit.rms, raw: rim.map(p => p.map(v => +v.toFixed(4))),
+    clusterDistance: { n: earCl.length, median: +([...earCl].sort((x, y) => x - y)[Math.floor(earCl.length / 2)] ?? NaN).toFixed(4) } },
   latitude: { closed: closedLoop, joints: latitude.joints.map(i => ring[i]!.map(v => +v.toFixed(4))), curves: latitude.curves, rms: latitude.rms, raw: ring.map(p => p.map(v => +v.toFixed(4))), orangeDistance: { n: orange.length, median: +([...orange].sort((x, y) => x - y)[Math.floor(orange.length / 2)] ?? NaN).toFixed(4), max: +Math.max(...orange).toFixed(4) } },
 }
 writeFileSync('face3d/viewer/vrm-wire.json', JSON.stringify(out))
 console.log('meridian points', prof.length, 'rms', meridian.rms, 'joints moved', meridian.joints.map((j, k) => j - start[k]!).join(','))
 console.log('latitude points', ring.length, 'closed', closedLoop, 'rms', latitude.rms, 'orange→ring', JSON.stringify(out.latitude.orangeDistance))
+console.log('ear rim points', rim.length, 'rms', earFit.rms, 'joints', out.ear.joints.map(j => j.join(',')).join(' | '), 'clusters→rim', JSON.stringify(out.ear.clusterDistance))
 console.log('joints', NAMES.map((n, k) => `${n} ${out.meridian.joints[k]!.join(',')}`).join(' | '))

@@ -8,7 +8,7 @@ import { rotate } from '../src/view'
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
 const cv = $<HTMLCanvasElement>('c'), gl = cv.getContext('webgl', { antialias: true, preserveDrawingBuffer: true })!
 type P3 = number[]
-const Wd = wire as unknown as { meridian: { names: string[]; joints: P3[]; curves: P3[][]; rms: number; raw: P3[] }; latitude: { joints: P3[]; curves: P3[][]; rms: number; raw: P3[]; orangeDistance: { median: number } } }
+const Wd = wire as unknown as { ear: { names: string[]; joints: P3[]; curves: P3[][]; rms: number; raw: P3[]; clusterDistance: { median: number } }; meridian: { names: string[]; joints: P3[]; curves: P3[][]; rms: number; raw: P3[] }; latitude: { joints: P3[]; curves: P3[][]; rms: number; raw: P3[]; orangeDistance: { median: number } } }
 let yaw = 35, pitch = 15, zoom = 1
 function matrix(): Float32Array {
   const ex = rotate([1, 0, 0], { yaw, pitch }), ey = rotate([0, 1, 0], { yaw, pitch }), ez = rotate([0, 0, 1], { yaw, pitch }), s = 0.4 * zoom, cy = 0.22
@@ -31,12 +31,12 @@ const cubic = (c: P3[], t: number) => { const u = 1 - t, w = [u * u * u, 3 * u *
 /** the wire as line segments: meridian red, latitude orange; each curve's samples */
 function wireLines() {
   const pos: number[] = [], col: number[] = []
-  for (const [curves, k] of [[Wd.meridian.curves, [0.85, 0.1, 0.2]], [Wd.latitude.curves, [0.95, 0.5, 0.05]]] as const)
+  for (const [curves, k] of [[Wd.meridian.curves, [0.85, 0.1, 0.2]], [Wd.latitude.curves, [0.95, 0.5, 0.05]], [Wd.ear.curves, [0.1, 0.6, 0.25]]] as const)
     for (const c of curves) for (let i = 0; i < 32; i++) { pos.push(...cubic(c, i / 32), ...cubic(c, (i + 1) / 32)); col.push(...k, ...k) }
   return { pos, col }
 }
 function rawLines() { const pos: number[] = [], col: number[] = []
-  for (const r of [Wd.meridian.raw, Wd.latitude.raw]) for (let i = 0; i + 1 < r.length; i++) { pos.push(...r[i]!, ...r[i + 1]!); col.push(0.6, 0.6, 0.6, 0.6, 0.6, 0.6) }
+  for (const r of [Wd.meridian.raw, Wd.latitude.raw, Wd.ear.raw]) for (let i = 0; i + 1 < r.length; i++) { pos.push(...r[i]!, ...r[i + 1]!); col.push(0.6, 0.6, 0.6, 0.6, 0.6, 0.6) }
   return { pos, col } }
 
 function draw() {
@@ -55,7 +55,7 @@ function draw() {
   const ap = gl.getAttribLocation(lineProg, 'p'), ac = gl.getAttribLocation(lineProg, 'c')
   const lines = (P: number[], K: number[], mode: number) => { if (!P.length) return; gl.bindBuffer(gl.ARRAY_BUFFER, buf(new Float32Array(P))); gl.enableVertexAttribArray(ap); gl.vertexAttribPointer(ap, 3, gl.FLOAT, false, 0, 0)
     gl.bindBuffer(gl.ARRAY_BUFFER, buf(new Float32Array(K))); gl.enableVertexAttribArray(ac); gl.vertexAttribPointer(ac, 3, gl.FLOAT, false, 0, 0); gl.drawArrays(mode, 0, P.length / 3) }
-  const w = wireLines(), r = rawLines(), J = [...Wd.meridian.joints, ...Wd.latitude.joints]
+  const w = wireLines(), r = rawLines(), J = [...Wd.meridian.joints, ...Wd.latitude.joints, ...Wd.ear.joints, ...Wd.ear.joints.map(p => [-p[0]!, p[1]!, p[2]!])]
   if ($<HTMLInputElement>('onHead').checked) lines(w.pos, w.col, gl.LINES)
   // right: the wire alone (depth-tested against itself only)
   gl.viewport(half, 0, half, H); gl.clear(gl.DEPTH_BUFFER_BIT)
@@ -65,8 +65,9 @@ function draw() {
   gl.viewport(0, 0, half, H)
   // joint names on the right panel
   const L = $('labels'); L.innerHTML = ''
-  if ($<HTMLInputElement>('joints').checked) Wd.meridian.joints.forEach((p, i) => { const q = rotate(p as [number, number, number], { yaw, pitch }), x = half + (0.5 + (q[0] * 0.4 * zoom) / 2) * half, y = (0.5 - (q[1] * 0.4 * zoom + 0.22) / 2) * H
-    const d = document.createElement('div'); d.textContent = Wd.meridian.names[i]!; d.style.left = `${x + 6}px`; d.style.top = `${y - 8}px`; L.appendChild(d) })
+  const named: [P3, string][] = [...Wd.meridian.joints.map((p, i) => [p, Wd.meridian.names[i]!] as [P3, string]), ...Wd.ear.joints.map((p, i) => [p, Wd.ear.names[i]!] as [P3, string])]
+  if ($<HTMLInputElement>('joints').checked) named.forEach(([p, name]) => { const q = rotate(p as [number, number, number], { yaw, pitch }), x = half + (0.5 + (q[0] * 0.4 * zoom) / 2) * half, y = (0.5 - (q[1] * 0.4 * zoom + 0.22) / 2) * H
+    const d = document.createElement('div'); d.textContent = name; d.style.left = `${x + 6}px`; d.style.top = `${y - 8}px`; L.appendChild(d) })
 }
 let drag: { x: number; y: number; yaw: number; pitch: number } | null = null
 cv.onpointerdown = e => { drag = { x: e.clientX, y: e.clientY, yaw, pitch }; cv.setPointerCapture(e.pointerId); cv.style.cursor = 'grabbing' }
@@ -76,7 +77,7 @@ cv.onwheel = e => { e.preventDefault(); zoom = Math.max(0.4, Math.min(4, zoom * 
 for (const b of document.querySelectorAll<HTMLButtonElement>('button[data-v]')) b.onclick = () => { [yaw, pitch] = b.dataset.v!.split(',').map(Number) as [number, number]; draw() }
 document.body.addEventListener('change', draw)
 ;(window as unknown as { __view: (y: number, p: number) => void }).__view = (y, p) => { yaw = y; pitch = p; draw() }
-$('status').textContent = `经线 9 条，整体误差 ${Wd.meridian.rms}（头球半径 = 1）· 纬线 2 条，误差 ${Wd.latitude.rms}；橘黄交点到纬线的距离中位数 ${Wd.latitude.orangeDistance.median}`
+$('status').textContent = `经线 9 条，整体误差 ${Wd.meridian.rms}（头球半径 = 1）· 纬线 2 条，误差 ${Wd.latitude.rms}（橘黄交点到它的中位距离 ${Wd.latitude.orangeDistance.median}）· 耳朵每边 3 条，误差 ${Wd.ear.rms}（蓝色交点到耳轮 ${Wd.ear.clusterDistance.median}）`
 fetch(vrmUrl).then(r => r.arrayBuffer()).then(b => {
   const d = loadVrmHead(b), idx = new Uint32Array(d.parts.flatMap(p => p.tris))
   mesh = { pos: buf(new Float32Array(d.P.flat())), nor: buf(new Float32Array(d.N.flat())), idx: buf(idx, gl.ELEMENT_ARRAY_BUFFER), n: idx.length }; draw()
