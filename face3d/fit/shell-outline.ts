@@ -105,18 +105,35 @@ const cutY = (c: Chain, y: number): [Chain, Chain] => { const i = c.findIndex((p
 // the ear's height (上耳根), from behind the ear to the back midline
 const behindEar = auto('交点2→耳后根（耳朵后面）', hugLink(P('交点2'), P('耳后根'))), backMid = sample(run('头颈交界耳后根·纬线', '后脑')), yEar = P('左上耳根')[1]
 const [be1, be2] = cutY(behindEar, yEar), [bm1, bm2] = cutY(backMid, yEar)
+// the back of the skull between the ear and the back midline has no line running down it (bowen 1793114522 「转30度 45度后脑
+// 为什么感觉缺了一块」: the outline there could only mix the face contour and the back midline, both inside it): an automatic
+// one through the middle of each rail, like 线2 / 线5 on the face side
+const half = (c: Chain): [Chain, Chain] => { const L = lens(c), h = L[L.length - 1]! / 2, i = L.findIndex(l => l >= h); return [c.slice(0, i + 1), c.slice(i)] }
+const r1b = half(sample(run('纬线左半后后·纬线', '交点2'))), rEar = half(auto('耳后→后脑中线（耳朵高度）', hugLink(be1[be1.length - 1]!, bm1[bm1.length - 1]!)))
+const r8 = half(sample(run('线8', '耳后根'))), rBase = half(auto('颈侧底→后颈', hugLink(nsL, P('后颈'))))
+const mids = [r1b[0], rEar[0], r8[0], rBase[0]].map(c => c[c.length - 1]!)
+const backSide = [auto('颅顶→后脑侧（后脑侧竖线）', hugLink(P('颅顶'), mids[0]!)), ...[0, 1, 2].map(k => auto(`后脑侧竖线 ${k + 2}`, hugLink(mids[k]!, mids[k + 1]!)))]
 const back: Net = { name: '后脑那一侧', edge: -1, top: P('颅顶'),
-  cols: [[sample(run('线5后', '颅顶')), be1, be2, auto('耳后根→颈侧底', hugLink(P('耳后根'), nsL))],
+  cols: [[sample(run('线5后', '颅顶')), be1, be2, auto('耳后根→颈侧底', hugLink(P('耳后根'), nsL))], backSide,
     [sample(run('颅顶—后脑', '颅顶')), bm1, bm2, sample(run('线7', '头颈交界点'))]],
-  rails: [{ name: '额头那圈后段', pieces: [{ c: sample(run('纬线左半后后·纬线', '交点2')), from: 0 }] },
-    { name: '耳朵高度（后脑）', pieces: [{ c: auto('耳后→后脑中线（耳朵高度）', hugLink(be1[be1.length - 1]!, bm1[bm1.length - 1]!)), from: 0 }] },
-    { name: '线8 耳后根→头颈交界点', pieces: [{ c: sample(run('线8', '耳后根')), from: 0 }] },
-    { name: '颈根（后）', pieces: [{ c: auto('颈侧底→后颈', hugLink(nsL, P('后颈'))), from: 0 }] }] }
+  rails: [{ name: '额头那圈后段', pieces: [{ c: r1b[0], from: 0 }, { c: r1b[1], from: 1 }] },
+    { name: '耳朵高度（后脑）', pieces: [{ c: rEar[0], from: 0 }, { c: rEar[1], from: 1 }] },
+    { name: '线8 耳后根→头颈交界点', pieces: [{ c: r8[0], from: 0 }, { c: r8[1], from: 1 }] },
+    { name: '颈根（后）', pieces: [{ c: rBase[0], from: 0 }, { c: rBase[1], from: 1 }] }] }
 const neck: Net = { name: '颈前那一侧', edge: 1,
   cols: [[sample(run('颈前—下巴底拐点', '下巴底拐点'))], [auto('右耳后根→颈侧底', hugLink(P('右耳后根'), nsR))]],
   rails: [{ name: '下颌底', pieces: [{ c: auto('下巴底拐点→右耳后根（下颌底）', hugLink(P('下巴底拐点'), P('右耳后根'), 30, nearestV)), from: 0 }] },
     { name: '颈根（前）', pieces: [{ c: auto('颈前→颈侧底', hugLink(P('颈前'), nsR)), from: 0 }] }] }
-const NETS = [face, back, neck]
+// every net on both sides (bowen 1793114494: at 0° the two sides came out different — the right had only the face's net, the
+// left only the back's): each mirrored across the midline, outlining the other screen side; each screen side shows the outer
+const mirrorNet = (n: Net): Net => { const m = (c: Chain): Chain => c.map(p => [-p[0], p[1], p[2]] as P3)
+  return { ...n, name: n.name, edge: (-n.edge) as 1 | -1, top: n.top && [-n.top[0], n.top[1], n.top[2]], bottom: n.bottom && [-n.bottom[0], n.bottom[1], n.bottom[2]],
+    cols: n.cols.map(cs => cs.map(c => c && m(c))), rails: n.rails.map(r => ({ ...r, pieces: r.pieces.map(pc => ({ ...pc, c: m(pc.c) })) })) } }
+// and each net outlines whichever screen side it comes to: both edges (bowen 1793114547: turned to the back, a net fixed to
+// one screen side outlined the wrong one); a line inside the head on a side is never the outer one there
+const BASE = [face, back, neck], KINDS = [...BASE, ...BASE.map(mirrorNet)].map((n, i) => ({ n, kind: i % BASE.length }))
+const NETS = KINDS.flatMap(({ n, kind }) => ([1, -1] as const).map(edge => Object.assign({ ...n, edge }, { kind })))
+const KIND = (n: Net) => (n as Net & { kind: number }).kind
 // the inner lines drawn wherever they are not hidden
 // what can hide a line: the skin and the eyeballs (white, iris: the skin has holes at the eyes); not lashes, brows, mouth
 const isEye = (c: number[]) => (c[0] === 245 && c[1] === 245) || (c[0] === 70 && c[1] === 110)
@@ -169,7 +186,7 @@ function compare(yaw: number) {
   // each side as a whole (the face and the neck's front together on the right): the outer of its nets per row
   const sides = ([1, -1] as const).map(edge => { const mine = res.filter(x => x.net.edge === edge), ys = mine.flatMap(x => x.ls.flatMap(l => l.q.map(p => p[1]))), top = Math.max(...ys), bot = Math.max(Math.min(...ys), yMin)
     const d = rows.filter(r => r.y <= top && r.y >= bot).map(r => { const o = edge * Math.max(...mine.map(x => edge * x.outer(r.y)).filter(Number.isFinite)); return Math.abs((edge > 0 ? r.r : r.l) - o) }).filter(Number.isFinite).sort((a, c) => a - c)
-    return { name: edge > 0 ? '右边（脸 + 颈前）' : '左边（后脑 + 颈后）', med: d[Math.floor(d.length / 2)] ?? NaN, p90: d[Math.floor(d.length * 0.9)] ?? NaN, max: d[d.length - 1] ?? NaN } })
+    return { name: edge > 0 ? '画面右边' : '画面左边', med: d[Math.floor(d.length / 2)] ?? NaN, p90: d[Math.floor(d.length * 0.9)] ?? NaN, max: d[d.length - 1] ?? NaN } })
   // the inner lines (bowen 1793114358/1793114371: ears, the jawline, the eyes — drawn wherever not hidden), each sample's
   // visibility two ways: (z) VRoid's head in front of it (its depth buffer); (r) the wire alone, the head taken as round: the
   // point faces the viewer when its direction from the head's centre does
@@ -182,7 +199,8 @@ function compare(yaw: number) {
       const zc = i >= 0 && j >= 0 && i < W && j < W ? skinZ[j * W + i]! : -Infinity, z = edge || !(q[2] < zc - 0.04)
       const dir = unit(sub(p, [0, -0.3, 0])), r = dir[0] * toCam[0] + dir[1] * toCam[1] + dir[2] * toCam[2] > -0.05
       return { q, z, r } }); return { l, pts } })
-  return { yaw, rows, res, sides, detail }
+  const sideOuter = (edge: number, y: number) => edge * Math.max(...res.filter(x => x.net.edge === edge).map(x => edge * x.outer(y)).filter(Number.isFinite))
+  return { yaw, rows, res, sides, detail, sideOuter }
 }
 
 const YAWS = process.env.YAWS ? process.env.YAWS.split(',').map(Number) : [0, 15, 30, 45, 60, 63, 66, 70, 75, 90, 105, 120], Pn = 400, COLS = Number(process.env.COLS ?? 4), LEGEND = !!process.env.LEGEND, out: unknown[] = []
@@ -195,12 +213,13 @@ YAWS.forEach((yaw, k) => {
   for (const l of doc.lines) svg += pl(sample(l.c, 60).map(p => rotate(p, v)), 'stroke="#d9a0a0" stroke-width="0.6"')
   for (const a of autos) svg += pl(a.c.map(p => rotate(p, v)), 'stroke="#d9a0a0" stroke-width="0.8" stroke-dasharray="3 2"')
   svg += pl(R.rows.map(r => [r.r, r.y]), 'stroke="#111" stroke-width="1"') + pl(R.rows.map(r => [r.l, r.y]), 'stroke="#111" stroke-width="1"')
-  R.res.forEach((x, i) => {
-    for (const l of x.ls) { // the shown parts solid, the covered parts dashed
+  R.res.forEach(x => { const i = KIND(x.net)
+    for (const l of x.ls) { // the shown parts solid, the covered parts dashed (covered by any line on that side)
       const runs: { shown: boolean; pts: (readonly number[])[] }[] = []
-      for (const q of l.q) { const shown = net1(x, q); const last = runs[runs.length - 1]; if (last && last.shown === shown) last.pts.push(q); else runs.push({ shown, pts: last ? [last.pts[last.pts.length - 1]!, q] : [q] }) }
+      for (const q of l.q) { const o = R.sideOuter(x.net.edge, q[1]!), shown = !Number.isFinite(o) || x.net.edge * (q[0]! - o) >= -0.004; const last = runs[runs.length - 1]; if (last && last.shown === shown) last.pts.push(q); else runs.push({ shown, pts: last ? [last.pts[last.pts.length - 1]!, q] : [q] }) }
+      if (!runs.some(r => r.shown && r.pts.length > 3)) continue // a line that never shows is not drawn at all
       for (const r of runs) svg += pl(r.pts, r.shown ? `stroke="${COLOR[i]}" stroke-width="2"` : `stroke="${COLOR[i]}" stroke-width="1" stroke-dasharray="4 3" opacity="0.7"`)
-      for (const t of l.tan) { const q = rotate(t.p, v); svg += `<circle cx="${X(q[0]).toFixed(1)}" cy="${Y(q[1]).toFixed(1)}" r="3.5" fill="#e08a2c" stroke="#fff"/>` }
+      if (runs.some(r => r.shown && r.pts.length > 3)) for (const t of l.tan) { const q = rotate(t.p, v); svg += `<circle cx="${X(q[0]).toFixed(1)}" cy="${Y(q[1]).toFixed(1)}" r="3.5" fill="#e08a2c" stroke="#fff"/>` }
     } })
   for (const d of R.detail) { let runP: (readonly number[])[] = []; const flush = () => { if (runP.length > 1) svg += pl(runP, 'stroke="#1d3c8f" stroke-width="1.6"'); runP = [] }
     for (const p of d.pts) { if (p.z) runP.push(p.q); else flush() } flush() }
@@ -211,8 +230,6 @@ YAWS.forEach((yaw, k) => {
   out.push({ yaw, sides: R.sides, nets: R.res.map(x => ({ net: x.net.name, lines: x.ls.length, med: +x.med.toFixed(4), p90: +x.p90.toFixed(4), max: +x.max.toFixed(4), g: x.ls.map(l => l.tan.map(t => +t.g.toFixed(3))) })) })
   console.log(yaw, R.sides.map(x => `${x.name} ${[x.med, x.p90, x.max].map(n => n.toFixed(3)).join('/')}`).join(' | '), '| lines', R.res.map(x => x.ls.length).join('/'))
 })
-/** is this point of a line the outer one on its row (within a hair)? */
-function net1(x: { net: Net; outer: (y: number) => number }, q: readonly number[]) { const o = x.outer(q[1]!); return !Number.isFinite(o) || x.net.edge * (q[0]! - o) >= -0.004 }
 if (LEGEND) { const lg: [string, string][] = [['#111', '黑线 = VRoid 真轮廓'], ['#1d3c8f', '深蓝 = 耳朵、下颌线（线4）、眼睑：没被挡住的部分（用 VRoid 头的遮挡算）'], ['#13a05a', '绿 = 脸那一侧拼出的轮廓线（实 = 露在外面，虚 = 被更外的线盖住）'], ['#7b3fb5', '紫 = 后脑那一侧（带颈侧）'], ['#c47a00', '橙褐 = 颈前那一侧'], ['#e08a2c', '橙点 = 纬线上和视线相切的点'], ['#d9a0a0', '浅红 = 你的线框；浅红虚线 = 我自动补的线']]
   const oy = Math.ceil(YAWS.length / COLS) * Pn; lg.forEach(([c, t], i) => { svg += `<rect x="20" y="${oy + 14 + i * 22}" width="16" height="12" fill="${c}"/><text x="44" y="${oy + 25 + i * 22}" font-size="14">${t}</text>` }) }
 const base = file.replace(/\.json$/, '').replace(/.*\//, '') + (process.env.TAG ?? '')
