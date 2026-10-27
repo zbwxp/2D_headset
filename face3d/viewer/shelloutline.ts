@@ -7,6 +7,7 @@ import vrmUrl from '../fit/ref/test.vrm?url'
 import data from './shell-nets.json'
 import { loadVrmHead } from '../mesh/vrmhead'
 import { rotate, toCamera } from '../src/view'
+import { flattenEars } from '../fit/flatten-ears'
 
 type P3 = [number, number, number]
 type Chain = P3[]
@@ -288,6 +289,7 @@ window.addEventListener('resize', draw)
 ;(window as unknown as { __view: (y: number, p: number, z?: number) => void }).__view = (y, p, z) => { yaw = y; pitch = p; if (z) zoom = z; draw() }
 fetch(vrmUrl).then(r => r.arrayBuffer()).then(b => {
   const d = loadVrmHead(b), idx = new Uint32Array(d.parts.flatMap(p => p.tris))
+  if (on('noear')) flattenEars(d.P as unknown as number[][], d.N as unknown as number[][], d.skinTris) // the ears pressed flat for now (bowen 1793121631)
   mesh = { pos: buf(new Float32Array(d.P.flat())), nor: buf(new Float32Array(d.N.flat())), idx: buf(idx, gl.ELEMENT_ARRAY_BUFFER), n: idx.length }; draw()
 })
 draw()

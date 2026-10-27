@@ -5,9 +5,12 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { loadVrmHead, rasterHead } from '../mesh/vrmhead'
 import { rotate } from '../src/view'
+import { flattenEars } from './flatten-ears'
 type P3 = [number, number, number]
 const doc = JSON.parse(readFileSync(process.argv[2] ?? 'face3d/viewer/ref-shell/bowen-1793118841-sym.json', 'utf8')) as { points: { id: number; name: string; p: P3 }[]; lines: { name: string; a: number; b: number; c: P3[] }[] }
 const b = readFileSync('face3d/fit/ref/test.vrm'), D = loadVrmHead(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength))
+// the ears pressed flat for now (bowen 1793121631): the outline compared is the head's own
+console.log('ear vertices pressed', flattenEars(D.P as unknown as number[][], D.N as unknown as number[][], D.skinTris))
 const cubic = (c: P3[], t: number): P3 => { const u = 1 - t, w = [u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t]; return [0, 1, 2].map(k => w.reduce((s, wi, j) => s + wi * c[j]![k]!, 0)) as P3 }
 const d3 = (a: P3, c: P3) => Math.hypot(a[0] - c[0], a[1] - c[1], a[2] - c[2])
 const line = (n: string) => doc.lines.find(l => l.name === n)!.c.map(p => [...p] as P3)
@@ -30,14 +33,15 @@ YAWS.forEach((yaw, k) => {
   const at = (y: number) => { let hi = -Infinity; for (let i = 0; i + 1 < q.length; i++) { const a = q[i]!, c = q[i + 1]!; if ((a[1] - y) * (c[1] - y) > 0 || a[1] === c[1]) continue; hi = Math.max(hi, a[0] + ((y - a[1]) / (c[1] - a[1])) * (c[0] - a[0])) } return hi }
   // (rows of the ear left out: there the outline is the ear's, not the face's)
   const earY = [doc.points.find(p => p.name === '右上耳根')!.p[1], doc.points.find(p => p.name === '右下耳根')!.p[1]]
-  const dd = rows.filter(r => r.y <= yTop && r.y >= yBot && !(yaw < 25 && r.y < earY[0]! + 0.03 && r.y > earY[1]! - 0.03)).map(r => Math.abs(r.r - at(r.y))).filter(Number.isFinite).sort((a, c) => a - c)
+  void earY
+  const dd = rows.filter(r => r.y <= yTop && r.y >= yBot).map(r => Math.abs(r.r - at(r.y))).filter(Number.isFinite).sort((a, c) => a - c)
   const pl = (ps: readonly (readonly number[])[], st: string) => `<polyline fill="none" ${st} points="${ps.map(p => `${X(p[0]!).toFixed(1)},${Y(p[1]!).toFixed(1)}`).join(' ')}"/>`
   svg += `<rect x="${ox}" y="${oy}" width="${Pn}" height="${Pn}" fill="none" stroke="#ddd"/>`
   for (const l of doc.lines) svg += pl(Array.from({ length: 41 }, (_, i) => rotate(cubic(l.c, i / 40), v)), 'stroke="#ecc" stroke-width="0.6"')
   for (const c of [...contour, ...temple]) svg += pl(Array.from({ length: 41 }, (_, i) => rotate(cubic(c, i / 40), v)), 'stroke="#c99" stroke-width="1" stroke-dasharray="3 2"')
   svg += pl(rows.map(r => [r.r, r.y]), 'stroke="#111" stroke-width="1"')
   svg += pl(q, 'stroke="#13a05a" stroke-width="2.4"')
-  svg += `<text x="${ox + 8}" y="${oy + 20}" font-size="15">转 ${yaw}° · 混合 ${(Math.min(1, yaw / 30) * 100).toFixed(0)}% 太阳穴颧骨线</text><text x="${ox + 8}" y="${oy + Pn - 10}" font-size="12">绿线 vs 真轮廓（不算耳朵那几行）：中位 ${(dd[Math.floor(dd.length / 2)] ?? NaN).toFixed(3)} · 九成 ${(dd[Math.floor(dd.length * 0.9)] ?? NaN).toFixed(3)} · 最大 ${(dd[dd.length - 1] ?? NaN).toFixed(3)}</text>`
+  svg += `<text x="${ox + 8}" y="${oy + 20}" font-size="15">转 ${yaw}° · 混合 ${(Math.min(1, yaw / 30) * 100).toFixed(0)}% 太阳穴颧骨线</text><text x="${ox + 8}" y="${oy + Pn - 10}" font-size="12">绿线 vs 真轮廓（耳朵已去掉）：中位 ${(dd[Math.floor(dd.length / 2)] ?? NaN).toFixed(3)} · 九成 ${(dd[Math.floor(dd.length * 0.9)] ?? NaN).toFixed(3)} · 最大 ${(dd[dd.length - 1] ?? NaN).toFixed(3)}</text>`
   console.log(yaw, 'med', (dd[Math.floor(dd.length / 2)] ?? NaN).toFixed(3), 'p90', (dd[Math.floor(dd.length * 0.9)] ?? NaN).toFixed(3), 'max', (dd[dd.length - 1] ?? NaN).toFixed(3))
 })
 writeFileSync('face3d/viewer/ref-shell/rule-face.svg', svg + '</svg>')
