@@ -87,6 +87,20 @@ function nearestOnSkin(q: P3): P3 {
   }
   return bp
 }
+/** the shell's outward normal at p: the triangles round it (within r), area-weighted */
+function shellNormal(p: P3, r = 0.08): P3 {
+  const n = [0, 0, 0]
+  for (let i = 0; i < nTri; i++) { const k = 9 * i
+    if (![0, 3, 6].some(o => Math.hypot(TRI[k + o]! - p[0], TRI[k + o + 1]! - p[1], TRI[k + o + 2]! - p[2]) < r)) continue
+    const ux = TRI[k + 3]! - TRI[k]!, uy = TRI[k + 4]! - TRI[k + 1]!, uz = TRI[k + 5]! - TRI[k + 2]!, vx = TRI[k + 6]! - TRI[k]!, vy = TRI[k + 7]! - TRI[k + 1]!, vz = TRI[k + 8]! - TRI[k + 2]!
+    let cx = uy * vz - uz * vy, cy = uz * vx - ux * vz, cz = ux * vy - uy * vx
+    const mx = (TRI[k]! + TRI[k + 3]! + TRI[k + 6]!) / 3 - C[0], my = (TRI[k + 1]! + TRI[k + 4]! + TRI[k + 7]!) / 3 - C[1], mz = (TRI[k + 2]! + TRI[k + 5]! + TRI[k + 8]!) / 3 - C[2]
+    if (cx * mx + cy * my + cz * mz < 0) { cx = -cx; cy = -cy; cz = -cz } // outward (VRoid's skin winds both ways at seams)
+    n[0]! += cx; n[1]! += cy; n[2]! += cz }
+  return norm(n.every(v => v === 0) ? [p[0] - C[0], p[1] - C[1], p[2] - C[2]] : n)
+}
+/** how far the line gets from the shell (the farthest of its samples from the nearest skin) */
+function lift(c: P3[], n = 16) { let m = 0; for (let i = 1; i < n; i++) { const q = cubic(c, i / n), s = nearestOnSkin(q); m = Math.max(m, Math.hypot(q[0] - s[0], q[1] - s[1], q[2] - s[2])) } return m }
 // pressing onto the shell: along the ray from the head's centre, the outermost skin
 const C: P3 = [0, -0.3, 0]
 const norm = (v: number[]): P3 => { const m = Math.hypot(v[0]!, v[1]!, v[2]!) || 1; return [v[0]! / m, v[1]! / m, v[2]! / m] }
@@ -162,6 +176,7 @@ function draw() {
   const L = doc.lines.find(l => l.id === sel.line)
   if (L) { gl.clear(gl.DEPTH_BUFFER_BIT); const H2 = [...L.c[0]!, ...L.c[1]!, ...L.c[3]!, ...L.c[2]!]; put(H2, H2.map((_, i) => [0.55, 0.55, 0.6][i % 3]!), gl.LINES); put([...L.c[1]!, ...L.c[2]!], [1, 0.55, 0, 1, 0.55, 0], gl.POINTS, 9) }
   labels()
+  const sl = doc.lines.find(l => l.id === sel.line); $('lift').textContent = sl ? `「${sl.name}」离头壳最远 ${lift(sl.c).toFixed(3)}（头半径 = 1）` : ''
 }
 /** is the point hidden behind the shell from here? */
 function hidden(p: P3) { const q = cam(p), [x, y] = toScreen(q), s = sight(x, y), h = hit(s.o, s.d, false, ALL); return !!h && cam(h.p)[2] > q[2] + 0.02 }
@@ -201,7 +216,7 @@ const nearLine = (x: number, y: number) => { let best: Ln | null = null, bd = 7
   for (const l of doc.lines) for (let i = 0; i <= 48; i++) { const [sx, sy] = toScreen(cam(cubic(l.c, i / 48))), d = Math.hypot(sx - x, sy - y); if (d < bd) { bd = d; best = l } }
   return best }
 const local = (e: PointerEvent | MouseEvent) => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top] as const }
-let drag: { kind: 'turn'; x: number; y: number; yaw: number; pitch: number; moved: boolean } | { kind: 'point'; id: number; sx: number; sy: number; moved: boolean } | { kind: 'handle'; line: number; k: 1 | 2; moved: boolean } | { kind: 'zoom' | 'pan'; x: number; y: number; sx: number; sy: number; zoom: number; panX: number; panY: number; moved: boolean } | null = null
+let drag: { kind: 'turn'; x: number; y: number; yaw: number; pitch: number; moved: boolean } | { kind: 'point'; id: number; sx: number; sy: number; moved: boolean } | { kind: 'handle'; line: number; k: 1 | 2; moved: boolean; n?: P3 } | { kind: 'zoom' | 'pan'; x: number; y: number; sx: number; sy: number; zoom: number; panX: number; panY: number; moved: boolean } | null = null
 /** a handle of the selected line under the cursor */
 const nearHandle = (x: number, y: number) => { const L = doc.lines.find(l => l.id === sel.line); if (!L) return null
   for (const k of [1, 2] as const) { const [sx, sy] = toScreen(cam(L.c[k]!)); if (Math.hypot(sx - x, sy - y) < 9) return { line: L.id, k } }
@@ -221,9 +236,15 @@ cv.onpointermove = e => {
   if (drag.kind === 'turn') { if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 3) drag.moved = true
     yaw = drag.yaw + (e.clientX - drag.x) * 0.5; pitch = Math.max(-89, Math.min(89, drag.pitch - (e.clientY - drag.y) * 0.5)); draw(); return }
   if (drag.kind === 'handle') { const dr = drag, L = doc.lines.find(l => l.id === dr.line); if (!L) return
-    // a handle moves in the screen's plane at its own depth; the line then keeps its own handles
-    if (!dr.moved) { snapshot(); dr.moved = true }
-    const [x, y] = local(e), [q0, q1] = fromScreen(x, y); L.c[dr.k] = back([q0, q1, cam(L.c[dr.k]!)[2]]); L.own = true; draw(); return }
+    // a handle stays in the shell's tangent plane at its end (bowen 1793109399 「调整handle的时候要让它尽量贴合头壳表面」): the
+    // line then leaves its end along the shell, and how far it bulges out is only the handle's length. The cursor's line of
+    // sight meets that plane; seen edge-on, the cursor's place at the handle's depth is pressed into the plane instead
+    if (!dr.moved) { snapshot(); dr.moved = true; dr.n = shellNormal(L.c[dr.k === 1 ? 0 : 3]!) }
+    const E = L.c[dr.k === 1 ? 0 : 3]!, n = dr.n!, [x, y] = local(e), s = sight(x, y), dn = n[0] * s.d[0] + n[1] * s.d[1] + n[2] * s.d[2]
+    let h: P3
+    if (Math.abs(dn) > 0.2) { const t = (n[0] * (E[0] - s.o[0]) + n[1] * (E[1] - s.o[1]) + n[2] * (E[2] - s.o[2])) / dn; h = [s.o[0] + s.d[0] * t, s.o[1] + s.d[1] * t, s.o[2] + s.d[2] * t] }
+    else { const [q0, q1] = fromScreen(x, y), q = back([q0, q1, cam(L.c[dr.k]!)[2]]), off = n[0] * (q[0] - E[0]) + n[1] * (q[1] - E[1]) + n[2] * (q[2] - E[2]); h = [q[0] - n[0] * off, q[1] - n[1] * off, q[2] - n[2] * off] }
+    L.c[dr.k] = h; L.own = true; draw(); return }
   const [x, y] = local(e)
   if (!drag.moved && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 3) return // a press, not yet a drag
   const s = sight(x, y), h = hit(s.o, s.d), p = pt(drag.id); if (!h || !p) return
@@ -286,6 +307,18 @@ function rename(p: { name: string }, at: P3) {
   let done = false; const finish = (keep: boolean) => { if (done) return; done = true; editing = false; const v = box.value.trim(); box.remove(); if (keep && v && v !== p.name) { snapshot(); p.name = v; changed() } }
   box.onkeydown = e => { e.stopPropagation(); if (e.isComposing) return; if (e.key === 'Enter') finish(true); if (e.key === 'Escape') finish(false) }; box.onblur = () => finish(true)
 }
+/** the selected line pressed close to the shell: both handles keep their directions, their lengths are chosen so the line lies
+ * nearest the shell (the samples' distances to it, squared, least) */
+function snug(L: Ln) {
+  const E0 = L.c[0]!, E3 = L.c[3]!, d1 = [0, 1, 2].map(k => L.c[1]![k]! - E0[k]!), d2 = [0, 1, 2].map(k => L.c[2]![k]! - E3[k]!)
+  const at = (a: number, b: number): P3[] => [E0, [0, 1, 2].map(k => E0[k]! + a * d1[k]!) as P3, [0, 1, 2].map(k => E3[k]! + b * d2[k]!) as P3, E3]
+  const cost = (a: number, b: number) => { const c = at(a, b); let e = 0; for (let i = 1; i < 12; i++) { const q = cubic(c, i / 12), p = nearestOnSkin(q); e += (q[0] - p[0]) ** 2 + (q[1] - p[1]) ** 2 + (q[2] - p[2]) ** 2 } return e }
+  let a = 1, b = 1, best = cost(a, b)
+  for (const step of [0.4, 0.2, 0.1, 0.05, 0.02]) for (let moved = true; moved;) { moved = false
+    for (const [da, db] of [[step, 0], [-step, 0], [0, step], [0, -step]] as const) { const na = Math.max(0.02, a + da), nb = Math.max(0.02, b + db), e = cost(na, nb); if (e < best - 1e-12) { best = e; a = na; b = nb; moved = true } } }
+  L.c = at(a, b); L.own = true
+}
+$('snug').onclick = () => { const L = doc.lines.find(l => l.id === sel.line); if (!L) { alert('先点一条线'); return } snapshot(); snug(L); changed() }
 $('link').onclick = () => {
   if (sel.points.length !== 2) { alert('先选两个点：点一个，再按住 Shift 点另一个'); return }
   const [a, b] = sel.points as [number, number], A = pt(a)!, B = pt(b)!
