@@ -53,6 +53,11 @@ const head = () => ({ ...D, P }) as unknown as Parameters<typeof rasterHead>[0]
 const nb: Set<number>[] = P.map(() => new Set<number>())
 for (const part of D.parts) for (let t = 0; t < part.tris.length; t += 3) { const v = [part.tris[t]!, part.tris[t + 1]!, part.tris[t + 2]!]; for (const a of v) for (const b2 of v) if (a !== b2) nb[a]!.add(b2) }
 const SMOOTH = Number(process.env.SMOOTH ?? 3)
+// the features (eyes, brows, lashes, mouth) are not smoothed on their own: each takes the change of the skin vertex nearest it,
+// so they ride on the skin (smoothed apart they sank into it)
+const skinSet = new Set(D.skinTris), skinIdx = [...skinSet], featIdx = P0.map((_, i) => i).filter(i => !skinSet.has(i))
+const carrier = featIdx.map(i => skinIdx.reduce((m, j) => ((P0[j]![0] - P0[i]![0]) ** 2 + (P0[j]![1] - P0[i]![1]) ** 2 + (P0[j]![2] - P0[i]![2]) ** 2 < (P0[m]![0] - P0[i]![0]) ** 2 + (P0[m]![1] - P0[i]![1]) ** 2 + (P0[m]![2] - P0[i]![2]) ** 2 ? j : m), skinIdx[0]!))
+function carryFeatures() { featIdx.forEach((i, k) => { const j = carrier[k]!; for (let m = 0; m < 3; m++) P[i]![m] = P0[i]![m]! + (P[j]![m]! - P0[j]![m]!) }) }
 function smoothChange() { for (let r = 0; r < SMOOTH; r++) { const d = P.map((p, i) => [p[0] - P0[i]![0], p[1] - P0[i]![1], p[2] - P0[i]![2]])
   P.forEach((p, i) => { const ns = [...nb[i]!]; if (!ns.length) return; const avg = [0, 1, 2].map(k => ns.reduce((a, j) => a + d[j]![k]!, 0) / ns.length); for (let k = 0; k < 3; k++) p[k] = P0[i]![k]! + 0.5 * d[i]![k]! + 0.5 * avg[k]! }) } }
 
@@ -95,7 +100,7 @@ for (let round = 0; round < ROUNDS; round++) {
     for (let i = 0; i < C.length; i++) { const c = C[i]!, d2 = (p[0] - c[0]) ** 2 + (p[1] - c[1]) ** 2 + (p[2] - c[2]) ** 2; if (d2 > 9 * SIG * SIG) continue; const w = Math.exp(-d2 * inv); sx += w * Dv[i]![0]; sy += w * Dv[i]![1]; sz += w * Dv[i]![2]; sw += w }
     const k = STEP / (sw + 1); return [sx * k, sy * k, sz * k] as P3 })
   P.forEach((p, i) => { p[0] += move[i]![0]; p[1] += move[i]![1]; p[2] += move[i]![2] })
-  smoothChange()
+  smoothChange(); carryFeatures()
   const Q = P.map(p => [...p] as P3); P.forEach((p, i) => { const j = mirror[i]!; if (j < 0) return; p[0] = (Q[i]![0] - Q[j]![0]) / 2; p[1] = (Q[i]![1] + Q[j]![1]) / 2; p[2] = (Q[i]![2] + Q[j]![2]) / 2 })
   if (round % 4 === 3 || round === ROUNDS - 1) console.log('round', round + 1, YAWS.map(y => `${y}:${gap(y).p90.toFixed(3)}`).join(' '))
 }
