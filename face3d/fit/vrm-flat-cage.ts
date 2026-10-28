@@ -53,13 +53,15 @@ function outline(Pv: P3[], yaw: number, pitch = 0): [number, number][] {
   return out
 }
 /** the screen outline put flat in its plane: x along the turn's screen right, y up, nothing along its line of sight */
-const flatten = (q: [number, number][], yaw: number, pitch = 0): P3[] => { const ax = screenAxes({ yaw, pitch }); return q.map(([x, y]) => [0, 1, 2].map(k => +(ax.right[k]! * x + ax.up[k]! * y).toFixed(4)) as P3) }
+const flatten = (q: [number, number][], yaw: number, pitch = 0): P3[] => { const ax = screenAxes({ yaw, pitch }); return q.map(([x, y]) => [0, 1, 2].map(k => +(ax.right[k]! * x + ax.up[k]! * y).toFixed(3)) as P3) }
 const out: { yaw: number; flat: P3[]; ears: P3[] }[] = []
 for (let yaw = 0; yaw < 180; yaw += 5) out.push({ yaw, flat: flatten(outline(PF, yaw), yaw), ears: flatten(outline(P, yaw), yaw) })
 // the pitch cage (bowen 1793152966 「yaw0 pitch 每5度来一个这样的」): turn 0, tilt every 5° from straight above (−90) to just
 // before straight below (+85) — a tilt and the tilt 180° on share a plane; each squashed along its line of sight into the plane
 // through the left-right axis that faces it
-const pitchOut: { pitch: number; flat: P3[]; ears: P3[] }[] = []
-for (let pitch = -90; pitch < 90; pitch += 5) pitchOut.push({ pitch, flat: flatten(outline(PF, 0, pitch), 0, pitch), ears: flatten(outline(P, 0, pitch), 0, pitch) })
-writeFileSync('face3d/viewer/vrm-flat-cage.json', JSON.stringify({ note: "VRoid's outline per turn (cages) and per tilt at turn 0 (pitches), squashed along that view's line of sight into the plane through the head's centre facing it (face3d/fit/vrm-flat-cage.ts, bowen 1793152656 / 1793152966); flat = ears pressed flat, ears = kept", yBase, cages: out, pitches: pitchOut }))
-console.log('turns', out.length, 'tilts', pitchOut.length, pitchOut.map(p => p.flat.length).join(','), 'points', out.reduce((a, c) => a + c.flat.length, 0))
+// … and the same at other turns (bowen 1793153501 「再做一个yaw 15度然后pitch从-90到90 度的笼子」): turn 0, 15, … 90, each tilt
+// from −90 to +90 every 5° (a turn's tilts −90 and +90 are different views once turned; at turn 0 they share a plane)
+const pitchOut: { yaw: number; pitch: number; flat: P3[]; ears: P3[] }[] = []
+for (let yaw = 0; yaw <= 90; yaw += 15) for (let pitch = -90; pitch <= 90; pitch += 5) pitchOut.push({ yaw, pitch, flat: flatten(outline(PF, yaw, pitch), yaw, pitch), ears: flatten(outline(P, yaw, pitch), yaw, pitch) })
+writeFileSync('face3d/viewer/vrm-flat-cage.json', JSON.stringify({ round: 3, note: "VRoid's outline per turn (cages) and per tilt at turn 0 (pitches), squashed along that view's line of sight into the plane through the head's centre facing it (face3d/fit/vrm-flat-cage.ts, bowen 1793152656 / 1793152966); flat = ears pressed flat, ears = kept", yBase, cages: out, pitches: pitchOut }))
+console.log('turns', out.length, 'tilts', pitchOut.length, 'points', out.reduce((a, c) => a + c.flat.length, 0))
