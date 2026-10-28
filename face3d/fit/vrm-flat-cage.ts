@@ -6,7 +6,7 @@
 // Writes face3d/viewer/vrm-flat-cage.json. Run: npx vite-node face3d/fit/vrm-flat-cage.ts
 import { readFileSync, writeFileSync } from 'node:fs'
 import { loadVrmHead, rasterHead } from '../mesh/vrmhead'
-import { screenAxes } from '../src/view'
+import { screenAxes, toCamera } from '../src/view'
 import { flattenEars } from './flatten-ears'
 type P3 = [number, number, number]
 const doc = JSON.parse(readFileSync('face3d/viewer/ref-shell/bowen-1793118841-sym.json', 'utf8')) as { points: { name: string; p: P3 }[] }
@@ -24,29 +24,42 @@ const parts = D.parts.filter(p => p.kind === 'skin').map(p => { const tris: numb
 const skinTris = parts.flatMap(p => p.tris)
 const PF = P.map(p => [...p] as P3); flattenEars(PF, D.N.map(n => [...n]), skinTris)
 const yBase = Math.max(pt('后颈')[1], pt('颈前')[1]) + 0.03
+// the head cut at the base ring (nothing below it drawn: from above or below the shoulders would hide the head's outline)
+for (const p of parts) { const t: number[] = [], cn: number[] = []; for (let i = 0; i < p.tris.length; i += 3) { if ([0, 1, 2].some(k => P[p.tris[i + k]!]![1] < yBase - 0.02)) continue; t.push(p.tris[i]!, p.tris[i + 1]!, p.tris[i + 2]!); cn.push(...p.cornerN.slice(3 * i, 3 * i + 9)) } p.tris = t; p.cornerN = cn }
+skinTris.splice(0, skinTris.length, ...parts.flatMap(p => p.tris))
 const W = 640, F = { W, H: W, S: W / 3.6, cx: W / 2, cy: W * 0.4 }
 
-/** the outline at a turn, on the screen, opened at the neck's cut (from the neck's one side over the crown to the other) */
-function outline(Pv: P3[], yaw: number): [number, number][] {
-  const v = { yaw, pitch: 0 }, ras = rasterHead({ ...D, P: Pv, parts, skinTris } as unknown as Parameters<typeof rasterHead>[0], v, F, new Uint8ClampedArray(W * W * 4))
+/** the outline at a view, on the screen, opened at the neck's cut (from the neck's one side over the crown to the other); seen
+ * from above (no cut on it) a closed loop */
+function outline(Pv: P3[], yaw: number, pitch = 0): [number, number][] {
+  const v = { yaw, pitch }, ras = rasterHead({ ...D, P: Pv, parts, skinTris } as unknown as Parameters<typeof rasterHead>[0], v, F, new Uint8ClampedArray(W * W * 4))
   const on = (i: number, j: number) => i >= 0 && j >= 0 && i < W && j < W && ras.zb[j * W + i]! > -Infinity
   let s0: [number, number] | null = null; for (let j = 0; j < W && !s0; j++) for (let i = 0; i < W && !s0; i++) if (on(i, j)) s0 = [i, j]
   const D8 = [[-1, 0], [-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1]] as const, cells: [number, number][] = [s0!]
   for (let cur = s0!, back: [number, number] = [s0![0] - 1, s0![1]], n = 0; n < 40000; n++) { const bi = D8.findIndex(d => cur[0] + d[0] === back[0] && cur[1] + d[1] === back[1]); let moved = false
     for (let k = 1; k <= 8; k++) { const d = D8[(bi + k) % 8]!, c: [number, number] = [cur[0] + d[0], cur[1] + d[1]]; if (on(c[0], c[1])) { const pd = D8[(bi + k - 1) % 8]!; back = [cur[0] + pd[0], cur[1] + pd[1]]; cur = c; moved = true; break } }
     if (!moved || (cur[0] === s0![0] && cur[1] === s0![1])) break; cells.push(cur) }
-  // the neck's cut: below the base ring's height on the head (by depth, as the screen y alone tilts nothing at pitch 0)
+  // the neck's cut: where the outline point lies on the head below the base ring's height (by its depth, back in head space)
+  const ax = screenAxes(v), fw = toCamera(v)
   const all = cells.map(([i, j]) => [(i + 0.5 - F.cx) / F.S, (F.cy - (j + 0.5)) / F.S] as [number, number])
-  const keep = all.map(q => q[1] > yBase), n = all.length; let start = keep.findIndex((k, i) => k && !keep[(i - 1 + n) % n]); if (start < 0) start = 0
-  const run: [number, number][] = []; for (let k = 0; k < n; k++) { const i = (start + k) % n; if (!keep[i]) break; run.push(all[i]!) }
+  const keep = cells.map(([i, j], k) => ax.right[1]! * all[k]![0] + ax.up[1]! * all[k]![1] + fw[1]! * ras.zb[j * W + i]! > yBase + 0.02), n = all.length
+  // the longest run of the outline above the cut (all of it, closed, when nothing is cut — seen from above)
+  const closed = keep.every(Boolean); let run: [number, number][] = []
+  if (closed) run = [...all, all[0]!]
+  else for (let st = 0; st < n; st++) { if (!keep[st] || keep[(st - 1 + n) % n]) continue; const r: [number, number][] = []; for (let k = 0; k < n; k++) { const i = (st + k) % n; if (!keep[i]) break; r.push(all[i]!) } if (r.length > run.length) run = r }
   const sm = run.map((_, i) => { const w = run.slice(Math.max(0, i - 3), i + 4); return [w.reduce((a, q) => a + q[0], 0) / w.length, w.reduce((a, q) => a + q[1], 0) / w.length] as [number, number] })
   const out: [number, number][] = [sm[0]!]; let acc = 0
   for (let i = 1; i < sm.length; i++) { acc += Math.hypot(sm[i]![0] - sm[i - 1]![0], sm[i]![1] - sm[i - 1]![1]); if (acc >= 0.012) { out.push(sm[i]!); acc = 0 } }
   return out
 }
 /** the screen outline put flat in its plane: x along the turn's screen right, y up, nothing along its line of sight */
-const flatten = (q: [number, number][], yaw: number): P3[] => { const ax = screenAxes({ yaw, pitch: 0 }); return q.map(([x, y]) => [0, 1, 2].map(k => +(ax.right[k]! * x + ax.up[k]! * y).toFixed(4)) as P3) }
+const flatten = (q: [number, number][], yaw: number, pitch = 0): P3[] => { const ax = screenAxes({ yaw, pitch }); return q.map(([x, y]) => [0, 1, 2].map(k => +(ax.right[k]! * x + ax.up[k]! * y).toFixed(4)) as P3) }
 const out: { yaw: number; flat: P3[]; ears: P3[] }[] = []
 for (let yaw = 0; yaw < 180; yaw += 5) out.push({ yaw, flat: flatten(outline(PF, yaw), yaw), ears: flatten(outline(P, yaw), yaw) })
-writeFileSync('face3d/viewer/vrm-flat-cage.json', JSON.stringify({ note: "VRoid's outline per turn, squashed along that turn's line of sight into the upright plane through the turning axis (face3d/fit/vrm-flat-cage.ts, bowen 1793152656); flat = ears pressed flat, ears = kept", yBase, cages: out }))
-console.log('turns', out.length, 'points', out.reduce((a, c) => a + c.flat.length, 0))
+// the pitch cage (bowen 1793152966 「yaw0 pitch 每5度来一个这样的」): turn 0, tilt every 5° from straight above (−90) to just
+// before straight below (+85) — a tilt and the tilt 180° on share a plane; each squashed along its line of sight into the plane
+// through the left-right axis that faces it
+const pitchOut: { pitch: number; flat: P3[]; ears: P3[] }[] = []
+for (let pitch = -90; pitch < 90; pitch += 5) pitchOut.push({ pitch, flat: flatten(outline(PF, 0, pitch), 0, pitch), ears: flatten(outline(P, 0, pitch), 0, pitch) })
+writeFileSync('face3d/viewer/vrm-flat-cage.json', JSON.stringify({ note: "VRoid's outline per turn (cages) and per tilt at turn 0 (pitches), squashed along that view's line of sight into the plane through the head's centre facing it (face3d/fit/vrm-flat-cage.ts, bowen 1793152656 / 1793152966); flat = ears pressed flat, ears = kept", yBase, cages: out, pitches: pitchOut }))
+console.log('turns', out.length, 'tilts', pitchOut.length, pitchOut.map(p => p.flat.length).join(','), 'points', out.reduce((a, c) => a + c.flat.length, 0))
