@@ -6,7 +6,7 @@
 <body>
 <div class="bar"><b id="view">看：转 0°</b> 拖动 = 两边一起转 / 俯仰，滚轮缩放
 <button data-v="0,0">正面</button><button data-v="45,0">45°</button><button data-v="90,0">侧面</button><button data-v="180,0">背面</button><button data-v="0,-89">正上方</button><button data-v="30,20">斜上</button></div>
-<div class="bar"><select id="mode"><option value="yaw">转头鸟笼（俯仰 0，转 0°～175°）</option><option value="pitch">俯仰鸟笼（转 0，俯 90° 到 仰 85°）</option></select> 笼条每 <select id="step"><option>5</option><option>10</option><option selected>15</option><option>30</option></select>°
+<div class="bar"><select id="mode"><option value="yaw">转头鸟笼（俯仰 0，转 0°～175°）</option><option value="pitch">俯仰鸟笼（转 0，俯 90° 到 仰 85°）</option><option value="both">两个叠在一起（转头蓝、俯仰橙）</option></select> 笼条每 <select id="step"><option>5</option><option>10</option><option selected>15</option><option>30</option></select>°
 · 高亮：<input id="hi" type="range" min="0" max="175" step="5" value="15"> <b id="hiv">转 15°</b> <button id="look">从这个角度看</button>
 <label><input id="ears" type="checkbox"> 带耳朵（默认压平）</label>
 <label><input id="onHead" type="checkbox"> 鸟笼也叠在左边头上</label></div>

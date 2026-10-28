@@ -42,7 +42,7 @@ function outline(Pv: P3[], yaw: number, pitch = 0): [number, number][] {
   // the neck's cut: where the outline point lies on the head below the base ring's height (by its depth, back in head space)
   const ax = screenAxes(v), fw = toCamera(v)
   const all = cells.map(([i, j]) => [(i + 0.5 - F.cx) / F.S, (F.cy - (j + 0.5)) / F.S] as [number, number])
-  const keep = cells.map(([i, j], k) => ax.right[1]! * all[k]![0] + ax.up[1]! * all[k]![1] + fw[1]! * ras.zb[j * W + i]! > yBase + 0.02), n = all.length
+  const keep = cells.map(([i, j], k) => ax.right[1]! * all[k]![0] + ax.up[1]! * all[k]![1] + fw[1]! * ras.zb[j * W + i]! > yBase + 0.07), n = all.length
   // the longest run of the outline above the cut (all of it, closed, when nothing is cut — seen from above)
   const closed = keep.every(Boolean); let run: [number, number][] = []
   if (closed) run = [...all, all[0]!]

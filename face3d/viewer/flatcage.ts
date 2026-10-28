@@ -7,7 +7,7 @@ import { flattenEars } from '../fit/flatten-ears'
 
 type P3 = [number, number, number]
 const C = data as unknown as { cages: { yaw: number; flat: P3[]; ears: P3[] }[]; pitches: { pitch: number; flat: P3[]; ears: P3[] }[] }
-const mode = () => ($<HTMLSelectElement>('mode').value as 'yaw' | 'pitch')
+const mode = () => ($<HTMLSelectElement>('mode').value as 'yaw' | 'pitch' | 'both')
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T, on = (id: string) => $<HTMLInputElement>(id).checked
 const cv = $<HTMLCanvasElement>('c'), gl = cv.getContext('webgl', { antialias: true, preserveDrawingBuffer: true })!
 gl.getExtension('OES_element_index_uint')
@@ -42,11 +42,13 @@ function draw() {
   const dpr = devicePixelRatio || 1, r = cv.getBoundingClientRect(), W = Math.round(r.width * dpr), H = Math.round(r.height * dpr)
   if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H }
   const step = +$<HTMLSelectElement>('step').value, hi = +$<HTMLInputElement>('hi').value
-  $('view').textContent = `看：转 ${Math.round(yaw)}° · 俯仰 ${Math.round(pitch)}°`; $('hiv').textContent = mode() === 'yaw' ? `转 ${hi}°` : `俯仰 ${hi > 0 ? '仰' : hi < 0 ? '俯' : ''}${Math.abs(hi)}°`
+  $('view').textContent = `看：转 ${Math.round(yaw)}° · 俯仰 ${Math.round(pitch)}°`; $('hiv').textContent = mode() !== 'pitch' ? `转 ${hi}°` : `俯仰 ${hi > 0 ? '仰' : hi < 0 ? '俯' : ''}${Math.abs(hi)}°`
   gl.clearColor(1, 1, 1, 1); gl.viewport(0, 0, W, H); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST)
   const half = Math.floor(W / 2), aspect = H / half, key = on('ears') ? 'ears' : 'flat'
-  const list = mode() === 'yaw' ? C.cages.map(c => ({ a: c.yaw, flat: c.flat, ears: c.ears })) : C.pitches.map(c => ({ a: c.pitch, flat: c.flat, ears: c.ears }))
-  const bars = list.filter(c => ((c.a % step) + step) % step === 0 || c.a === hi)
+  // the turn bars (blue) and the tilt bars (orange); the highlight belongs to the cage the slider is set for (both: the turn's)
+  const yawBars = C.cages.map(c => ({ kind: 'yaw' as const, a: c.yaw, flat: c.flat, ears: c.ears })), pitchBars = C.pitches.map(c => ({ kind: 'pitch' as const, a: c.pitch, flat: c.flat, ears: c.ears }))
+  const list = mode() === 'yaw' ? yawBars : mode() === 'pitch' ? pitchBars : [...yawBars, ...pitchBars], hiKind = mode() === 'pitch' ? 'pitch' : 'yaw'
+  const bars = list.filter(c => ((c.a % step) + step) % step === 0 || (c.kind === hiKind && c.a === hi))
   for (let side = 0; side < 2; side++) { gl.viewport(side * half, 0, half, H); gl.clear(gl.DEPTH_BUFFER_BIT)
     if (side === 0 && idxB && meshes.length) { const m = meshes[on('ears') ? 1 : 0]!; gl.useProgram(meshProg); gl.uniformMatrix4fv(gl.getUniformLocation(meshProg, 'm'), false, matrix(aspect))
       const ap = gl.getAttribLocation(meshProg, 'p'), an = gl.getAttribLocation(meshProg, 'n')
@@ -55,7 +57,7 @@ function draw() {
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idxB); gl.drawElements(gl.TRIANGLES, nIdx, gl.UNSIGNED_INT, 0); gl.disableVertexAttribArray(an) }
     if (side === 0 && !on('onHead')) continue
     const P: number[] = [], Cc: number[] = []
-    for (const b of bars) { const isHi = b.a === hi, t = (b.a + (mode() === 'pitch' ? 90 : 0)) / 180; band(b[key], isHi ? 3 : 1.4, isHi ? [0.85, 0.15, 0.12, 1] : [0.2 + 0.2 * t, 0.45, 0.75 - 0.3 * t, 0.85], aspect, half, H, P, Cc) }
+    for (const b of bars) { const isHi = b.kind === hiKind && b.a === hi, col = b.kind === 'yaw' ? [0.25, 0.48, 0.8, 0.85] : [0.9, 0.55, 0.15, 0.85]; band(b[key], isHi ? 3 : 1.4, isHi ? [0.85, 0.15, 0.12, 1] : col, aspect, half, H, P, Cc) }
     drawTris(P, Cc) }
 }
 let drag: { x: number; y: number; yaw: number; pitch: number } | null = null
@@ -64,8 +66,8 @@ cv.onpointermove = e => { if (!drag) return; yaw = drag.yaw + (e.clientX - drag.
 cv.onpointerup = cv.onpointercancel = () => { drag = null; cv.style.cursor = 'grab' }
 cv.onwheel = e => { e.preventDefault(); zoom = Math.max(0.4, Math.min(6, zoom * Math.exp(-e.deltaY * 0.001))); draw() }
 for (const b of document.querySelectorAll<HTMLButtonElement>('button[data-v]')) b.onclick = () => { [yaw, pitch] = b.dataset.v!.split(',').map(Number) as [number, number]; draw() }
-$('look').onclick = () => { const a = +$<HTMLInputElement>('hi').value; if (mode() === 'yaw') { yaw = a; pitch = 0 } else { yaw = 0; pitch = a } draw() }
-$('mode').onchange = () => { const h = $<HTMLInputElement>('hi'); if (mode() === 'yaw') { h.min = '0'; h.max = '175' } else { h.min = '-90'; h.max = '85' } h.value = mode() === 'yaw' ? '15' : '-30'; draw() }
+$('look').onclick = () => { const a = +$<HTMLInputElement>('hi').value; if (mode() !== 'pitch') { yaw = a; pitch = 0 } else { yaw = 0; pitch = a } draw() }
+$('mode').onchange = () => { const h = $<HTMLInputElement>('hi'); if (mode() !== 'pitch') { h.min = '0'; h.max = '175' } else { h.min = '-90'; h.max = '85' } h.value = mode() !== 'pitch' ? '15' : '-30'; draw() }
 document.body.addEventListener('input', draw); document.body.addEventListener('change', draw); window.addEventListener('resize', draw)
 ;(window as unknown as { __view: (y: number, p: number, z?: number) => void }).__view = (y, p, z) => { yaw = y; pitch = p; if (z) zoom = z; draw() }
 // the head with its neck in the usual head space (as vrm-flat-cage.ts), ears pressed flat or kept
