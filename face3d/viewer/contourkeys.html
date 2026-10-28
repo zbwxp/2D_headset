@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><title>轮廓关键帧</title>
+<style>body{margin:0;font:13px system-ui;background:#fafaf8;display:flex;flex-direction:column;height:100vh}.bar{padding:5px 10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-bottom:1px solid #e4e4e0}
+#wrap{flex:1;min-height:0;position:relative}canvas{display:block;width:100%;height:100%;background:#fff;cursor:grab;touch-action:none}
+.cap{position:absolute;top:6px;font-size:13px;color:#333;background:rgba(255,255,255,.8);padding:1px 4px}</style></head>
+<body>
+<div class="bar"><b id="view">转 0° · 俯仰 0°</b> 拖动 = 转头 / 俯仰（−90…90）
+转 <input id="yaw" type="range" min="-90" max="90" step="0.5" value="22.5"> 俯仰 <input id="pitch" type="range" min="-90" max="90" step="0.5" value="10">
+<button data-v="0,0">正面</button><button data-v="22.5,0">22.5°</button><button data-v="45,0">45°</button><button data-v="67.5,37.5">67.5/仰37.5</button><button data-v="90,0">侧面</button><button data-v="0,-60">俯60</button></div>
+<div class="bar"><label><input id="sMix" type="checkbox" checked> <span style="color:#1a9a3a">■</span> 关键帧四角混合</label>
+<label><input id="sTrue" type="checkbox" checked> <span style="color:#000">■</span> VRoid 实时轮廓</label>
+<label><input id="sKeys" type="checkbox"> <span style="color:#d77">■</span> 周围四个关键帧</label>
+<label><input id="sHead" type="checkbox" checked> 头的图</label>
+<button id="sweep">扫一遍：转 0→90（当前俯仰）</button> <button id="sweepP">扫一遍：俯仰 −90→90（当前转角）</button> <span id="stat" style="color:#555"></span></div>
+<div class="bar" style="color:#666">关键帧：转 × 俯仰 −90…90 每 15° 一张（13×13 = 169），每张 = VRoid 头（脖子在颈根圈截断、耳朵压平）在屏幕上的外轮廓，从头顶（过头中心的竖线最高交点）顺时针，到底部分两半，每半按弧长 180 个点。任意角度 = 围着它的四个关键帧按双线性权重逐点混合。左：混合 vs 实时；右：扫的时候每一步的变化（绿 = 混合，黑 = 实时）——上图按对应点算（点沿线滑动也算进去），下图只看形状。</div>
+<div id="wrap"><canvas id="c"></canvas></div>
+<script type="module" src="./contourkeys.ts"></script></body></html>
