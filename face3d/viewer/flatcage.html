@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><title>压扁鸟笼</title>
+<style>body{margin:0;font:13px system-ui;background:#fafaf8;display:flex;flex-direction:column;height:100vh}.bar{padding:5px 10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-bottom:1px solid #e4e4e0}
+#wrap{flex:1;min-height:0;position:relative}canvas{display:block;width:100%;height:100%;background:#fff;cursor:grab;touch-action:none}
+.cap{position:absolute;top:6px;font-size:13px;color:#333;background:rgba(255,255,255,.8);padding:1px 4px}</style></head>
+<body>
+<div class="bar"><b id="view">看：转 0°</b> 拖动 = 两边一起转 / 俯仰，滚轮缩放
+<button data-v="0,0">正面</button><button data-v="45,0">45°</button><button data-v="90,0">侧面</button><button data-v="180,0">背面</button><button data-v="0,-89">正上方</button><button data-v="30,20">斜上</button></div>
+<div class="bar">笼条每 <select id="step"><option>5</option><option>10</option><option selected>15</option><option>30</option></select>°
+· 高亮：转 <input id="hi" type="range" min="0" max="175" step="5" value="15"> <b id="hiv">15°</b> <button id="look">从这个角度看</button>
+<label><input id="ears" type="checkbox"> 带耳朵（默认压平）</label>
+<label><input id="onHead" type="checkbox"> 鸟笼也叠在左边头上</label></div>
+<div class="bar" style="color:#666">每根笼条 = VRoid 头在某个转头角度的外轮廓（带脖子到颈根圈），沿那个角度的视线方向压扁，放在过头中心、正对那个角度的竖直平面上；转 θ 和 θ+180° 是同一个平面。红 = 高亮的那根。</div>
+<div id="wrap"><canvas id="c"></canvas><div class="cap" style="left:8px">VRoid</div><div class="cap" style="left:50%">压扁鸟笼</div></div>
+<script type="module" src="./flatcage.ts"></script></body></html>
