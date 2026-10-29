@@ -1,1 +1,6 @@
 node_modules/
+.DS_Store
+# regenerable: npx vite-node face3d/fit/contour-adaptive.ts (see docs/contour-exploration-summary.md)
+face3d/viewer/contour-adaptive*.json
+# raw reference bitmaps (hidden)
+bench-tasks/**/.*.bmp

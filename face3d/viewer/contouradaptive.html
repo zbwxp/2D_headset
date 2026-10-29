@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><title>关键帧最少多少</title>
+<style>body{margin:0;font:13px system-ui;background:#fafaf8;display:flex;flex-direction:column;height:100vh}.bar{padding:5px 10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-bottom:1px solid #e4e4e0}
+#wrap{flex:1;min-height:0;display:flex}#map{width:42%;height:100%;cursor:crosshair;touch-action:none;background:#fff;border-right:1px solid #e4e4e0}#c{flex:1;height:100%;background:#fff}</style></head>
+<body>
+<div class="bar"><b>偏差档：</b><select id="tier"></select> <b id="count"></b> <b id="view"></b>
+<label><input id="sTrue" type="checkbox" checked> <span style="color:#000">■</span> VRoid 实时轮廓</label>
+<label><input id="sMix" type="checkbox" checked> <span style="color:#1a9a3a">■</span> 关键帧三角混合</label>
+<label><input id="sKeys" type="checkbox"> <span style="color:#d77">■</span> 所在三角形的三个关键帧</label>
+<label><input id="sHead" type="checkbox" checked> 头的图</label>
+<button id="sweep">扫一遍：转 0→90（当前俯仰）</button> <span id="stat" style="color:#555"></span></div>
+<div class="bar" style="color:#666">左：转头（横）× 俯仰（竖，上 = 仰）−90…90 的平面，每个点 = 一个关键帧，灰线 = 混合用的三角形；在上面点 / 拖 = 看那个角度。关键帧是一个一个加的：每次加在「当时混合离 VRoid 最远」的角度（每 1° 一个角度都检查），加到所有角度都在这一档以内。偏差 = 混合和 VRoid 轮廓之间最远的地方（头高约 2.4）。</div>
+<div id="wrap"><canvas id="map"></canvas><canvas id="c"></canvas></div>
+<script type="module" src="./contouradaptive.ts"></script></body></html>

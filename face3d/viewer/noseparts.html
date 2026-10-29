@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><title>头壳 + 鼻子嘴</title>
+<style>body{margin:0;font:13px system-ui;background:#fafaf8;display:flex;flex-direction:column;height:100vh}.bar{padding:5px 10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-bottom:1px solid #e4e4e0}
+canvas{flex:1;min-height:0;width:100%;background:#fff;cursor:grab;touch-action:none}</style></head>
+<body>
+<div class="bar"><b id="view"></b> 拖动 = 转头 / 俯仰
+<button data-v="0,0">正面</button><button data-v="30,0">30°</button><button data-v="63,0">63°</button><button data-v="90,0">侧面</button><button data-v="45,-60">转45 俯60</button><button data-v="70,40">转70 仰40</button>
+<label><input id="sShell" type="checkbox" checked> <span style="color:#2a62c9">■</span> 头壳（鼻子嘴压平）</label>
+<label><input id="sNose" type="checkbox" checked> <span style="color:#d0453a">■</span> 鼻子嘴那一块</label>
+<label><input id="sNeck" type="checkbox" checked> <span style="color:#8a4fc2">■</span> 脖子（你画的两圈之间）</label>
+<label><input id="sTrue" type="checkbox" checked> <span style="color:#000">■</span> 整个头（VRoid）</label>
+<label><input id="sImg" type="checkbox" checked> 头壳的图</label></div>
+<div class="bar" style="color:#666">鼻子嘴（从眼睛下面到下唇下面）压到周围脸面拟合的光滑面上 = 头壳；压掉的那块薄薄的体积 = 鼻子嘴那一块。两块各自的轮廓在屏幕上合起来（谁在外显示谁）就是整个头的轮廓。</div>
+<canvas id="c"></canvas>
+<script type="module" src="./noseparts.ts"></script></body></html>
