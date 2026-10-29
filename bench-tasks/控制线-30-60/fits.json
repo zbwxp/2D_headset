@@ -1,0 +1,712 @@
+{
+ "yaw30-01": {
+  "s": 0.16824,
+  "ty": -123.11,
+  "tx": -82.44,
+  "yaw": 38.9,
+  "rms_x": 2.24,
+  "x_res": {
+   "near_out": 0.87,
+   "near_in": 1.25,
+   "near_mid": 1.71,
+   "far_in": 2.44,
+   "far_out": -1.45,
+   "far_mid": -1.63,
+   "nose": -3.06,
+   "chin": -3.21,
+   "ear": 3.09
+  },
+  "y_res": {
+   "near_out": 1.56,
+   "near_in": -1.83,
+   "near_mid": 0.27,
+   "far_in": 0.04,
+   "far_out": 0.66,
+   "far_mid": 1.58,
+   "mouth": 1.29,
+   "chin": -0.53,
+   "ear": -1.18
+  },
+  "own_yaw": {
+   "near_out": 39.6,
+   "near_in": 40.0,
+   "near_mid": 40.4,
+   "far_in": 41.9,
+   "far_out": 83.2,
+   "far_mid": 36.3,
+   "nose": 36.5,
+   "chin": 36.0,
+   "ear": 42.8
+  }
+ },
+ "yaw30-02": {
+  "s": 0.19926,
+  "ty": -147.95,
+  "tx": -104.28,
+  "yaw": 39.1,
+  "rms_x": 2.51,
+  "x_res": {
+   "near_out": 1.62,
+   "near_in": 1.15,
+   "near_mid": 1.42,
+   "far_in": 1.68,
+   "far_out": -1.4,
+   "far_mid": -2.12,
+   "nose": -3.9,
+   "chin": -2.76,
+   "ear": 4.31
+  },
+  "y_res": {
+   "near_out": 1.49,
+   "near_in": -3.17,
+   "near_mid": 0.79,
+   "far_in": 1.77,
+   "far_out": -0.49,
+   "far_mid": 1.39,
+   "mouth": 0.47,
+   "chin": -0.93,
+   "ear": 0.86
+  },
+  "own_yaw": {
+   "near_out": 40.5,
+   "near_in": 40.1,
+   "near_mid": 40.3,
+   "far_in": 41.2,
+   "far_out": 83.0,
+   "far_mid": 35.7,
+   "nose": 36.0,
+   "chin": 36.6,
+   "ear": 44.5
+  }
+ },
+ "yaw30-03": {
+  "s": 0.19885,
+  "ty": -156.01,
+  "tx": -103.61,
+  "yaw": 36.6,
+  "rms_x": 3.03,
+  "x_res": {
+   "near_out": 2.48,
+   "near_in": 1.6,
+   "near_mid": 2.05,
+   "far_in": 3.07,
+   "far_out": -1.56,
+   "far_mid": -2.29,
+   "nose": -3.41,
+   "chin": -5.38,
+   "ear": 3.45
+  },
+  "y_res": {
+   "near_out": 1.99,
+   "near_in": -2.21,
+   "near_mid": 0.75,
+   "far_in": 2.26,
+   "far_out": -0.95,
+   "far_mid": 2.13,
+   "mouth": 0.92,
+   "chin": -0.17,
+   "ear": -1.84
+  },
+  "own_yaw": {
+   "near_out": 38.7,
+   "near_in": 38.0,
+   "near_mid": 38.4,
+   "far_in": 40.3,
+   "far_out": 32.1,
+   "far_mid": 33.1,
+   "nose": 34.0,
+   "chin": 31.8,
+   "ear": 41.0
+  }
+ },
+ "yaw30-04": {
+  "s": 0.2407,
+  "ty": -177.27,
+  "tx": -126.45,
+  "yaw": 34.0,
+  "rms_x": 1.95,
+  "x_res": {
+   "near_out": 0.66,
+   "near_in": 0.6,
+   "near_mid": 1.65,
+   "far_in": 2.93,
+   "far_out": -1.42,
+   "far_mid": -2.03,
+   "nose": -2.72,
+   "chin": -1.89,
+   "ear": 2.22
+  },
+  "y_res": {
+   "near_out": 0.9,
+   "near_in": -2.84,
+   "near_mid": 1.54,
+   "far_in": 1.52,
+   "far_out": 0.25,
+   "far_mid": 1.54,
+   "mouth": 0.56,
+   "chin": -0.68,
+   "ear": 0.28
+  },
+  "own_yaw": {
+   "near_out": 34.6,
+   "near_in": 34.5,
+   "near_mid": 35.4,
+   "far_in": 37.4,
+   "far_out": 30.4,
+   "far_mid": 31.1,
+   "nose": 32.0,
+   "chin": 32.3,
+   "ear": 36.9
+  }
+ },
+ "yaw30-05": {
+  "s": 0.20369,
+  "ty": -152.05,
+  "tx": -105.33,
+  "yaw": 36.4,
+  "rms_x": 2.54,
+  "x_res": {
+   "near_out": 1.37,
+   "near_in": 0.54,
+   "near_mid": 1.75,
+   "far_in": 2.52,
+   "far_out": -1.91,
+   "far_mid": -2.22,
+   "nose": -3.92,
+   "chin": -2.28,
+   "ear": 4.15
+  },
+  "y_res": {
+   "near_out": 0.25,
+   "near_in": -2.89,
+   "near_mid": 0.28,
+   "far_in": 2.1,
+   "far_out": 0.84,
+   "far_mid": 1.28,
+   "mouth": 0.67,
+   "chin": -0.47,
+   "ear": -0.51
+  },
+  "own_yaw": {
+   "near_out": 37.6,
+   "near_in": 36.9,
+   "near_mid": 37.9,
+   "far_in": 39.4,
+   "far_out": 31.1,
+   "far_mid": 33.1,
+   "nose": 33.4,
+   "chin": 34.4,
+   "ear": 41.7
+  }
+ },
+ "yaw30-06": {
+  "s": 0.19381,
+  "ty": -143.98,
+  "tx": -96.91,
+  "yaw": 36.1,
+  "rms_x": 2.06,
+  "x_res": {
+   "near_out": 1.0,
+   "near_in": 0.72,
+   "near_mid": 1.45,
+   "far_in": 2.44,
+   "far_out": -1.31,
+   "far_mid": -2.15,
+   "nose": -3.75,
+   "chin": -1.07,
+   "ear": 2.66
+  },
+  "y_res": {
+   "near_out": 0.67,
+   "near_in": -1.37,
+   "near_mid": 1.04,
+   "far_in": 0.57,
+   "far_out": 0.28,
+   "far_mid": 1.99,
+   "mouth": 0.17,
+   "chin": -0.07,
+   "ear": -0.25
+  },
+  "own_yaw": {
+   "near_out": 37.0,
+   "near_in": 36.7,
+   "near_mid": 37.4,
+   "far_in": 39.0,
+   "far_out": 32.4,
+   "far_mid": 32.9,
+   "nose": 33.2,
+   "chin": 35.1,
+   "ear": 39.6
+  }
+ },
+ "yaw30-07": {
+  "s": 0.20358,
+  "ty": -150.35,
+  "tx": -102.03,
+  "yaw": 37.3,
+  "rms_x": 2.44,
+  "x_res": {
+   "near_out": 1.36,
+   "near_in": 0.5,
+   "near_mid": 1.7,
+   "far_in": 2.81,
+   "far_out": -2.17,
+   "far_mid": -1.37,
+   "nose": -4.05,
+   "chin": -2.29,
+   "ear": 3.51
+  },
+  "y_res": {
+   "near_out": 1.46,
+   "near_in": -1.27,
+   "near_mid": 1.3,
+   "far_in": 1.11,
+   "far_out": -0.97,
+   "far_mid": 1.3,
+   "mouth": -0.73,
+   "chin": 0.3,
+   "ear": 0.1
+  },
+  "own_yaw": {
+   "near_out": 38.5,
+   "near_in": 37.7,
+   "near_mid": 38.8,
+   "far_in": 40.7,
+   "far_out": 31.1,
+   "far_mid": 35.2,
+   "nose": 34.2,
+   "chin": 35.3,
+   "ear": 41.8
+  }
+ },
+ "yaw30-08": {
+  "s": 0.18002,
+  "ty": -134.92,
+  "tx": -90.49,
+  "yaw": 35.0,
+  "rms_x": 2.55,
+  "x_res": {
+   "near_out": 1.82,
+   "near_in": 2.31,
+   "near_mid": 2.05,
+   "far_in": 2.91,
+   "far_out": -0.49,
+   "far_mid": -2.83,
+   "nose": -3.45,
+   "chin": -3.85,
+   "ear": 1.53
+  },
+  "y_res": {
+   "near_out": 3.0,
+   "near_in": -2.05,
+   "near_mid": 0.05,
+   "far_in": 2.36,
+   "far_out": -2.74,
+   "far_mid": 1.0,
+   "mouth": 1.7,
+   "chin": -1.11,
+   "ear": -1.17
+  },
+  "own_yaw": {
+   "near_out": 36.5,
+   "near_in": 37.0,
+   "near_mid": 36.8,
+   "far_in": 38.4,
+   "far_out": 33.6,
+   "far_mid": 30.9,
+   "nose": 32.4,
+   "chin": 31.6,
+   "ear": 37.0
+  }
+ },
+ "yaw30-09": {
+  "s": 0.20338,
+  "ty": -146.76,
+  "tx": -105.82,
+  "yaw": 25.1,
+  "rms_x": 1.6,
+  "x_res": {
+   "near_out": -0.36,
+   "near_in": -0.96,
+   "near_mid": 0.17,
+   "far_in": 1.49,
+   "far_out": -2.48,
+   "far_mid": -1.4,
+   "nose": -0.23,
+   "chin": 0.38,
+   "ear": 3.4
+  },
+  "y_res": {
+   "near_out": 2.07,
+   "near_in": -2.4,
+   "near_mid": 0.11,
+   "far_in": 1.28,
+   "far_out": -0.98,
+   "far_mid": -0.81,
+   "mouth": -0.68,
+   "chin": -0.19,
+   "ear": 0.91
+  },
+  "own_yaw": {
+   "near_out": 24.8,
+   "near_in": 24.3,
+   "near_mid": 25.2,
+   "far_in": 26.7,
+   "far_out": 20.8,
+   "far_mid": 23.3,
+   "nose": 24.9,
+   "chin": 25.4,
+   "ear": 30.0
+  }
+ },
+ "yaw30-10": {
+  "s": 0.17909,
+  "ty": -127.73,
+  "tx": -88.28,
+  "yaw": 39.2,
+  "rms_x": 2.4,
+  "x_res": {
+   "near_out": 0.92,
+   "near_in": -2.96,
+   "near_mid": 1.51,
+   "far_in": 3.53,
+   "far_out": -1.84,
+   "far_mid": -1.9,
+   "nose": -2.47,
+   "chin": -0.56,
+   "ear": 3.78
+  },
+  "y_res": {
+   "near_out": 0.52,
+   "near_in": -1.84,
+   "near_mid": -0.39,
+   "far_in": 1.41,
+   "far_out": -0.43,
+   "far_mid": 0.38,
+   "mouth": 0.18,
+   "chin": -0.47,
+   "ear": 0.64
+  },
+  "own_yaw": {
+   "near_out": 40.0,
+   "near_in": 36.6,
+   "near_mid": 40.5,
+   "far_in": 43.6,
+   "far_out": 33.3,
+   "far_mid": 36.2,
+   "nose": 37.2,
+   "chin": 38.7,
+   "ear": 44.0
+  }
+ },
+ "yaw60-01": {
+  "s": 0.1748,
+  "ty": -121.81,
+  "tx": -77.99,
+  "yaw": 58.2,
+  "rms_x": 2.3,
+  "x_res": {
+   "near_out": 0.84,
+   "near_in": -2.25,
+   "near_mid": -0.76,
+   "nose": -1.64,
+   "chin": -0.88,
+   "ear": 4.69
+  },
+  "y_res": {
+   "near_out": 1.6,
+   "near_in": -0.04,
+   "near_mid": -0.25,
+   "mouth": 1.18,
+   "chin": 0.2,
+   "ear": -2.95
+  },
+  "own_yaw": {
+   "near_out": 59.0,
+   "near_in": 55.9,
+   "near_mid": 57.5,
+   "nose": 56.4,
+   "chin": 56.5,
+   "ear": 63.7
+  }
+ },
+ "yaw60-02": {
+  "s": 0.2971,
+  "ty": -216.91,
+  "tx": -155.74,
+  "yaw": 89.5,
+  "rms_x": 1.72,
+  "x_res": {
+   "near_out": 0.53,
+   "near_in": -1.24,
+   "near_mid": 0.37,
+   "nose": -0.74,
+   "chin": 3.25,
+   "ear": -2.17
+  },
+  "y_res": {
+   "near_out": 2.33,
+   "near_in": -2.11,
+   "near_mid": 2.19,
+   "mouth": 3.06,
+   "chin": -1.72,
+   "ear": -1.56
+  },
+  "own_yaw": {
+   "near_out": 90.0,
+   "near_in": 86.6,
+   "near_mid": 90.0,
+   "nose": 82.9,
+   "chin": 90.0,
+   "ear": 86.7
+  }
+ },
+ "yaw60-03": {
+  "s": 0.21417,
+  "ty": -162.79,
+  "tx": -113.74,
+  "yaw": 77.3,
+  "rms_x": 2.63,
+  "x_res": {
+   "near_out": 0.37,
+   "near_in": -2.86,
+   "near_mid": 0.48,
+   "nose": -2.58,
+   "chin": 5.09,
+   "ear": -0.5
+  },
+  "y_res": {
+   "near_out": 1.84,
+   "near_in": -1.5,
+   "near_mid": 1.06,
+   "mouth": 1.02,
+   "chin": -0.42,
+   "ear": -0.93
+  },
+  "own_yaw": {
+   "near_out": 77.7,
+   "near_in": 73.2,
+   "near_mid": 77.9,
+   "nose": 71.7,
+   "chin": 87.3,
+   "ear": 76.7
+  }
+ },
+ "yaw60-04": {
+  "s": 0.24666,
+  "ty": -204.03,
+  "tx": -142.43,
+  "yaw": 90.0,
+  "rms_x": 1.27,
+  "x_res": {
+   "near_out": 2.15,
+   "near_in": -0.44,
+   "near_mid": 0.9,
+   "nose": -1.39,
+   "chin": 0.22,
+   "ear": -1.45
+  },
+  "y_res": {
+   "near_out": 2.23,
+   "near_in": -1.94,
+   "near_mid": 2.52,
+   "mouth": 2.25,
+   "chin": -1.17,
+   "ear": -1.37
+  },
+  "own_yaw": {
+   "near_out": 90.0,
+   "near_in": 88.9,
+   "near_mid": 90.0,
+   "nose": 80.4,
+   "chin": 90.0,
+   "ear": 88.1
+  }
+ },
+ "yaw60-05": {
+  "s": 0.19855,
+  "ty": -142.16,
+  "tx": -80.93,
+  "yaw": 79.3,
+  "rms_x": 1.17,
+  "x_res": {
+   "near_out": 0.78,
+   "near_in": -0.88,
+   "near_mid": 0.62,
+   "nose": -0.97,
+   "chin": 1.86,
+   "ear": -1.42
+  },
+  "y_res": {
+   "near_out": 1.19,
+   "near_in": -1.06,
+   "near_mid": 1.08,
+   "mouth": 1.43,
+   "chin": -0.64,
+   "ear": -0.91
+  },
+  "own_yaw": {
+   "near_out": 80.3,
+   "near_in": 77.9,
+   "near_mid": 80.2,
+   "nose": 76.6,
+   "chin": 83.0,
+   "ear": 77.6
+  }
+ },
+ "yaw60-06": {
+  "s": 0.20467,
+  "ty": -146.83,
+  "tx": -82.15,
+  "yaw": 81.3,
+  "rms_x": 1.82,
+  "x_res": {
+   "near_out": 1.78,
+   "near_in": -1.5,
+   "near_mid": 0.73,
+   "nose": -1.06,
+   "chin": 2.55,
+   "ear": -2.51
+  },
+  "y_res": {
+   "near_out": 3.76,
+   "near_in": -2.95,
+   "near_mid": 0.85,
+   "mouth": 1.78,
+   "chin": -1.05,
+   "ear": -1.55
+  },
+  "own_yaw": {
+   "near_out": 83.7,
+   "near_in": 78.8,
+   "near_mid": 82.4,
+   "nose": 77.9,
+   "chin": 86.3,
+   "ear": 78.2
+  }
+ },
+ "yaw60-07": {
+  "s": 0.2043,
+  "ty": -151.5,
+  "tx": -81.74,
+  "yaw": 75.1,
+  "rms_x": 1.71,
+  "x_res": {
+   "near_out": -0.47,
+   "near_in": -1.38,
+   "near_mid": -1.03,
+   "nose": -1.76,
+   "chin": 2.82,
+   "ear": 1.82
+  },
+  "y_res": {
+   "near_out": 0.46,
+   "near_in": 0.29,
+   "near_mid": 0.14,
+   "mouth": 1.99,
+   "chin": -0.51,
+   "ear": -2.23
+  },
+  "own_yaw": {
+   "near_out": 74.6,
+   "near_in": 73.2,
+   "near_mid": 73.8,
+   "nose": 71.5,
+   "chin": 80.7,
+   "ear": 77.3
+  }
+ },
+ "yaw60-08": {
+  "s": 0.2013,
+  "ty": -155.96,
+  "tx": -89.79,
+  "yaw": 50.0,
+  "rms_x": 1.58,
+  "x_res": {
+   "near_out": 0.57,
+   "near_in": -2.26,
+   "near_mid": -0.53,
+   "nose": 0.59,
+   "chin": -1.12,
+   "ear": 2.75
+  },
+  "y_res": {
+   "near_out": 1.63,
+   "near_in": -1.45,
+   "near_mid": -0.46,
+   "mouth": 1.2,
+   "chin": -0.58,
+   "ear": -0.8
+  },
+  "own_yaw": {
+   "near_out": 50.5,
+   "near_in": 47.9,
+   "near_mid": 49.5,
+   "nose": 50.5,
+   "chin": 47.8,
+   "ear": 53.3
+  }
+ },
+ "yaw60-09": {
+  "s": 0.19634,
+  "ty": -145.87,
+  "tx": -89.49,
+  "yaw": 60.8,
+  "rms_x": 1.62,
+  "x_res": {
+   "near_out": 0.17,
+   "near_in": -1.23,
+   "near_mid": 0.88,
+   "nose": -2.66,
+   "chin": 0.33,
+   "ear": 2.5
+  },
+  "y_res": {
+   "near_out": 2.2,
+   "near_in": -1.91,
+   "near_mid": 0.27,
+   "mouth": 1.27,
+   "chin": -0.66,
+   "ear": -0.9
+  },
+  "own_yaw": {
+   "near_out": 61.0,
+   "near_in": 59.5,
+   "near_mid": 61.7,
+   "nose": 57.8,
+   "chin": 61.4,
+   "ear": 63.7
+  }
+ },
+ "yaw60-10": {
+  "s": 0.18653,
+  "ty": -134.63,
+  "tx": -88.17,
+  "yaw": 60.4,
+  "rms_x": 1.9,
+  "x_res": {
+   "near_out": 1.02,
+   "near_in": -1.29,
+   "near_mid": 0.41,
+   "nose": -3.38,
+   "chin": 0.59,
+   "ear": 2.66
+  },
+  "y_res": {
+   "near_out": 2.4,
+   "near_in": -2.8,
+   "near_mid": 0.94,
+   "mouth": 1.46,
+   "chin": -1.36,
+   "ear": 0.3
+  },
+  "own_yaw": {
+   "near_out": 61.3,
+   "near_in": 59.1,
+   "near_mid": 60.8,
+   "nose": 56.6,
+   "chin": 61.6,
+   "ear": 63.5
+  }
+ }
+}

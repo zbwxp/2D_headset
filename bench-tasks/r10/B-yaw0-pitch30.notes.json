@@ -1,0 +1,89 @@
+{
+ "task": "B-yaw0-pitch30: 在 bench 里打开，正面视图（0,0）里把「脸轮廓」4 根线（左颅 / 右颅 / 左下颌 / 右下颌）贴到参考图的红线上；头顶被头发挡住，照蓝线；改完另存",
+ "view": {
+  "convention": "B（建模视角）：相机先绕头 yaw，再绕屏幕水平线 pitch，正交投影；只做右转一侧，左侧由镜像得到",
+  "yaw": 0,
+  "pitch": 30
+ },
+ "lines": {
+  "左颅": "左侧点 → 头顶",
+  "左下颌": "左侧点 → 下巴",
+  "右下颌": "右侧点 → 下巴",
+  "右颅": "右侧点 → 头顶",
+  "note": "「左」= 画面 +x 一侧（转头后是脸的前侧）；四条线都在 0,0 视图里编辑，九个视图起始相同"
+ },
+ "reference": {
+  "drawing": "/Users/bowen/.claude/projects/-Users-bowen-Documents-headset/87c94b45-bc1a-4505-a0ba-5c153d4e1470/tool-results/mcp-2d43b949-bbc8-4a28-a24f-9486fb4b1cce-blob-1792515597219-bvuh9o.png",
+  "original": "B-yaw0-pitch30-original.png",
+  "registration": {
+   "scale": 1.1149999999999987,
+   "shiftRenderPx": [
+    1,
+    -8
+   ],
+   "lowerFaceMeanRenderPx": 0.58
+  },
+  "renderFrame": {
+   "cellPx": 420,
+   "headBallRadiusPx": 120,
+   "ballCentrePx": [
+    210,
+    193.20000000000002
+   ]
+  },
+  "canvas": {
+   "headBallRadiusPx": 82,
+   "ballCentre": [
+    0,
+    0
+   ],
+   "imageScale": 0.16550333333333334,
+   "imageCentre": [
+    0,
+    -21.83115711518457
+   ],
+   "renderToBench": {
+    "K": 0.7266,
+    "Q": [
+     0,
+     -0.4,
+     -0.32
+    ],
+    "from": "bowen 123.json 脸轮廓 0,0 头顶/下巴 + 90,0 下巴/脸前"
+   }
+  }
+ },
+ "crown": "颅顶点：俯仰视角保留初稿位置 (3.9, -82.8)（dot 1792553438）",
+ "firstMatch": {
+  "from": "bowen 123.json 同视角的脸轮廓（点和手柄）",
+  "jawRefitToRed": {
+   "左下颌": {
+    "before": 0,
+    "after": 0,
+    "span": 0,
+    "used": false
+   },
+   "右下颌": {
+    "before": 0,
+    "after": 0,
+    "span": 0,
+    "used": false
+   }
+  },
+  "targetsRed": 0,
+  "targetsBlue": 144
+ },
+ "status": "生成线稿是候选，角度未校准（dot 1792513207）；配准只用下半张脸",
+ "angle": "未校准（生成线稿是候选，dot 1792513207）",
+ "match": "可细调",
+ "limits": [
+  "仰视：不标红线（贴近渲染下颌的是脖子线、耳垂和发梢）。线稿里中间那条细弧是下巴线，也是脸和脖子的分界，不一定是整张头颈图的最外边；两侧颊线到细弧之间的留白 = 待推定连接，别用耳垂或脖子补（dot 1792552759）",
+  "参考图按 123.json 的 0,0 头顶 / 下巴和 90,0 下巴 / 脸前定比例；VRoid 下巴比 bowen 的头更靠后，90 度附近差约 8 px",
+  "发际线高亮还没做"
+ ],
+ "sources": {
+  "template": "/Users/bowen/Desktop/123.json（只读）",
+  "renderer": "face3d/fit/vrm-renders.ts + mesh/vrmhead.ts（VRoid test.vrm）",
+  "builder": "face3d/fit/bench-task.ts"
+ }
+}

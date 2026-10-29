@@ -1,0 +1,107 @@
+{
+ "_note": "瞳仁左右边 only (bowen 1792772712/759), yaw60 batch (控制线-30-60/候选), image px, read by hand from 3x crops. far.bridge = x of the nose-bridge line where it crosses the far eye (its inner side). null = no iris visible (only the lash tail past the bridge). yaw60-09/10 near right edge +3 (bowen 1792773033).",
+ "yaw60-01": {
+  "near": [
+   660,
+   706
+  ],
+  "far": [
+   833,
+   855
+  ],
+  "bridge": 832
+ },
+ "yaw60-02": {
+  "near": [
+   738,
+   758
+  ],
+  "far": null,
+  "bridge": 798
+ },
+ "yaw60-03": {
+  "near": [
+   788,
+   819
+  ],
+  "far": [
+   906,
+   923
+  ],
+  "bridge": 903
+ },
+ "yaw60-04": {
+  "near": [
+   841,
+   866
+  ],
+  "far": null,
+  "bridge": 905
+ },
+ "yaw60-05": {
+  "near": [
+   693,
+   727
+  ],
+  "far": [
+   818,
+   834
+  ],
+  "bridge": 816
+ },
+ "yaw60-06": {
+  "near": [
+   691,
+   724
+  ],
+  "far": [
+   809,
+   826
+  ],
+  "bridge": 808
+ },
+ "yaw60-07": {
+  "near": [
+   663,
+   699
+  ],
+  "far": [
+   800,
+   817
+  ],
+  "bridge": 798
+ },
+ "yaw60-08": {
+  "near": [
+   578,
+   633
+  ],
+  "far": [
+   755,
+   777
+  ],
+  "bridge": 753
+ },
+ "yaw60-09": {
+  "near": [
+   660,
+   702
+  ],
+  "far": [
+   803,
+   821
+  ],
+  "bridge": 801
+ },
+ "yaw60-10": {
+  "near": [
+   689,
+   728
+  ],
+  "far": [
+   841,
+   858
+  ],
+  "bridge": 839
+ }
+}
